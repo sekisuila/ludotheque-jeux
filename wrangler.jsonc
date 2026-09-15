@@ -13,7 +13,7 @@
       "binding": "DB",
       "database_name": "ludotheque-jeux-db",
       // IMPORTANT : remplacez cet UUID par l'identifiant réel de votre base D1.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "5b8420e4-18b4-4d1e-a74d-5249d0650fb9",
       "migrations_dir": "migrations"
     }
   ],
