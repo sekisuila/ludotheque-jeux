@@ -820,6 +820,151 @@ function deleteSelectedAbaloneGame() {
   }
 }
 
+
+async function abRefreshOnlineAccountState() {
+  const status = document.getElementById("abaloneOnlineSaveStatus");
+  const roomStatus = document.getElementById("abaloneRoomStatus");
+  try {
+    const user = await LudoOnline.me(true);
+    if (!user) {
+      if (status) status.innerHTML = `Connexion requise — <a href="#/compte">ouvrir un compte</a>.`;
+      if (roomStatus) roomStatus.innerHTML = `Connexion requise — <a href="#/compte">Compte</a>`;
+      abFillOnlineSaveList([]);
+      return;
+    }
+    if (status) status.textContent = `Connecté : ${user.username}`;
+    if (roomStatus && !abaloneUi?.online?.connected) roomStatus.textContent = `Connecté : ${user.username}`;
+    await abRefreshOnlineSaveList();
+  } catch (e) {
+    if (status) status.textContent = "Service en ligne indisponible.";
+    if (roomStatus) roomStatus.textContent = "Service en ligne indisponible.";
+  }
+}
+
+function abFillOnlineSaveList(saves) {
+  const select = document.getElementById("abaloneOnlineSaveList");
+  if (!select) return;
+  select.innerHTML = `<option value="">Sauvegardes D1…</option>` + saves.map(s => {
+    const d = new Date(s.updated_at || s.created_at);
+    const date = Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", {dateStyle:"short",timeStyle:"short"});
+    return `<option value="${s.id}">${String(s.name).replace(/[&<>]/g,"")} — ${date}</option>`;
+  }).join("");
+}
+
+async function abRefreshOnlineSaveList() {
+  if (!LudoOnline.state.user) return abFillOnlineSaveList([]);
+  try { abFillOnlineSaveList(await LudoOnline.saves.list("abalone")); } catch { abFillOnlineSaveList([]); }
+}
+
+async function abSaveOnlineGame() {
+  const status = document.getElementById("abaloneOnlineSaveStatus");
+  try {
+    const user = await LudoOnline.me(true);
+    if (!user) throw new Error("Connectez-vous d’abord dans la page Compte.");
+    const name = document.getElementById("abaloneSaveName")?.value?.trim() || `Abalone ${new Date().toLocaleDateString("fr-FR")}`;
+    await LudoOnline.saves.create("abalone", name, abSerializeGame(abaloneUi.game));
+    if (status) status.textContent = "Partie enregistrée dans Cloudflare D1.";
+    await abRefreshOnlineSaveList();
+  } catch (e) { if (status) status.textContent = e.message; }
+}
+
+async function abLoadOnlineGame() {
+  const status = document.getElementById("abaloneOnlineSaveStatus");
+  const id = document.getElementById("abaloneOnlineSaveList")?.value;
+  if (!id) return;
+  try {
+    const save = await LudoOnline.saves.get(id);
+    abDisconnectOnlineRoom();
+    abaloneUi.mode = "local";
+    const mode = document.getElementById("abaloneMode"); if (mode) mode.value = "local";
+    document.getElementById("abaloneAiSettings").hidden = true;
+    document.getElementById("abaloneOnlineSettings").hidden = true;
+    abaloneUi.game = abDeserializeGame(save.state);
+    abaloneUi.selected = []; abaloneUi.candidateMoves = []; renderAbalone();
+    if (status) status.textContent = `« ${save.name} » chargée depuis D1.`;
+  } catch (e) { if (status) status.textContent = e.message; }
+}
+
+async function abDeleteOnlineGame() {
+  const status = document.getElementById("abaloneOnlineSaveStatus");
+  const id = document.getElementById("abaloneOnlineSaveList")?.value;
+  if (!id) return;
+  try { await LudoOnline.saves.remove(id); if (status) status.textContent = "Sauvegarde en ligne supprimée."; await abRefreshOnlineSaveList(); }
+  catch (e) { if (status) status.textContent = e.message; }
+}
+
+function abDisconnectOnlineRoom() {
+  if (!abaloneUi?.online) return;
+  try { abaloneUi.online.ws?.close(1000, "Déconnexion"); } catch {}
+  abaloneUi.online = { ws:null, code:"", connected:false, side:null, players:null };
+}
+
+function abSetRoomStatus(text) {
+  const el = document.getElementById("abaloneRoomStatus"); if (el) el.textContent = text;
+}
+
+async function abCreateOnlineRoom() {
+  try {
+    const user = await LudoOnline.me(true); if (!user) throw new Error("Connectez-vous d’abord.");
+    const room = await LudoOnline.rooms.create();
+    const input = document.getElementById("abaloneRoomCode"); if (input) input.value = room.code;
+    abConnectOnlineRoom(room.code);
+  } catch (e) { abSetRoomStatus(e.message); }
+}
+
+async function abJoinOnlineRoom() {
+  const code = document.getElementById("abaloneRoomCode")?.value?.trim()?.toUpperCase();
+  if (!code) return abSetRoomStatus("Saisissez le code du salon.");
+  try {
+    const user = await LudoOnline.me(true); if (!user) throw new Error("Connectez-vous d’abord.");
+    await LudoOnline.rooms.join(code);
+    abConnectOnlineRoom(code);
+  } catch (e) { abSetRoomStatus(e.message); }
+}
+
+function abConnectOnlineRoom(code) {
+  abDisconnectOnlineRoom();
+  abaloneUi.online.code = code.toUpperCase();
+  abSetRoomStatus(`Connexion au salon ${abaloneUi.online.code}…`);
+  const ws = LudoOnline.rooms.connect(abaloneUi.online.code, {
+    open: () => abSetRoomStatus(`Salon ${abaloneUi.online.code} connecté.`),
+    message: data => {
+      if (data.type === "welcome") {
+        abaloneUi.online.connected = true;
+        abaloneUi.online.side = Number(data.side);
+        abaloneUi.online.players = data.players || null;
+        abApplyOnlineState(data.game);
+        const color = abaloneUi.online.side === AB_BLACK ? "Noir" : "Blanc";
+        abSetRoomStatus(`Salon ${abaloneUi.online.code} — vous jouez ${color}. Partagez le code avec l’autre joueur.`);
+      } else if (data.type === "state") {
+        if (data.players) abaloneUi.online.players = data.players;
+        abApplyOnlineState(data.game);
+      } else if (data.type === "players") {
+        abaloneUi.online.players = data.players;
+        const black = data.players?.black?.username || "?";
+        const white = data.players?.white?.username || "en attente";
+        abSetRoomStatus(`Salon ${abaloneUi.online.code} — Noir : ${black} · Blanc : ${white}`);
+      } else if (data.type === "error") abSetRoomStatus(data.message || "Coup refusé par le serveur.");
+    },
+    close: () => { if (abaloneUi?.online) { abaloneUi.online.connected = false; renderAbalone(); } },
+    error: () => abSetRoomStatus("Erreur de connexion WebSocket.")
+  });
+  abaloneUi.online.ws = ws;
+}
+
+function abApplyOnlineState(state) {
+  if (!state) return;
+  const g = abDeserializeGame(state);
+  const ev = abPositionEvaluation(g);
+  if (g.moves.length) {
+    const last = g.moves[g.moves.length - 1];
+    if (!Number.isFinite(last.evalBlack)) { last.evalBlack = ev.blackNote; last.evalWhite = ev.whiteNote; last.evalRawBlack = ev.rawBlack; }
+  }
+  abaloneUi.game = g;
+  abaloneUi.selected = []; abaloneUi.candidateMoves = [];
+  renderAbalone();
+}
+
 function initAbalone() {
   abaloneUi = {
     game: new AbaloneGame(),
@@ -828,13 +973,22 @@ function initAbalone() {
     humanSide: AB_BLACK,
     selected: [],
     candidateMoves: [],
-    thinking: false
+    thinking: false,
+    online: { ws: null, code: "", connected: false, side: null, players: null }
   };
 
   document.getElementById("abaloneMode")?.addEventListener("change", e => {
     abaloneUi.mode = e.target.value;
     document.getElementById("abaloneAiSettings").hidden = abaloneUi.mode !== "ai";
-    newAbaloneGame();
+    document.getElementById("abaloneOnlineSettings").hidden = abaloneUi.mode !== "online";
+    if (abaloneUi.mode === "online") {
+      abDisconnectOnlineRoom();
+      abaloneUi.game = new AbaloneGame();
+      abaloneUi.selected = [];
+      abaloneUi.candidateMoves = [];
+      renderAbalone();
+      abRefreshOnlineAccountState();
+    } else newAbaloneGame();
   });
   document.getElementById("abaloneAiLevel")?.addEventListener("change", e => { abaloneUi.aiLevel = e.target.value; });
   document.getElementById("abaloneSide")?.addEventListener("change", e => { abaloneUi.humanSide = Number(e.target.value); newAbaloneGame(); });
@@ -843,12 +997,19 @@ function initAbalone() {
   document.getElementById("saveAbalone")?.addEventListener("click", saveCurrentAbaloneGame);
   document.getElementById("loadAbalone")?.addEventListener("click", loadSelectedAbaloneGame);
   document.getElementById("deleteAbaloneSave")?.addEventListener("click", deleteSelectedAbaloneGame);
+  document.getElementById("createAbaloneRoom")?.addEventListener("click", abCreateOnlineRoom);
+  document.getElementById("joinAbaloneRoom")?.addEventListener("click", abJoinOnlineRoom);
+  document.getElementById("saveAbaloneOnline")?.addEventListener("click", abSaveOnlineGame);
+  document.getElementById("loadAbaloneOnline")?.addEventListener("click", abLoadOnlineGame);
+  document.getElementById("deleteAbaloneOnline")?.addEventListener("click", abDeleteOnlineGame);
   document.querySelectorAll("[data-ab-dir]").forEach(btn => btn.addEventListener("click", () => playSelectedAbaloneDirection(Number(btn.dataset.abDir))));
   refreshAbaloneSaveList();
+  abRefreshOnlineAccountState();
   renderAbalone();
 }
 
 function newAbaloneGame() {
+  if (abaloneUi?.mode === "online") abDisconnectOnlineRoom();
   abaloneUi.game = new AbaloneGame();
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
@@ -859,6 +1020,7 @@ function newAbaloneGame() {
 
 function abCanHumanInteract() {
   if (!abaloneUi || abaloneUi.game.over || abaloneUi.thinking) return false;
+  if (abaloneUi.mode === "online") return Boolean(abaloneUi.online.connected && abaloneUi.online.side === abaloneUi.game.turn);
   return abaloneUi.mode !== "ai" || abaloneUi.game.turn === abaloneUi.humanSide;
 }
 
@@ -918,6 +1080,15 @@ function playSelectedAbaloneDirection(dirIndex) {
 }
 
 function playAbaloneMove(move) {
+  if (abaloneUi.mode === "online") {
+    if (!abaloneUi.online.connected || !abaloneUi.online.ws || abaloneUi.online.ws.readyState !== WebSocket.OPEN) return;
+    const dirIndex = AB_DIRS.findIndex(d => abSameDir(d, move.dir));
+    abaloneUi.online.ws.send(JSON.stringify({ type: "move", group: [...move.group], dir: dirIndex }));
+    abaloneUi.selected = [];
+    abaloneUi.candidateMoves = [];
+    renderAbalone();
+    return;
+  }
   if (!abaloneUi.game.play(move)) return;
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
@@ -926,7 +1097,7 @@ function playAbaloneMove(move) {
 }
 
 function undoAbaloneMove() {
-  if (!abaloneUi || abaloneUi.thinking || !abaloneUi.game.history.length) return;
+  if (!abaloneUi || abaloneUi.mode === "online" || abaloneUi.thinking || !abaloneUi.game.history.length) return;
   const game = abaloneUi.game;
   game.undo();
   if (abaloneUi.mode === "ai" && game.turn !== abaloneUi.humanSide && game.history.length) game.undo();
@@ -995,6 +1166,8 @@ function renderAbaloneInfo() {
   document.getElementById("abaloneEjectWhite").textContent = `${game.ejected[AB_WHITE]} / 6`;
 
   if (game.over) status.textContent = `${game.winner === AB_BLACK ? "Noir" : "Blanc"} gagne après avoir éjecté 6 billes adverses.`;
+  else if (abaloneUi.mode === "online" && !abaloneUi.online.connected) status.textContent = "Mode en ligne : créez un salon ou rejoignez-en un avec son code.";
+  else if (abaloneUi.mode === "online" && abaloneUi.online.side !== game.turn) status.textContent = `En attente du coup de ${game.turn === AB_BLACK ? "Noir" : "Blanc"}…`;
   else if (abaloneUi.thinking) status.textContent = "L’IA réfléchit…";
   else if (abaloneUi.selected.length) status.textContent = `${abaloneUi.selected.length} bille${abaloneUi.selected.length>1?"s":""} sélectionnée${abaloneUi.selected.length>1?"s":""}. Choisissez une direction disponible, cliquez sur une destination verte ou sur la bille adverse cerclée en rouge pour effectuer un Sumito.`;
   else status.textContent = `${game.turn === AB_BLACK ? "Noir" : "Blanc"} joue. Cliquez sur 1, 2 ou 3 billes adjacentes et alignées.`;
@@ -1021,7 +1194,7 @@ function renderAbaloneInfo() {
     return `<div class="abalone-history-row"><span>${i+1}.</span><span class="ab-dot ${m.player===AB_BLACK?"black":"white"}"></span><span><b>${m.label}</b>${evalText}</span></div>`;
   }).join("") : `<div class="history-empty">Les coups et leurs évaluations apparaîtront ici.</div>`;
   hist.scrollTop = hist.scrollHeight;
-  document.getElementById("undoAbalone").disabled = abaloneUi.thinking || !game.history.length;
+  document.getElementById("undoAbalone").disabled = abaloneUi.mode === "online" || abaloneUi.thinking || !game.history.length;
 }
 
 // Export minimal pour les tests Node sans affecter le navigateur.

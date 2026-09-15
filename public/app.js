@@ -22,6 +22,7 @@ function router() {
   else if (route === "jeu" && id) renderGame(id);
   else if (route === "jouer") renderPlay(id);
   else if (route === "apropos") renderAbout();
+  else if (route === "compte") renderAccount();
   else renderNotFound();
 
   requestAnimationFrame(() => {
@@ -466,10 +467,16 @@ function renderAbalonePlay() {
       <div class="abalone-play-layout">
         <section class="game-shell abalone-shell">
           <div class="go-toolbar abalone-toolbar">
-            <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
             <div id="abaloneAiSettings" class="toolbar-group">
               <label><span>Niveau IA</span><select id="abaloneAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label>
               <label><span>Votre couleur</span><select id="abaloneSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
+            </div>
+            <div id="abaloneOnlineSettings" class="toolbar-group abalone-online-settings" hidden>
+              <button id="createAbaloneRoom" class="btn small">Créer un salon</button>
+              <label><span>Code du salon</span><input id="abaloneRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+              <button id="joinAbaloneRoom" class="btn outline small">Rejoindre</button>
+              <span id="abaloneRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
             <div class="toolbar-actions"><button id="newAbalone" class="btn small">Nouvelle partie</button><button id="undoAbalone" class="btn outline small">Annuler</button></div>
           </div>
@@ -481,6 +488,14 @@ function renderAbalonePlay() {
             <button id="loadAbalone" class="btn outline small">Charger</button>
             <button id="deleteAbaloneSave" class="btn ghost small">Supprimer</button>
             <small id="abaloneSaveStatus" class="abalone-save-status">Les sauvegardes restent dans ce navigateur.</small>
+          </div>
+          <div class="abalone-savebar online-savebar">
+            <strong>☁ Sauvegardes en ligne</strong>
+            <button id="saveAbaloneOnline" class="btn small">Enregistrer en ligne</button>
+            <label class="abalone-save-select"><span>Mon compte</span><select id="abaloneOnlineSaveList"><option value="">Sauvegardes D1…</option></select></label>
+            <button id="loadAbaloneOnline" class="btn outline small">Charger</button>
+            <button id="deleteAbaloneOnline" class="btn ghost small">Supprimer</button>
+            <small id="abaloneOnlineSaveStatus" class="abalone-save-status">Connexion requise.</small>
           </div>
 
           <div class="abalone-board-wrap">
@@ -830,6 +845,44 @@ function chessMiniBoard(symbol, pattern) {
     const cls = ["mini-square", (Math.floor(i / 5) + i % 5) % 2 ? "dark" : "light", highlighted.has(i) ? "move" : "", captures.has(i) ? "capture" : ""].filter(Boolean).join(" ");
     return `<div class="${cls}">${i === center ? `<span>${symbol}</span>` : captures.has(i) ? `<span class="capture-mark">×</span>` : ""}</div>`;
   }).join("")}</div>`;
+}
+
+
+function renderAccount() {
+  app.innerHTML = `
+    <div class="page account-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><span>Compte</span></div>
+      <div class="section-head"><div><div class="eyebrow">Ludothèque en ligne</div><h1>Votre compte joueur</h1><p class="section-lead">Le compte permet de conserver vos sauvegardes dans Cloudflare D1 et de rejoindre les parties multijoueurs.</p></div></div>
+      <div id="accountContent" class="account-grid"><div class="panel"><p>Chargement…</p></div></div>
+    </div>`;
+  LudoOnline.me(true).then(renderAccountContent).catch(err => {
+    document.getElementById("accountContent").innerHTML = `<div class="panel"><h2>Service indisponible</h2><p>${escapeHtml(err.message)}</p><p>Vérifiez que la base D1 et le Worker sont configurés.</p></div>`;
+  });
+}
+
+function renderAccountContent(user) {
+  const root = document.getElementById("accountContent");
+  if (!root) return;
+  if (user) {
+    root.innerHTML = `<section class="panel account-card"><div class="account-avatar">♟</div><h2>${escapeHtml(user.username)}</h2><p>Votre session est active sur cet appareil.</p><div class="account-actions"><a class="btn" href="#/jouer/abalone">Jouer à Abalone</a><button id="logoutAccount" class="btn outline">Se déconnecter</button></div><div class="note"><strong>Déjà disponible :</strong> sauvegardes Abalone en ligne et salons multijoueurs privés par code.</div></section>`;
+    document.getElementById("logoutAccount")?.addEventListener("click", async () => { await LudoOnline.logout(); renderAccountContent(null); });
+    return;
+  }
+  root.innerHTML = `
+    <form id="loginForm" class="panel account-card"><h2>Se connecter</h2><label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label><label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label><button class="btn" type="submit">Connexion</button><p id="loginStatus" class="form-status"></p></form>
+    <form id="registerForm" class="panel account-card"><h2>Créer un compte</h2><label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label><label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label><small>10 caractères minimum. Pour cette première version, le compte utilise un pseudo et un mot de passe ; récupération par e-mail viendra plus tard.</small><button class="btn" type="submit">Créer mon compte</button><p id="registerStatus" class="form-status"></p></form>`;
+  document.getElementById("loginForm")?.addEventListener("submit", async e => {
+    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("loginStatus"); st.textContent="Connexion…";
+    try { const u=await LudoOnline.login(fd.get("username"),fd.get("password")); renderAccountContent(u); } catch(err){ st.textContent=err.message; }
+  });
+  document.getElementById("registerForm")?.addEventListener("submit", async e => {
+    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
+    try { const u=await LudoOnline.register(fd.get("username"),fd.get("password")); renderAccountContent(u); } catch(err){ st.textContent=err.message; }
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
 }
 
 function renderPlay(id) {
