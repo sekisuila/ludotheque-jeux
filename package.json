@@ -1,11 +1,14 @@
 {
   "name": "ludotheque-jeux",
-  "version": "1.0.0",
+  "version": "6.0.0",
   "private": true,
-  "description": "Ludothèque interactive de jeux de société - version Cloudflare Workers Static Assets",
+  "type": "module",
+  "description": "Ludothèque interactive — Cloudflare Workers, D1 et Durable Objects",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply ludotheque-jeux-db --local",
+    "db:remote": "wrangler d1 migrations apply ludotheque-jeux-db --remote"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

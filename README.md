@@ -1,115 +1,243 @@
-# Ludothèque de jeux de société — version Cloudflare
+# Ludothèque V6 — comptes, D1 et multijoueur Abalone
 
-Cette version est prête à être déposée dans le dépôt GitHub `ludotheque-jeux` puis publiée avec **Cloudflare Workers Static Assets**.
+Cette version ajoute une première couche serveur Cloudflare à la Ludothèque.
 
-## Structure
+## Fonctions ajoutées
+
+- comptes utilisateurs par pseudo + mot de passe ;
+- session conservée dans un cookie HttpOnly ;
+- mots de passe dérivés avec PBKDF2/SHA-256 et sel aléatoire ;
+- sauvegardes Abalone en ligne dans Cloudflare D1 ;
+- salons Abalone privés avec code de 6 caractères ;
+- partie temps réel entre deux navigateurs avec WebSocket ;
+- un Durable Object SQLite par salon ;
+- validation des coups Abalone côté serveur avant diffusion ;
+- conservation des anciennes sauvegardes locales dans le navigateur.
+
+> Cette V6 est un **socle de test**. Avant une ouverture publique importante, il faudra encore ajouter récupération de mot de passe/e-mail, protection anti-abus (Turnstile/rate limiting), politique de confidentialité et outils d'administration.
+
+---
+
+## Structure du dépôt
 
 ```text
 ludotheque-jeux/
-├── public/
+├── public/                 # le site visible par les visiteurs
 │   ├── index.html
-│   ├── styles.css
 │   ├── app.js
-│   ├── games-data.js
-│   ├── chess.js
-│   ├── checkers.js
-│   ├── go.js
-│   └── abalone.js
-├── .gitignore
+│   ├── online.js           # client API / WebSocket
+│   ├── abalone.js
+│   └── ...
+├── src/
+│   ├── index.js            # Worker : API comptes/sauvegardes/salons
+│   ├── abalone-room.js     # Durable Object WebSocket
+│   └── abalone-engine.js   # règles Abalone côté serveur
+├── migrations/
+│   └── 0001_initial.sql    # tables D1
+├── wrangler.jsonc
 ├── package.json
-├── README.md
-└── wrangler.jsonc
+└── README.md
 ```
 
-Le dossier `public/` contient le site envoyé aux visiteurs. Les autres fichiers servent au développement et au déploiement Cloudflare.
+---
 
-## 1. Tester sans Cloudflare
+# Installation dans Cloudflare — méthode tableau de bord
 
-Depuis le dossier du projet :
+## 1. Créer la base D1
 
-```bash
-py -m http.server 8000 --directory public
-```
+Dans Cloudflare :
 
-Puis ouvrir :
+1. Ouvrir **Storage & Databases** / **D1 SQL Database**.
+2. Cliquer sur **Create Database**.
+3. Nommer la base exactement :
 
 ```text
-http://localhost:8000
+ludotheque-jeux-db
 ```
 
-## 2. Tester avec Wrangler
+4. Facultatif : choisir une localisation/juridiction adaptée à votre projet.
+5. Cliquer sur **Create**.
 
-Node.js doit être installé. Depuis le dossier du projet :
+## 2. Copier l'identifiant D1
 
-```bash
-npm install
-npm run dev
+Dans la page de la base, récupérer son **Database ID** (UUID).
+
+Ouvrir ensuite `wrangler.jsonc` dans GitHub et remplacer :
+
+```text
+00000000-0000-0000-0000-000000000000
 ```
 
-Wrangler affiche alors l'adresse locale à ouvrir dans le navigateur.
+par le vrai identifiant de la base.
 
-## 3. Mettre les fichiers dans GitHub
+Ne modifiez pas :
 
-Si le dépôt `ludotheque-jeux` est encore vide, le plus simple est de copier **le contenu de ce dossier** à la racine du dépôt puis d'utiliser GitHub Desktop, ou les commandes suivantes :
-
-```bash
-git add .
-git commit -m "Premiere version Cloudflare de la Ludotheque"
-git push
+```jsonc
+"binding": "DB",
+"database_name": "ludotheque-jeux-db"
 ```
 
-Le fichier `wrangler.jsonc` doit rester à la racine du dépôt, et non dans `public/`.
+## 3. Créer les tables
 
-## 4. Connecter GitHub à Cloudflare
+Dans Cloudflare :
 
-Dans le tableau de bord Cloudflare :
+1. ouvrir la base `ludotheque-jeux-db` ;
+2. ouvrir l'onglet **Console** ;
+3. ouvrir dans GitHub le fichier `migrations/0001_initial.sql` ;
+4. copier tout son contenu ;
+5. le coller dans la console D1 ;
+6. cliquer sur **Execute**.
 
-1. Ouvrir **Workers & Pages**.
-2. Cliquer **Create application**.
-3. Choisir **Import a repository**.
-4. Autoriser l'accès à GitHub si nécessaire.
-5. Sélectionner le dépôt **ludotheque-jeux**.
-6. Choisir la branche de production `main`.
-7. Ne pas ajouter de commande de compilation : le site n'en a pas besoin.
-8. Conserver comme commande de déploiement :
+Les tables suivantes doivent apparaître :
+
+```text
+users
+sessions
+saves
+rooms
+```
+
+## 4. Envoyer la V6 dans GitHub
+
+À la racine du dépôt GitHub `ludotheque-jeux`, il faut désormais avoir :
+
+```text
+public/
+src/
+migrations/
+wrangler.jsonc
+package.json
+README.md
+```
+
+Attention : `src` et `migrations` doivent être à la racine, au même niveau que `public`.
+
+## 5. Laisser Cloudflare redéployer
+
+Le projet GitHub étant déjà connecté à Cloudflare, le nouveau commit doit déclencher le déploiement.
+
+La commande de déploiement peut rester :
 
 ```text
 npx wrangler deploy
 ```
 
-9. Enregistrer et lancer le déploiement.
+Le fichier `wrangler.jsonc` :
 
-Cloudflare utilisera `wrangler.jsonc` et publiera tout le contenu de `public/`.
+- publie `public/` comme fichiers statiques ;
+- envoie `/api/*` au Worker ;
+- relie D1 sous le nom `DB` ;
+- relie les salons sous le nom `ABALONE_ROOMS` ;
+- déclare `AbaloneRoom` comme Durable Object avec stockage SQLite.
 
-## 5. Adresse publique
+## 6. Premier test des comptes
 
-Après le premier déploiement, Cloudflare fournit une adresse ressemblant à :
+Sur le site publié :
 
-```text
-https://ludotheque-jeux.<votre-sous-domaine>.workers.dev
-```
+1. ouvrir **Compte** dans le menu ;
+2. créer un pseudo ;
+3. utiliser un mot de passe d'au moins 10 caractères ;
+4. vérifier que le pseudo apparaît ensuite dans le menu.
 
-Chaque nouveau `git push` sur la branche de production pourra ensuite déclencher automatiquement un nouveau déploiement.
+## 7. Tester une sauvegarde en ligne
 
-## 6. Déploiement manuel facultatif
+1. ouvrir **Jouer → Abalone** ;
+2. jouer quelques coups ;
+3. saisir éventuellement un nom ;
+4. cliquer **Enregistrer en ligne** ;
+5. recharger la page ;
+6. la partie doit apparaître dans la liste **Sauvegardes D1**.
 
-Si vous préférez publier depuis votre PC :
+Les sauvegardes locales restent disponibles séparément.
+
+## 8. Tester le multijoueur sur deux appareils
+
+Il faut deux comptes différents.
+
+### Joueur 1
+
+1. se connecter ;
+2. ouvrir Abalone ;
+3. choisir **Multijoueur en ligne** ;
+4. cliquer **Créer un salon** ;
+5. noter le code de 6 caractères affiché ;
+6. transmettre ce code au joueur 2.
+
+Le créateur joue **Noir**.
+
+### Joueur 2
+
+1. ouvrir le même site sur un autre navigateur/appareil ;
+2. se connecter avec un autre compte ;
+3. ouvrir Abalone ;
+4. choisir **Multijoueur en ligne** ;
+5. saisir le code ;
+6. cliquer **Rejoindre**.
+
+Le second joueur joue **Blanc**.
+
+Les coups transitent ensuite par WebSocket. Le Durable Object vérifie le coup côté serveur puis envoie la nouvelle position aux deux joueurs.
+
+---
+
+# Méthode Wrangler facultative
+
+Pour travailler depuis le PC :
 
 ```bash
 npm install
-npx wrangler login
+```
+
+Appliquer la base locale :
+
+```bash
+npm run db:local
+```
+
+Lancer le site + Worker localement :
+
+```bash
+npm run dev
+```
+
+Pour appliquer les migrations à la vraie base Cloudflare :
+
+```bash
+npm run db:remote
+```
+
+Puis déployer :
+
+```bash
 npm run deploy
 ```
 
-La commande `wrangler login` ouvre le navigateur pour autoriser votre compte Cloudflare.
+---
 
-## Étapes futures prévues
+# Sécurité de cette première version
 
-La structure est volontairement prête à évoluer. Plus tard, nous pourrons ajouter :
+Déjà inclus :
 
-- Cloudflare D1 pour les comptes, sauvegardes, classements et statistiques ;
-- Workers pour les API serveur ;
-- Durable Objects + WebSockets pour les parties multijoueurs en temps réel ;
-- un contrôle des coups côté serveur afin que le navigateur ne soit pas l'arbitre de la partie.
+- cookie de session `HttpOnly`, `Secure`, `SameSite=Lax` ;
+- token de session aléatoire ;
+- seul le hash SHA-256 du token est stocké en base ;
+- mots de passe salés et dérivés avec PBKDF2/SHA-256 ;
+- requêtes de sauvegarde liées au compte courant ;
+- WebSocket accessible seulement aux deux comptes inscrits dans le salon ;
+- règles Abalone revérifiées côté serveur.
 
-Pour l'instant, les sauvegardes Abalone restent stockées localement dans le navigateur via `localStorage`.
+À ajouter avant une ouverture publique importante :
+
+- vérification d'adresse e-mail ;
+- récupération/changement de mot de passe ;
+- Cloudflare Turnstile sur inscription/connexion ;
+- limitation des tentatives de connexion ;
+- outils de modération et suppression de compte ;
+- mentions légales et politique de confidentialité ;
+- expiration/nettoyage automatique des anciens salons et sessions.
+
+---
+
+# Étape suivante proposée
+
+Tester d'abord Abalone entre deux comptes et deux appareils. Une fois ce circuit validé, la même architecture pourra être appliquée aux Échecs, Dames, Go et Awélé sans refaire toute l'infrastructure.
