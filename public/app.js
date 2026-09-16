@@ -1184,17 +1184,23 @@ function renderChessPlay() {
     <div class="page chess-play-page">
       <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>Échecs</span></div>
       <div class="section-head">
-        <div><div class="eyebrow">Jeu interactif</div><h1>Échecs</h1><p class="section-lead">Jouez à deux sur le même écran ou affrontez l’ordinateur. Cliquez sur une pièce pour afficher ses coups légaux.</p></div>
+        <div><div class="eyebrow">Jeu interactif</div><h1>Échecs</h1><p class="section-lead">Jouez à deux sur le même écran, affrontez l’ordinateur ou créez un salon pour jouer à distance. Cliquez sur une pièce pour afficher ses coups légaux.</p></div>
         <a class="btn outline small" href="#/jeu/echecs">Voir les règles</a>
       </div>
 
       <div class="chess-play-layout">
         <section class="game-shell chess-shell">
           <div class="chess-toolbar">
-            <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
             <div id="chessAiSettings" class="toolbar-group">
               <label><span>Niveau IA</span><select id="chessAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre couleur</span><select id="chessSide"><option value="w">Blancs</option><option value="b">Noirs</option></select></label>
+            </div>
+            <div id="chessOnlineSettings" class="toolbar-group chess-online-settings" hidden>
+              <button id="createChessRoom" class="btn small">Créer un salon</button>
+              <label><span>Code du salon</span><input id="chessRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+              <button id="joinChessRoom" class="btn outline small">Rejoindre</button>
+              <span id="chessRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
             <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
           </div>
@@ -1208,6 +1214,7 @@ function renderChessPlay() {
 
         <aside class="chess-side-column">
           <section class="panel"><div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div><h3>Historique</h3><div id="chessHistory" class="chess-history"></div></section>
+          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur du salon joue les <strong>Noirs</strong> et le joueur qui rejoint joue les <strong>Blancs</strong>, qui ont donc le premier coup.</p><p>Le serveur Cloudflare vérifie chaque coup avant de le transmettre à l’adversaire : déplacements, roque, prise en passant, promotion et sécurité du roi.</p><div class="note"><strong>Astuce :</strong> créez un salon, partagez le code à six caractères, puis attendez que le joueur Blanc rejoigne la partie.</div></section>
           <section class="panel"><h3>Les trois niveaux d’IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> compare les positions à courte profondeur et valorise matériel, centre et sécurité du roi.</p><p><strong>Difficile :</strong> utilise la même évaluation avec une recherche plus profonde et un élagage alpha-bêta.</p><div class="note">Cette IA est destinée à la démonstration. Elle n’a pas la force d’un moteur spécialisé comme Stockfish.</div></section>
         </aside>
       </div>

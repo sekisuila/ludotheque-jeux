@@ -1195,18 +1195,18 @@ main { min-height: calc(100vh - 160px); }
 .account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
 .account-card{display:grid;gap:16px}
 .account-card label{display:grid;gap:7px;font-weight:700}
-.account-card input,.abalone-online-settings input{width:100%;min-height:42px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface);color:var(--text)}
+.account-card input,.abalone-online-settings input,.chess-online-settings input{width:100%;min-height:42px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface);color:var(--text)}
 .account-card small{color:var(--muted);line-height:1.45}
 .account-avatar{width:68px;height:68px;border-radius:50%;display:grid;place-items:center;font-size:34px;background:var(--surface-2);border:1px solid var(--line)}
 .account-actions{display:flex;gap:10px;flex-wrap:wrap}
 .form-status{min-height:24px;color:#a43e34;font-weight:700}
-.abalone-online-settings{align-items:end;flex-wrap:wrap}
-.abalone-online-settings label{min-width:150px}
+.abalone-online-settings,.chess-online-settings{align-items:end;flex-wrap:wrap}
+.abalone-online-settings label,.chess-online-settings label{min-width:150px}
 .online-room-status{font-size:.86rem;color:var(--muted);max-width:360px;line-height:1.35}
 .online-savebar{border-top:1px dashed var(--line);background:color-mix(in srgb,var(--surface) 82%,#eaf5ff 18%)}
 .online-savebar>strong{white-space:nowrap}
 .online-savebar a,.online-room-status a{color:var(--accent);font-weight:700}
-@media (max-width:800px){.account-grid{grid-template-columns:1fr}.abalone-online-settings{width:100%}.online-room-status{max-width:none;width:100%}}
+@media (max-width:800px){.account-grid{grid-template-columns:1fr}.abalone-online-settings,.chess-online-settings{width:100%}.online-room-status{max-width:none;width:100%}}
 
 /* V6.2 — récupération du compte */
 .recovery-key-card{grid-column:1/-1}
