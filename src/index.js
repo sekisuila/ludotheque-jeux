@@ -152,44 +152,73 @@ async function saveById(request,env,user,id){
 
 const ROOM_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function roomCode(){ let s=''; const a=new Uint8Array(6); crypto.getRandomValues(a); for(const b of a) s+=ROOM_ALPHABET[b%ROOM_ALPHABET.length]; return s; }
-async function createRoom(env,user){
+function validRoomGame(game){ return game === "chess" || game === "abalone"; }
+
+async function createRoom(request,env,user){
+  const body=await readJson(request);
+  const game=validRoomGame(body?.game)?body.game:"abalone";
   let code=null;
   for(let i=0;i<8;i++){
     const candidate=roomCode();
-    try{ await env.DB.prepare("INSERT INTO rooms(code,game,black_user_id,status) VALUES(?,'abalone',?,'waiting')").bind(candidate,user.id).run(); code=candidate; break; }catch{}
+    try{
+      await env.DB.prepare("INSERT INTO rooms(code,game,black_user_id,status) VALUES(?,?,?,'waiting')")
+        .bind(candidate,game,user.id).run();
+      code=candidate;
+      break;
+    }catch{}
   }
   if(!code) return json({error:"Impossible de créer un salon."},500);
+
+  // Pour conserver ton wrangler.jsonc actuel, le même Durable Object
+  // gère désormais plusieurs moteurs de jeu. Le type est enregistré
+  // dans le stockage de la salle lors de son initialisation.
   const stub=env.ABALONE_ROOMS.getByName(code);
-  await stub.fetch("https://room/init",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,userId:user.id,username:user.username})});
-  return json({code,side:1},201);
+  await stub.fetch("https://room/init",{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({code,game,userId:user.id,username:user.username})
+  });
+  return json({code,game,side:game==="chess"?"b":1},201);
 }
+
 async function joinRoom(request,env,user){
   const body=await readJson(request),code=String(body?.code||'').trim().toUpperCase();
   if(!/^[A-Z2-9]{6}$/.test(code)) return json({error:"Code de salon invalide."},400);
   const room=await env.DB.prepare("SELECT * FROM rooms WHERE code=?").bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
   if(room.status==='finished') return json({error:"Cette partie est terminée."},409);
-  if(room.black_user_id===user.id) return json({code,side:1});
+  if(room.black_user_id===user.id) return json({code,game:room.game,side:room.game==="chess"?"b":1});
   if(room.white_user_id && room.white_user_id!==user.id) return json({error:"Ce salon est déjà complet."},409);
-  if(!room.white_user_id) await env.DB.prepare("UPDATE rooms SET white_user_id=?,status='playing',updated_at=CURRENT_TIMESTAMP WHERE code=? AND white_user_id IS NULL").bind(user.id,code).run();
+  if(!room.white_user_id){
+    await env.DB.prepare("UPDATE rooms SET white_user_id=?,status='playing',updated_at=CURRENT_TIMESTAMP WHERE code=? AND white_user_id IS NULL")
+      .bind(user.id,code).run();
+  }
   const stub=env.ABALONE_ROOMS.getByName(code);
-  const r=await stub.fetch("https://room/join",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({userId:user.id,username:user.username})});
+  const r=await stub.fetch("https://room/join",{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({userId:user.id,username:user.username})
+  });
   if(!r.ok) return json({error:(await r.json()).error||"Impossible de rejoindre."},r.status);
-  return json({code,side:2});
+  return json({code,game:room.game,side:room.game==="chess"?"w":2});
 }
+
 async function roomInfo(env,user,code){
   const room=await env.DB.prepare(`SELECT r.code,r.game,r.status,r.created_at,r.updated_at,
     ub.username AS black_username,uw.username AS white_username,
     r.black_user_id,r.white_user_id FROM rooms r
     LEFT JOIN users ub ON ub.id=r.black_user_id LEFT JOIN users uw ON uw.id=r.white_user_id WHERE r.code=?`).bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
-  const side=room.black_user_id===user.id?1:room.white_user_id===user.id?2:null;
+  const side=room.black_user_id===user.id?(room.game==="chess"?"b":1):room.white_user_id===user.id?(room.game==="chess"?"w":2):null;
   return json({room:{code:room.code,game:room.game,status:room.status,blackUsername:room.black_username,whiteUsername:room.white_username,createdAt:room.created_at},side});
 }
+
 async function roomWebSocket(request,env,user,code){
-  const room=await env.DB.prepare("SELECT black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
+  const room=await env.DB.prepare("SELECT game,black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
   if(!room || (room.black_user_id!==user.id && room.white_user_id!==user.id)) return new Response("Accès refusé",{status:403});
-  const headers=new Headers(request.headers); headers.set("x-ludo-user-id",user.id); headers.set("x-ludo-username",user.username);
+  const headers=new Headers(request.headers);
+  headers.set("x-ludo-user-id",user.id);
+  headers.set("x-ludo-username",user.username);
   const target=new URL(request.url); target.pathname="/ws"; target.search="";
   return env.ABALONE_ROOMS.getByName(code).fetch(new Request(target.toString(),{headers,method:"GET"}));
 }
@@ -208,7 +237,7 @@ async function api(request,env){
   if(p==="/api/saves"&&request.method==="GET") return listSaves(request,env,user);
   if(p==="/api/saves"&&request.method==="POST") return createSave(request,env,user);
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
-  if(p==="/api/rooms"&&request.method==="POST") return createRoom(env,user);
+  if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
   const wsMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})\/ws$/i); if(wsMatch&&request.headers.get("Upgrade")==="websocket") return roomWebSocket(request,env,user,wsMatch[1].toUpperCase());
