@@ -157,50 +157,97 @@ function validRoomGame(game){ return game === "chess" || game === "abalone"; }
 async function createRoom(request,env,user){
   const body=await readJson(request);
   const game=validRoomGame(body?.game)?body.game:"abalone";
+
+  // Abalone garde le créateur en Noir. Pour les Échecs, le créateur
+  // peut choisir Blancs, Noirs ou laisser le serveur tirer au sort.
+  let creatorSide=game==="chess"?String(body?.creatorColor||"random").toLowerCase():"black";
+  if(game==="chess"){
+    if(creatorSide!=="white" && creatorSide!=="black"){
+      const random=new Uint8Array(1); crypto.getRandomValues(random);
+      creatorSide=(random[0]&1)===0?"white":"black";
+    }
+  }else{
+    creatorSide="black";
+  }
+
+  const blackId=creatorSide==="black"?user.id:null;
+  const whiteId=creatorSide==="white"?user.id:null;
   let code=null;
+
   for(let i=0;i<8;i++){
     const candidate=roomCode();
     try{
-      await env.DB.prepare("INSERT INTO rooms(code,game,black_user_id,status) VALUES(?,?,?,'waiting')")
-        .bind(candidate,game,user.id).run();
+      await env.DB.prepare("INSERT INTO rooms(code,game,black_user_id,white_user_id,status) VALUES(?,?,?,?, 'waiting')")
+        .bind(candidate,game,blackId,whiteId).run();
       code=candidate;
       break;
     }catch{}
   }
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
-  // Pour conserver ton wrangler.jsonc actuel, le même Durable Object
-  // gère désormais plusieurs moteurs de jeu. Le type est enregistré
-  // dans le stockage de la salle lors de son initialisation.
   const stub=env.ABALONE_ROOMS.getByName(code);
   await stub.fetch("https://room/init",{
     method:"POST",
     headers:{"content-type":"application/json"},
-    body:JSON.stringify({code,game,userId:user.id,username:user.username})
+    body:JSON.stringify({
+      code,game,userId:user.id,username:user.username,
+      creatorSide:creatorSide==="white"?"w":"b"
+    })
   });
-  return json({code,game,side:game==="chess"?"b":1},201);
+
+  return json({
+    code,game,
+    side:game==="chess"?(creatorSide==="white"?"w":"b"):1,
+    creatorColor:creatorSide
+  },201);
 }
 
 async function joinRoom(request,env,user){
   const body=await readJson(request),code=String(body?.code||'').trim().toUpperCase();
   if(!/^[A-Z2-9]{6}$/.test(code)) return json({error:"Code de salon invalide."},400);
-  const room=await env.DB.prepare("SELECT * FROM rooms WHERE code=?").bind(code).first();
+
+  let room=await env.DB.prepare("SELECT * FROM rooms WHERE code=?").bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
-  if(room.status==='finished') return json({error:"Cette partie est terminée."},409);
-  if(room.black_user_id===user.id) return json({code,game:room.game,side:room.game==="chess"?"b":1});
-  if(room.white_user_id && room.white_user_id!==user.id) return json({error:"Ce salon est déjà complet."},409);
-  if(!room.white_user_id){
-    await env.DB.prepare("UPDATE rooms SET white_user_id=?,status='playing',updated_at=CURRENT_TIMESTAMP WHERE code=? AND white_user_id IS NULL")
-      .bind(user.id,code).run();
+
+  // Un joueur déjà inscrit dans le salon peut se reconnecter même si la
+  // partie vient de se terminer : cela lui permet notamment de proposer
+  // ou d'accepter une revanche.
+  if(room.black_user_id===user.id){
+    return json({code,game:room.game,side:room.game==="chess"?"b":1});
   }
+  if(room.white_user_id===user.id){
+    return json({code,game:room.game,side:room.game==="chess"?"w":2});
+  }
+
+  if(room.status==='finished') return json({error:"Cette partie est terminée."},409);
+  if(room.black_user_id && room.white_user_id) return json({error:"Ce salon est déjà complet."},409);
+
+  const joinSlot=!room.black_user_id?"black":"white";
+  const update=joinSlot==="black"
+    ? await env.DB.prepare("UPDATE rooms SET black_user_id=?,status=CASE WHEN white_user_id IS NULL THEN 'waiting' ELSE 'playing' END,updated_at=CURRENT_TIMESTAMP WHERE code=? AND black_user_id IS NULL")
+        .bind(user.id,code).run()
+    : await env.DB.prepare("UPDATE rooms SET white_user_id=?,status=CASE WHEN black_user_id IS NULL THEN 'waiting' ELSE 'playing' END,updated_at=CURRENT_TIMESTAMP WHERE code=? AND white_user_id IS NULL")
+        .bind(user.id,code).run();
+
+  if((update?.meta?.changes ?? 0)===0){
+    room=await env.DB.prepare("SELECT * FROM rooms WHERE code=?").bind(code).first();
+    if(room?.black_user_id!==user.id && room?.white_user_id!==user.id){
+      return json({error:"Ce salon vient d’être rejoint par un autre joueur."},409);
+    }
+  }
+
   const stub=env.ABALONE_ROOMS.getByName(code);
   const r=await stub.fetch("https://room/join",{
     method:"POST",
     headers:{"content-type":"application/json"},
-    body:JSON.stringify({userId:user.id,username:user.username})
+    body:JSON.stringify({userId:user.id,username:user.username,side:joinSlot})
   });
   if(!r.ok) return json({error:(await r.json()).error||"Impossible de rejoindre."},r.status);
-  return json({code,game:room.game,side:room.game==="chess"?"w":2});
+
+  return json({
+    code,game:room.game,
+    side:room.game==="chess"?(joinSlot==="black"?"b":"w"):(joinSlot==="black"?1:2)
+  });
 }
 
 async function roomInfo(env,user,code){

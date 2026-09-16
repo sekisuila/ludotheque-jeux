@@ -22,6 +22,8 @@ export class AbaloneRoom extends DurableObject {
     if (stored) return stored;
     return (await this.getGameType()) === "chess" ? initialChessGameState() : initialGameState();
   }
+  async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
+  async getRematchOffer(){ return (await this.ctx.storage.get("rematchOffer")) || null; }
 
   sideForUser(gameType, players, userId){
     if(players.black?.id===userId) return gameType === "chess" ? "b" : AB_BLACK;
@@ -50,6 +52,13 @@ export class AbaloneRoom extends DurableObject {
       .bind(winnerId,code).run();
   }
 
+  async markPlaying(players){
+    const code=await this.ctx.storage.get("code");
+    if(!this.env.DB || !code) return;
+    await this.env.DB.prepare("UPDATE rooms SET black_user_id=?, white_user_id=?, status='playing', winner_user_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE code=?")
+      .bind(players.black?.id || null, players.white?.id || null, code).run();
+  }
+
   async fetch(request){
     const url = new URL(request.url);
 
@@ -58,10 +67,14 @@ export class AbaloneRoom extends DurableObject {
       const existing=await this.ctx.storage.get("players");
       if(!existing){
         const gameType=body.game === "chess" ? "chess" : "abalone";
+        const creatorSlot = gameType === "chess" && body.creatorSide === "w" ? "white" : "black";
+        const players={black:null,white:null};
+        players[creatorSlot]={id:body.userId,username:body.username};
         await this.ctx.storage.put("gameType",gameType);
-        await this.ctx.storage.put("players",{black:{id:body.userId,username:body.username},white:null});
+        await this.ctx.storage.put("players",players);
         await this.ctx.storage.put("game",gameType === "chess" ? initialChessGameState() : initialGameState());
         await this.ctx.storage.put("code",body.code);
+        await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
       }
       return json({ok:true});
     }
@@ -70,15 +83,23 @@ export class AbaloneRoom extends DurableObject {
       const body=await request.json();
       const players=await this.getPlayers();
       if(players.black?.id===body.userId || players.white?.id===body.userId) return json({ok:true,players});
-      if(players.white) return json({error:"Ce salon est complet."},409);
-      players.white={id:body.userId,username:body.username};
+      if(players.black && players.white) return json({error:"Ce salon est complet."},409);
+      const slot = body.side === "black" ? "black" : body.side === "white" ? "white" : (!players.black ? "black" : "white");
+      if(players[slot]) return json({error:"Cette couleur est déjà occupée."},409);
+      players[slot]={id:body.userId,username:body.username};
       await this.ctx.storage.put("players",players);
       await this.broadcast({type:"players",players,gameType:await this.getGameType()});
       return json({ok:true,players});
     }
 
     if(request.method==="GET" && url.pathname==="/state"){
-      return json({gameType:await this.getGameType(),players:await this.getPlayers(),game:await this.getGame()});
+      return json({
+        gameType:await this.getGameType(),
+        players:await this.getPlayers(),
+        game:await this.getGame(),
+        drawOffer:await this.getDrawOffer(),
+        rematchOffer:await this.getRematchOffer()
+      });
     }
 
     if(url.pathname==="/ws"){
@@ -94,7 +115,10 @@ export class AbaloneRoom extends DurableObject {
       const [client,server]=Object.values(pair);
       this.ctx.acceptWebSocket(server);
       server.serializeAttachment({userId,username,side,gameType});
-      server.send(JSON.stringify({type:"welcome",gameType,side,players,game:await this.getGame()}));
+      server.send(JSON.stringify({
+        type:"welcome",gameType,side,players,game:await this.getGame(),
+        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer()
+      }));
       await this.broadcastPresence();
       return new Response(null,{status:101,webSocket:client});
     }
@@ -123,9 +147,22 @@ export class AbaloneRoom extends DurableObject {
       if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
       await this.ctx.storage.put("game",result.state);
 
+      // Aux Échecs, jouer un coup refuse implicitement une proposition de nulle
+      // faite par l'adversaire.
+      if(gameType === "chess"){
+        const offer=await this.getDrawOffer();
+        if(offer && offer.userId!==session.userId){
+          await this.ctx.storage.delete("drawOffer");
+          await this.broadcast({type:"draw_declined",bySide:session.side,implicit:true});
+        }
+      }
+
       const finished = gameType === "chess" ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
       const winner = gameType === "chess" ? result.state?.result?.winner : result.state?.winner;
-      if(finished) await this.markFinished(winner ?? null);
+      if(finished){
+        await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
+        await this.markFinished(winner ?? null);
+      }
 
       await this.broadcast({type:"state",gameType,game:result.state,lastMove:result.move});
       return;
@@ -136,11 +173,14 @@ export class AbaloneRoom extends DurableObject {
 
       if(gameType === "chess"){
         if(game?.result?.over) return;
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"La partie n’a pas encore commencé."})); return; }
         const winner=session.side === "w" ? "b" : "w";
         const resignedColor=session.side === "w" ? "Les Blancs" : "Les Noirs";
         const winnerColor=winner === "w" ? "les Blancs" : "les Noirs";
         game.result={over:true,type:"resign",winner,text:`${resignedColor} abandonnent : ${winnerColor} gagnent.`};
         await this.ctx.storage.put("game",game);
+        await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
         await this.markFinished(winner);
         await this.broadcast({type:"state",gameType,game,resigned:session.side});
         return;
@@ -155,8 +195,93 @@ export class AbaloneRoom extends DurableObject {
       return;
     }
 
+    if(data.type==="draw_offer"){
+      if(gameType!=="chess"){ ws.send(JSON.stringify({type:"error",message:"Action réservée aux Échecs."})); return; }
+      const game=await this.getGame();
+      const players=await this.getPlayers();
+      if(game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie est terminée."})); return; }
+      if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+      const existing=await this.getDrawOffer();
+      if(existing){ ws.send(JSON.stringify({type:"error",message:"Une proposition de nulle est déjà en attente."})); return; }
+      const offer={userId:session.userId,side:session.side,username:session.username,createdAt:Date.now()};
+      await this.ctx.storage.put("drawOffer",offer);
+      await this.broadcast({type:"draw_offer",offer});
+      return;
+    }
+
+    if(data.type==="draw_response"){
+      if(gameType!=="chess") return;
+      const offer=await this.getDrawOffer();
+      if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de nulle à laquelle répondre."})); return; }
+      const accept=data.accept===true;
+      await this.ctx.storage.delete("drawOffer");
+      if(!accept){
+        await this.broadcast({type:"draw_declined",bySide:session.side,implicit:false});
+        return;
+      }
+      const game=await this.getGame();
+      if(game?.result?.over) return;
+      game.result={over:true,type:"draw-agreement",winner:null,text:"Partie nulle d’un commun accord."};
+      await this.ctx.storage.put("game",game);
+      await this.ctx.storage.delete("rematchOffer");
+      await this.markFinished(null);
+      await this.broadcast({type:"state",gameType,game,drawAccepted:true});
+      return;
+    }
+
+    if(data.type==="rematch_offer"){
+      if(gameType!=="chess"){ ws.send(JSON.stringify({type:"error",message:"Action réservée aux Échecs."})); return; }
+      const game=await this.getGame();
+      const players=await this.getPlayers();
+      if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
+      if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Le deuxième joueur n’est plus disponible."})); return; }
+      const existing=await this.getRematchOffer();
+      if(existing){ ws.send(JSON.stringify({type:"error",message:"Une proposition de revanche est déjà en attente."})); return; }
+      const offer={userId:session.userId,side:session.side,username:session.username,createdAt:Date.now()};
+      await this.ctx.storage.put("rematchOffer",offer);
+      await this.broadcast({type:"rematch_offer",offer});
+      return;
+    }
+
+    if(data.type==="rematch_response"){
+      if(gameType!=="chess") return;
+      const offer=await this.getRematchOffer();
+      if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
+      const accept=data.accept===true;
+      await this.ctx.storage.delete("rematchOffer");
+      if(!accept){
+        await this.broadcast({type:"rematch_declined",bySide:session.side});
+        return;
+      }
+
+      // Une revanche inverse automatiquement les couleurs.
+      const players=await this.getPlayers();
+      const swapped={black:players.white,white:players.black};
+      const newGame=initialChessGameState();
+      await this.ctx.storage.put("players",swapped);
+      await this.ctx.storage.put("game",newGame);
+      await this.ctx.storage.delete("drawOffer");
+      await this.markPlaying(swapped);
+
+      // Les pièces changent de couleur : on met à jour l'attachement de
+      // chaque WebSocket et on envoie un message personnalisé.
+      for(const socket of this.ctx.getWebSockets()){
+        const att=socket.deserializeAttachment();
+        if(!att) continue;
+        const side=this.sideForUser("chess",swapped,att.userId);
+        socket.serializeAttachment({...att,side,gameType:"chess"});
+        try{
+          socket.send(JSON.stringify({type:"rematch_started",gameType:"chess",side,players:swapped,game:newGame}));
+        }catch{}
+      }
+      return;
+    }
+
     if(data.type==="sync"){
-      ws.send(JSON.stringify({type:"state",gameType,game:await this.getGame(),players:await this.getPlayers()}));
+      ws.send(JSON.stringify({
+        type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),
+        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer()
+      }));
     }
   }
 
