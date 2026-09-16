@@ -2,6 +2,8 @@ export { AbaloneRoom } from "./abalone-room.js";
 
 const SESSION_COOKIE="ludo_session";
 const SESSION_DAYS=30;
+// Cloudflare Workers WebCrypto refuse PBKDF2 au-delà de 100 000 itérations.
+const PBKDF2_ITERATIONS=100000;
 const enc=new TextEncoder();
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store",...headers}});
 
@@ -21,7 +23,7 @@ async function hashPassword(password,saltB64){
   let b64=saltB64.replaceAll('-','+').replaceAll('_','/'); b64 += '='.repeat((4 - b64.length % 4) % 4);
   const salt=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
   const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
-  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:210000},key,256);
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:PBKDF2_ITERATIONS},key,256);
   return bytesToHex(bits);
 }
 function newSalt(){ const a=new Uint8Array(16); crypto.getRandomValues(a); return b64url(a); }
@@ -154,7 +156,15 @@ async function api(request,env){
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
-    if(url.pathname.startsWith('/api/')) return api(request,env);
-    return env.ASSETS.fetch(request);
+    try{
+      if(url.pathname.startsWith('/api/')) return await api(request,env);
+      return env.ASSETS.fetch(request);
+    }catch(error){
+      console.error("Erreur serveur Ludothèque:", error?.stack || error?.message || error);
+      if(url.pathname.startsWith('/api/')){
+        return json({error:"Erreur interne du serveur. Consultez les logs Cloudflare."},500);
+      }
+      throw error;
+    }
   }
 };
