@@ -28,6 +28,18 @@ async function hashPassword(password,saltB64){
 }
 function newSalt(){ const a=new Uint8Array(16); crypto.getRandomValues(a); return b64url(a); }
 function validUsername(s){ return typeof s==='string' && /^[A-Za-zÀ-ÖØ-öø-ÿ0-9_-]{3,24}$/u.test(s); }
+function validPassword(s){ return typeof s==="string" && s.length>=10 && s.length<=128; }
+function formatRecoveryKey(raw){
+  return raw.replace(/[^A-Z0-9]/g,"").match(/.{1,5}/g)?.join("-") || raw;
+}
+function newRecoveryKey(){
+  const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes=new Uint8Array(20); crypto.getRandomValues(bytes);
+  let raw=""; for(const b of bytes) raw+=alphabet[b%alphabet.length];
+  return formatRecoveryKey(raw);
+}
+function normalizeRecoveryKey(value){ return String(value||"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+async function recoveryKeyHash(key){ return sha256(`ludo-recovery:${normalizeRecoveryKey(key)}`); }
 
 async function readJson(request){ try{return await request.json();}catch{return null;} }
 async function currentUser(request,env){
@@ -41,12 +53,14 @@ async function requireUser(request,env){ const user=await currentUser(request,en
 async function register(request,env){
   const body=await readJson(request); const username=(body?.username||'').trim(); const password=body?.password||'';
   if(!validUsername(username)) return json({error:"Le pseudo doit contenir 3 à 24 caractères : lettres, chiffres, _ ou -."},400);
-  if(typeof password!=="string"||password.length<10||password.length>128) return json({error:"Le mot de passe doit contenir au moins 10 caractères."},400);
+  if(!validPassword(password)) return json({error:"Le mot de passe doit contenir entre 10 et 128 caractères."},400);
   const exists=await env.DB.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
   if(exists) return json({error:"Ce pseudo est déjà utilisé."},409);
   const id=crypto.randomUUID(),salt=newSalt(),hash=await hashPassword(password,salt);
-  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt) VALUES(?,?,?,?)").bind(id,username,hash,salt).run();
-  return createSession(id,username,env,201);
+  const recoveryKey=newRecoveryKey(),recoveryHash=await recoveryKeyHash(recoveryKey);
+  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt,recovery_key_hash,recovery_key_created_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)")
+    .bind(id,username,hash,salt,recoveryHash).run();
+  return createSession(id,username,env,201,{recoveryKey});
 }
 async function login(request,env){
   const body=await readJson(request); const username=(body?.username||'').trim(); const password=body?.password||'';
@@ -56,15 +70,60 @@ async function login(request,env){
   if(hash!==user.password_hash) return json({error:"Pseudo ou mot de passe incorrect."},401);
   return createSession(user.id,user.username,env,200);
 }
-async function createSession(userId,username,env,status){
+async function createSession(userId,username,env,status,extra={}){
   const token=randomToken(),tokenHash=await sha256(token);
   await env.DB.prepare("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,datetime('now', '+30 days'))").bind(tokenHash,userId).run();
-  return json({user:{id:userId,username}},status,{"set-cookie":setSessionCookie(token)});
+  return json({user:{id:userId,username},...extra},status,{"set-cookie":setSessionCookie(token)});
 }
 async function logout(request,env){
   const token=cookieValue(request,SESSION_COOKIE);
   if(token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
   return json({ok:true},200,{"set-cookie":clearSessionCookie()});
+}
+
+async function changePassword(request,env,user){
+  const body=await readJson(request);
+  const currentPassword=body?.currentPassword||"",newPassword=body?.newPassword||"";
+  if(!validPassword(newPassword)) return json({error:"Le nouveau mot de passe doit contenir entre 10 et 128 caractères."},400);
+  const row=await env.DB.prepare("SELECT password_hash,password_salt FROM users WHERE id=?").bind(user.id).first();
+  if(!row) return json({error:"Compte introuvable."},404);
+  const currentHash=await hashPassword(currentPassword,row.password_salt);
+  if(currentHash!==row.password_hash) return json({error:"Le mot de passe actuel est incorrect."},401);
+  const salt=newSalt(),hash=await hashPassword(newPassword,salt);
+  await env.DB.prepare("UPDATE users SET password_hash=?,password_salt=? WHERE id=?").bind(hash,salt,user.id).run();
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id).run();
+  return createSession(user.id,user.username,env,200,{message:"Mot de passe modifié."});
+}
+
+async function generateRecoveryKey(env,user){
+  const key=newRecoveryKey(),hash=await recoveryKeyHash(key);
+  await env.DB.prepare("UPDATE users SET recovery_key_hash=?,recovery_key_created_at=CURRENT_TIMESTAMP WHERE id=?").bind(hash,user.id).run();
+  return json({recoveryKey:key,message:"Nouvelle clé de récupération générée. L'ancienne n'est plus valable."});
+}
+
+async function resetWithRecovery(request,env){
+  const body=await readJson(request);
+  const username=(body?.username||"").trim(),key=body?.recoveryKey||"",newPassword=body?.newPassword||"";
+  if(!validUsername(username) || !normalizeRecoveryKey(key) || !validPassword(newPassword)){
+    return json({error:"Pseudo, clé de récupération ou nouveau mot de passe invalide."},400);
+  }
+  const user=await env.DB.prepare("SELECT id,username,recovery_key_hash FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+  if(!user?.recovery_key_hash) return json({error:"Pseudo ou clé de récupération incorrect."},401);
+  const suppliedHash=await recoveryKeyHash(key);
+  if(suppliedHash!==user.recovery_key_hash) return json({error:"Pseudo ou clé de récupération incorrect."},401);
+
+  const salt=newSalt(),passwordHash=await hashPassword(newPassword,salt);
+  const replacementKey=newRecoveryKey(),replacementHash=await recoveryKeyHash(replacementKey);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET password_hash=?,password_salt=?,recovery_key_hash=?,recovery_key_created_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(passwordHash,salt,replacementHash,user.id),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
+  ]);
+  return json({
+    ok:true,
+    message:"Mot de passe réinitialisé. Votre ancienne clé de récupération a été remplacée.",
+    recoveryKey:replacementKey
+  });
 }
 
 async function listSaves(request,env,user){
@@ -141,8 +200,11 @@ async function api(request,env){
   if(p==="/api/auth/login"&&request.method==="POST") return login(request,env);
   if(p==="/api/auth/logout"&&request.method==="POST") return logout(request,env);
   if(p==="/api/auth/me"&&request.method==="GET") return json({user:await currentUser(request,env)});
+  if(p==="/api/auth/reset-with-recovery"&&request.method==="POST") return resetWithRecovery(request,env);
 
   const auth=await requireUser(request,env); if(auth.response) return auth.response; const user=auth.user;
+  if(p==="/api/auth/change-password"&&request.method==="POST") return changePassword(request,env,user);
+  if(p==="/api/auth/recovery-key"&&request.method==="POST") return generateRecoveryKey(env,user);
   if(p==="/api/saves"&&request.method==="GET") return listSaves(request,env,user);
   if(p==="/api/saves"&&request.method==="POST") return createSave(request,env,user);
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
