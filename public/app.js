@@ -1197,6 +1197,7 @@ function renderChessPlay() {
               <label><span>Votre couleur</span><select id="chessSide"><option value="w">Blancs</option><option value="b">Noirs</option></select></label>
             </div>
             <div id="chessOnlineSettings" class="toolbar-group chess-online-settings" hidden>
+              <label><span>Couleur si vous créez</span><select id="chessCreatorColor"><option value="random" selected>Aléatoire</option><option value="white">Blancs</option><option value="black">Noirs</option></select></label>
               <button id="createChessRoom" class="btn small">Créer un salon</button>
               <label><span>Code du salon</span><input id="chessRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
               <button id="joinChessRoom" class="btn outline small">Rejoindre</button>
@@ -1210,11 +1211,24 @@ function renderChessPlay() {
             <div id="promotionPicker" class="promotion-picker" hidden><strong>Promotion :</strong><button data-promotion="Q"></button><button data-promotion="R"></button><button data-promotion="B"></button><button data-promotion="N"></button></div>
           </div>
           <div id="chessStatus" class="status chess-status"></div>
+          <div id="chessOnlineActions" class="chess-online-actions" hidden>
+            <button id="resignChessOnline" class="btn danger small">Abandonner</button>
+            <button id="offerDrawChess" class="btn outline small">Proposer la nulle</button>
+            <button id="offerRematchChess" class="btn small" hidden>Proposer une revanche</button>
+          </div>
+          <div id="chessOnlinePrompt" class="online-decision" hidden>
+            <strong id="chessOnlinePromptTitle"></strong>
+            <span id="chessOnlinePromptText"></span>
+            <div class="online-decision-actions">
+              <button id="acceptChessProposal" class="btn small">Accepter</button>
+              <button id="declineChessProposal" class="btn outline small">Refuser</button>
+            </div>
+          </div>
         </section>
 
         <aside class="chess-side-column">
           <section class="panel"><div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div><h3>Historique</h3><div id="chessHistory" class="chess-history"></div></section>
-          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur du salon joue les <strong>Noirs</strong> et le joueur qui rejoint joue les <strong>Blancs</strong>, qui ont donc le premier coup.</p><p>Le serveur Cloudflare vérifie chaque coup avant de le transmettre à l’adversaire : déplacements, roque, prise en passant, promotion et sécurité du roi.</p><div class="note"><strong>Astuce :</strong> créez un salon, partagez le code à six caractères, puis attendez que le joueur Blanc rejoigne la partie.</div></section>
+          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur du salon peut choisir <strong>Blancs</strong>, <strong>Noirs</strong> ou <strong>Aléatoire</strong>. Le joueur qui rejoint reçoit automatiquement l’autre couleur.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une fois la partie terminée, une revanche peut être proposée ; si elle est acceptée, les couleurs sont automatiquement inversées.</p><p>Le serveur Cloudflare vérifie chaque coup avant de le transmettre à l’adversaire : déplacements, roque, prise en passant, promotion et sécurité du roi.</p><div class="note"><strong>Astuce :</strong> créez un salon, partagez le code à six caractères et attendez que le second joueur rejoigne la partie.</div></section>
           <section class="panel"><h3>Les trois niveaux d’IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> compare les positions à courte profondeur et valorise matériel, centre et sécurité du roi.</p><p><strong>Difficile :</strong> utilise la même évaluation avec une recherche plus profonde et un élagage alpha-bêta.</p><div class="note">Cette IA est destinée à la démonstration. Elle n’a pas la force d’un moteur spécialisé comme Stockfish.</div></section>
         </aside>
       </div>

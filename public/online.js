@@ -67,7 +67,7 @@
   };
 
   const rooms = {
-    create: async (game = "abalone") => request("/api/rooms", { method: "POST", body: { game } }),
+    create: async (game = "abalone", options = {}) => request("/api/rooms", { method: "POST", body: { game, ...options } }),
     join: async code => request("/api/rooms/join", { method: "POST", body: { code } }),
     info: async code => request(`/api/rooms/${encodeURIComponent(code.toUpperCase())}`),
     connect(code, handlers = {}) {

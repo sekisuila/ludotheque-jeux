@@ -1211,3 +1211,12 @@ main { min-height: calc(100vh - 160px); }
 /* V6.2 — récupération du compte */
 .recovery-key-card{grid-column:1/-1}
 .recovery-key-value{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:clamp(1rem,2.8vw,1.35rem);font-weight:800;letter-spacing:.08em;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-2);word-break:break-all;user-select:all}
+
+/* V6.4 — actions multijoueur Échecs */
+.chess-online-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.online-decision{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);display:grid;gap:6px}
+.online-decision[hidden]{display:none}
+.online-decision strong{font-size:.95rem}
+.online-decision span{color:var(--muted);line-height:1.4}
+.online-decision-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+@media (max-width:700px){.chess-online-actions,.online-decision-actions{display:grid;grid-template-columns:1fr}.chess-online-actions .btn,.online-decision-actions .btn{width:100%}}
