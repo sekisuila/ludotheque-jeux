@@ -1207,3 +1207,7 @@ main { min-height: calc(100vh - 160px); }
 .online-savebar>strong{white-space:nowrap}
 .online-savebar a,.online-room-status a{color:var(--accent);font-weight:700}
 @media (max-width:800px){.account-grid{grid-template-columns:1fr}.abalone-online-settings{width:100%}.online-room-status{max-width:none;width:100%}}
+
+/* V6.2 — récupération du compte */
+.recovery-key-card{grid-column:1/-1}
+.recovery-key-value{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:clamp(1rem,2.8vw,1.35rem);font-weight:800;letter-spacing:.08em;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-2);word-break:break-all;user-select:all}

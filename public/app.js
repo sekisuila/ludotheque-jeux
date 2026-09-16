@@ -23,6 +23,7 @@ function router() {
   else if (route === "jouer") renderPlay(id);
   else if (route === "apropos") renderAbout();
   else if (route === "compte") renderAccount();
+  else if (route === "recuperation") renderRecovery();
   else renderNotFound();
 
   requestAnimationFrame(() => {
@@ -855,29 +856,188 @@ function renderAccount() {
       <div class="section-head"><div><div class="eyebrow">Ludothèque en ligne</div><h1>Votre compte joueur</h1><p class="section-lead">Le compte permet de conserver vos sauvegardes dans Cloudflare D1 et de rejoindre les parties multijoueurs.</p></div></div>
       <div id="accountContent" class="account-grid"><div class="panel"><p>Chargement…</p></div></div>
     </div>`;
-  LudoOnline.me(true).then(renderAccountContent).catch(err => {
+  LudoOnline.me(true).then(user => renderAccountContent(user)).catch(err => {
     document.getElementById("accountContent").innerHTML = `<div class="panel"><h2>Service indisponible</h2><p>${escapeHtml(err.message)}</p><p>Vérifiez que la base D1 et le Worker sont configurés.</p></div>`;
   });
 }
 
-function renderAccountContent(user) {
+function recoveryKeyPanel(key, title = "Votre clé de récupération") {
+  return `
+    <section class="panel account-card recovery-key-card">
+      <h2>${escapeHtml(title)}</h2>
+      <p><strong>Conservez cette clé en lieu sûr.</strong> Elle permet de choisir un nouveau mot de passe si vous oubliez l'ancien.</p>
+      <div class="recovery-key-value" id="recoveryKeyValue">${escapeHtml(key)}</div>
+      <div class="account-actions">
+        <button class="btn small" id="copyRecoveryKey" type="button">Copier la clé</button>
+      </div>
+      <div class="note"><strong>Important :</strong> ne partagez jamais cette clé. Une nouvelle clé rend automatiquement l'ancienne inutilisable.</div>
+    </section>`;
+}
+
+function attachRecoveryCopy() {
+  document.getElementById("copyRecoveryKey")?.addEventListener("click", async e => {
+    const value=document.getElementById("recoveryKeyValue")?.textContent?.trim();
+    if(!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      e.currentTarget.textContent="Clé copiée";
+    } catch {
+      e.currentTarget.textContent="Copie impossible — sélectionnez la clé";
+    }
+  });
+}
+
+function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
+
   if (user) {
-    root.innerHTML = `<section class="panel account-card"><div class="account-avatar">♟</div><h2>${escapeHtml(user.username)}</h2><p>Votre session est active sur cet appareil.</p><div class="account-actions"><a class="btn" href="#/jouer/abalone">Jouer à Abalone</a><button id="logoutAccount" class="btn outline">Se déconnecter</button></div><div class="note"><strong>Déjà disponible :</strong> sauvegardes Abalone en ligne et salons multijoueurs privés par code.</div></section>`;
-    document.getElementById("logoutAccount")?.addEventListener("click", async () => { await LudoOnline.logout(); renderAccountContent(null); });
+    root.innerHTML = `
+      <section class="panel account-card">
+        <div class="account-avatar">♟</div>
+        <h2>${escapeHtml(user.username)}</h2>
+        <p>Votre session est active sur cet appareil.</p>
+        <div class="account-actions">
+          <a class="btn" href="#/jouer/abalone">Jouer à Abalone</a>
+          <button id="logoutAccount" class="btn outline" type="button">Se déconnecter</button>
+        </div>
+        <div class="note"><strong>En ligne :</strong> sauvegardes Abalone, salons multijoueurs privés et récupération du compte.</div>
+      </section>
+
+      <form id="changePasswordForm" class="panel account-card">
+        <h2>Changer le mot de passe</h2>
+        <label><span>Mot de passe actuel</span><input name="currentPassword" type="password" required minlength="10" autocomplete="current-password"></label>
+        <label><span>Nouveau mot de passe</span><input name="newPassword" type="password" required minlength="10" autocomplete="new-password"></label>
+        <label><span>Confirmer le nouveau mot de passe</span><input name="confirmPassword" type="password" required minlength="10" autocomplete="new-password"></label>
+        <button class="btn" type="submit">Modifier le mot de passe</button>
+        <p id="changePasswordStatus" class="form-status"></p>
+      </form>
+
+      ${newRecoveryKey ? recoveryKeyPanel(newRecoveryKey, "Votre nouvelle clé de récupération") : `
+      <section class="panel account-card">
+        <h2>Clé de récupération</h2>
+        <p>Si vous oubliez votre mot de passe, cette clé vous permettra d'en choisir un nouveau.</p>
+        <button id="generateRecoveryKey" class="btn outline" type="button">Générer une nouvelle clé</button>
+        <p id="recoveryKeyStatus" class="form-status"></p>
+        <div class="note"><strong>Attention :</strong> générer une nouvelle clé invalide immédiatement la précédente.</div>
+      </section>`}
+    `;
+
+    document.getElementById("logoutAccount")?.addEventListener("click", async () => {
+      await LudoOnline.logout();
+      renderAccountContent(null);
+    });
+
+    document.getElementById("changePasswordForm")?.addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd=new FormData(e.currentTarget),st=document.getElementById("changePasswordStatus");
+      const next=String(fd.get("newPassword")||""),confirm=String(fd.get("confirmPassword")||"");
+      if(next!==confirm){ st.textContent="Les deux nouveaux mots de passe ne sont pas identiques."; return; }
+      st.textContent="Modification…";
+      try {
+        const data=await LudoOnline.changePassword(fd.get("currentPassword"),next);
+        st.textContent=data.message||"Mot de passe modifié.";
+        e.currentTarget.reset();
+      } catch(err){ st.textContent=err.message; }
+    });
+
+    document.getElementById("generateRecoveryKey")?.addEventListener("click", async e => {
+      const st=document.getElementById("recoveryKeyStatus");
+      st.textContent="Génération…";
+      e.currentTarget.disabled=true;
+      try {
+        const data=await LudoOnline.generateRecoveryKey();
+        renderAccountContent(user,data.recoveryKey);
+      } catch(err) {
+        st.textContent=err.message;
+        e.currentTarget.disabled=false;
+      }
+    });
+
+    attachRecoveryCopy();
     return;
   }
+
   root.innerHTML = `
-    <form id="loginForm" class="panel account-card"><h2>Se connecter</h2><label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label><label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label><button class="btn" type="submit">Connexion</button><p id="loginStatus" class="form-status"></p></form>
-    <form id="registerForm" class="panel account-card"><h2>Créer un compte</h2><label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label><label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label><small>10 caractères minimum. Pour cette première version, le compte utilise un pseudo et un mot de passe ; récupération par e-mail viendra plus tard.</small><button class="btn" type="submit">Créer mon compte</button><p id="registerStatus" class="form-status"></p></form>`;
+    <form id="loginForm" class="panel account-card">
+      <h2>Se connecter</h2>
+      <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
+      <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label>
+      <button class="btn" type="submit">Connexion</button>
+      <a href="#/recuperation">Mot de passe oublié ?</a>
+      <p id="loginStatus" class="form-status"></p>
+    </form>
+    <form id="registerForm" class="panel account-card">
+      <h2>Créer un compte</h2>
+      <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
+      <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+      <small>10 caractères minimum. Après la création, une clé de récupération personnelle vous sera affichée une seule fois : conservez-la en lieu sûr.</small>
+      <button class="btn" type="submit">Créer mon compte</button>
+      <p id="registerStatus" class="form-status"></p>
+    </form>`;
+
   document.getElementById("loginForm")?.addEventListener("submit", async e => {
     e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("loginStatus"); st.textContent="Connexion…";
     try { const u=await LudoOnline.login(fd.get("username"),fd.get("password")); renderAccountContent(u); } catch(err){ st.textContent=err.message; }
   });
+
   document.getElementById("registerForm")?.addEventListener("submit", async e => {
     e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
-    try { const u=await LudoOnline.register(fd.get("username"),fd.get("password")); renderAccountContent(u); } catch(err){ st.textContent=err.message; }
+    try {
+      const data=await LudoOnline.register(fd.get("username"),fd.get("password"));
+      renderAccountContent(data.user,data.recoveryKey);
+    } catch(err){ st.textContent=err.message; }
+  });
+}
+
+function renderRecovery() {
+  app.innerHTML = `
+    <div class="page account-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/compte">Compte</a><span>›</span><span>Récupération</span></div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Récupération du compte</div>
+          <h1>Mot de passe oublié</h1>
+          <p class="section-lead">Saisissez le pseudo, la clé de récupération enregistrée auparavant et un nouveau mot de passe.</p>
+        </div>
+      </div>
+      <div id="recoveryContent" class="account-grid">
+        <form id="recoveryForm" class="panel account-card">
+          <h2>Réinitialiser le mot de passe</h2>
+          <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
+          <label><span>Clé de récupération</span><input name="recoveryKey" required autocomplete="off" placeholder="XXXXX-XXXXX-XXXXX-XXXXX"></label>
+          <label><span>Nouveau mot de passe</span><input name="newPassword" type="password" required minlength="10" autocomplete="new-password"></label>
+          <label><span>Confirmer le nouveau mot de passe</span><input name="confirmPassword" type="password" required minlength="10" autocomplete="new-password"></label>
+          <button class="btn" type="submit">Réinitialiser</button>
+          <p id="recoveryStatus" class="form-status"></p>
+        </form>
+        <section class="panel account-card">
+          <h2>Vous n'avez pas encore de clé ?</h2>
+          <p>Si vous êtes encore connecté sur un autre appareil, ouvrez <strong>Compte → Clé de récupération</strong> et générez-en une.</p>
+          <div class="note">Dans une prochaine étape, nous pourrons aussi ajouter une récupération par e-mail. La clé personnelle reste utile comme solution de secours indépendante de l'e-mail.</div>
+          <a class="btn outline" href="#/compte">Retour au compte</a>
+        </section>
+      </div>
+    </div>`;
+
+  document.getElementById("recoveryForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd=new FormData(e.currentTarget),st=document.getElementById("recoveryStatus");
+    const next=String(fd.get("newPassword")||""),confirm=String(fd.get("confirmPassword")||"");
+    if(next!==confirm){ st.textContent="Les deux nouveaux mots de passe ne sont pas identiques."; return; }
+    st.textContent="Réinitialisation…";
+    try {
+      const data=await LudoOnline.resetWithRecovery(fd.get("username"),fd.get("recoveryKey"),next);
+      const root=document.getElementById("recoveryContent");
+      root.innerHTML = `
+        <section class="panel account-card">
+          <h2>Mot de passe réinitialisé</h2>
+          <p>Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</p>
+          <a class="btn" href="#/compte">Se connecter</a>
+        </section>
+        ${recoveryKeyPanel(data.recoveryKey,"Nouvelle clé de récupération")}`;
+      attachRecoveryCopy();
+    } catch(err){ st.textContent=err.message; }
   });
 }
 

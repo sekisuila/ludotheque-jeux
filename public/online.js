@@ -33,7 +33,7 @@
 
   async function register(username, password) {
     const data = await request("/api/auth/register", { method: "POST", body: { username, password } });
-    state.user = data.user; state.loaded = true; updateNav(); return state.user;
+    state.user = data.user; state.loaded = true; updateNav(); return data;
   }
   async function login(username, password) {
     const data = await request("/api/auth/login", { method: "POST", body: { username, password } });
@@ -42,6 +42,21 @@
   async function logout() {
     await request("/api/auth/logout", { method: "POST" });
     state.user = null; state.loaded = true; updateNav();
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    return request("/api/auth/change-password", { method: "POST", body: { currentPassword, newPassword } });
+  }
+
+  async function generateRecoveryKey() {
+    return request("/api/auth/recovery-key", { method: "POST" });
+  }
+
+  async function resetWithRecovery(username, recoveryKey, newPassword) {
+    return request("/api/auth/reset-with-recovery", {
+      method: "POST",
+      body: { username, recoveryKey, newPassword }
+    });
   }
 
   const saves = {
@@ -69,6 +84,10 @@
     }
   };
 
-  window.LudoOnline = { state, request, me, register, login, logout, saves, rooms, updateNav };
+  window.LudoOnline = {
+    state, request, me, register, login, logout,
+    changePassword, generateRecoveryKey, resetWithRecovery,
+    saves, rooms, updateNav
+  };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));
 })();
