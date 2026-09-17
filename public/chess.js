@@ -591,11 +591,11 @@ function chessEnsureClockPanel(){
 
   // V6.11 : on conserve un SEUL panneau parent pour garantir la robustesse,
   // mais on rend deux lignes/carte internes pour retrouver une vraie qualité visuelle.
-  if(panel.dataset.clockVersion!=="611"){
+  if(panel.dataset.clockVersion!=="613"){
     panel.innerHTML=`
       <div class="chess-dual-clock-readout" data-clock-role="readout" aria-label="Pendules Noir et Blanc"></div>
       <div class="chess-time-meta" data-clock-role="meta"></div>`;
-    panel.dataset.clockVersion="611";
+    panel.dataset.clockVersion="613";
   }
   return panel;
 }

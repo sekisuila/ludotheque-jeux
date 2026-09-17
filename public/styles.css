@@ -1670,12 +1670,54 @@ main { min-height: calc(100vh - 160px); }
 }
 
 /* ============================================================
-   V6.12 — séparation visuelle renforcée entre les deux joueurs
+   V6.13 — séparation nette des joueurs + pastilles de couleur identiques
    ============================================================ */
 .chess-dual-clock-readout{
-  gap:1.45rem;
+  row-gap:2rem !important;
 }
-.chess-dual-clock-readout .clock-side-row.black .clock-side-indicator{
-  font-size:1.12rem;
+.chess-dual-clock-readout .clock-side-row + .clock-side-row{
+  margin-top:.35rem !important;
+}
+.chess-dual-clock-readout .clock-side-indicator{
+  width:2.2rem !important;
+  height:2.2rem !important;
+  padding:0 !important;
+  background:transparent !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:.25rem !important;
+  overflow:visible !important;
+}
+.chess-dual-clock-readout .clock-color-dot{
+  display:block;
+  width:18px;
+  height:18px;
+  min-width:18px;
+  min-height:18px;
+  border-radius:50%;
+  box-sizing:border-box;
+  flex:0 0 18px;
+}
+.chess-dual-clock-readout .black-dot{
+  background:#050505;
+  border:2px solid #777;
+  box-shadow:0 0 0 1px rgba(255,255,255,.18);
+}
+.chess-dual-clock-readout .white-dot{
+  background:#fff;
+  border:2px solid #555;
+  box-shadow:0 0 0 1px rgba(255,255,255,.35);
+}
+.chess-dual-clock-readout .clock-turn-arrow{
+  font-size:.72rem;
   line-height:1;
+  font-weight:900;
+  color:var(--accent);
+  flex:0 0 auto;
+}
+@media (max-width:640px){
+  .chess-dual-clock-readout{
+    row-gap:1.75rem !important;
+  }
 }
