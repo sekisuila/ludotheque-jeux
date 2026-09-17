@@ -7,6 +7,17 @@ const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
 const ELO_INITIAL = 1200;
 const ELO_K = 32;
 
+function formatChessDuration(ms){
+  let total=Math.max(0,Math.ceil(Number(ms||0)/1000));
+  const hours=Math.floor(total/3600);
+  total%=3600;
+  const minutes=Math.floor(total/60);
+  const seconds=total%60;
+  if(hours>0) return `${hours} h ${String(minutes).padStart(2,"0")} min ${String(seconds).padStart(2,"0")} s`;
+  if(minutes>0) return `${minutes} min ${String(seconds).padStart(2,"0")} s`;
+  return `${seconds} s`;
+}
+
 // Ce Durable Object garde son ancien nom "AbaloneRoom" pour rester compatible
 // avec le wrangler.jsonc déjà déployé. Il sert de salle générique à plusieurs jeux.
 export class AbaloneRoom extends DurableObject {
@@ -303,10 +314,29 @@ export class AbaloneRoom extends DurableObject {
   async finishOnTime(flaggedSide){
     const game=await this.getGame();
     if(game?.result?.over) return;
+
+    // On capture l'état de la pendule AVANT d'arrêter officiellement la partie.
+    // Cela permet d'indiquer dans le message final combien de temps il restait
+    // exactement au vainqueur lorsque l'adversaire est tombé à zéro.
+    const clock=await this.clockSnapshot();
+    const players=await this.getPlayers();
     const winner=flaggedSide==="w"?"b":"w";
-    const loserText=flaggedSide==="w"?"Les Blancs":"Les Noirs";
-    const winnerText=winner==="w"?"les Blancs":"les Noirs";
-    game.result={over:true,type:"timeout",winner,text:`${loserText} perdent au temps : ${winnerText} gagnent.`};
+    const winnerPlayer=winner==="w"?players.white:players.black;
+    const loserPlayer=flaggedSide==="w"?players.white:players.black;
+    const winnerName=winnerPlayer?.username || (winner==="w"?"les Blancs":"les Noirs");
+    const loserName=loserPlayer?.username || (flaggedSide==="w"?"les Blancs":"les Noirs");
+    const winnerRemainingMs=winner==="w"?Number(clock?.whiteMs||0):Number(clock?.blackMs||0);
+    const remainingText=formatChessDuration(winnerRemainingMs);
+
+    game.result={
+      over:true,
+      type:"timeout",
+      winner,
+      winnerUsername:winnerPlayer?.username || null,
+      loserUsername:loserPlayer?.username || null,
+      winnerRemainingMs,
+      text:`La partie se termine par la victoire de ${winnerName} par manque de temps de ${loserName}. Il reste ${remainingText} à ${winnerName}.`
+    };
     const ratingUpdate=await this.finishChessGame(game,"timeout");
     await this.broadcast({
       type:"state",gameType:"chess",game,clock:await this.clockSnapshot(),
