@@ -1668,3 +1668,14 @@ main { min-height: calc(100vh - 160px); }
     font-size:1.7rem;
   }
 }
+
+/* ============================================================
+   V6.12 — séparation visuelle renforcée entre les deux joueurs
+   ============================================================ */
+.chess-dual-clock-readout{
+  gap:1.45rem;
+}
+.chess-dual-clock-readout .clock-side-row.black .clock-side-indicator{
+  font-size:1.12rem;
+  line-height:1;
+}
