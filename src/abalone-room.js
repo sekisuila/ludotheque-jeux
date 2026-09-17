@@ -1,11 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-engine.js";
 import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
+import { CHECKERS_VARIANTS, initialCheckersGameState, playServerCheckersMove } from "./checkers-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
 const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
 const ELO_INITIAL = 1200;
 const ELO_K = 32;
+const CHECKERS_VARIANTS_SET = new Set(["international","english"]);
+
+function isTimedGameType(gameType){ return gameType === "chess" || gameType === "checkers"; }
 
 function formatChessDuration(ms){
   let total=Math.max(0,Math.ceil(Number(ms||0)/1000));
@@ -30,10 +34,17 @@ export class AbaloneRoom extends DurableObject {
 
   async getGameType(){ return (await this.ctx.storage.get("gameType")) || "abalone"; }
   async getPlayers(){ return (await this.ctx.storage.get("players")) || {black:null,white:null}; }
+  async getCheckersVariant(){
+    const variant=(await this.ctx.storage.get("checkersVariant")) || "international";
+    return CHECKERS_VARIANTS_SET.has(variant)?variant:"international";
+  }
   async getGame(){
     const stored = await this.ctx.storage.get("game");
     if (stored) return stored;
-    return (await this.getGameType()) === "chess" ? initialChessGameState() : initialGameState();
+    const gameType=await this.getGameType();
+    if(gameType === "chess") return initialChessGameState();
+    if(gameType === "checkers") return initialCheckersGameState(await this.getCheckersVariant());
+    return initialGameState();
   }
   async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
   async getRematchOffer(){ return (await this.ctx.storage.get("rematchOffer")) || null; }
@@ -44,12 +55,46 @@ export class AbaloneRoom extends DurableObject {
       ratingCategory:"rapid"
     };
   }
+  async getCheckersSettings(){
+    return (await this.ctx.storage.get("checkersSettings")) || {
+      timeControl:{initialSeconds:600,incrementSeconds:0},
+      rated:true,
+      ratingCategory:"rapid"
+    };
+  }
   async getGameNumber(){ return Number((await this.ctx.storage.get("gameNumber")) || 1); }
   async getRatingUpdate(){ return (await this.ctx.storage.get("ratingUpdate")) || null; }
+  async clockForGameType(gameType){
+    if(gameType==="chess") return this.clockSnapshot();
+    if(gameType==="checkers") return this.checkersClockSnapshot();
+    return null;
+  }
+  async settingsForGameType(gameType){
+    if(gameType==="chess") return this.getChessSettings();
+    if(gameType==="checkers") return this.getCheckersSettings();
+    return null;
+  }
+  async ratingsForGameType(gameType){
+    if(gameType==="chess") return this.roomRatings();
+    if(gameType==="checkers") return this.checkersRoomRatings();
+    return null;
+  }
+  async maybeStartClockForGame(gameType){
+    if(gameType==="chess") return this.maybeStartChessClock();
+    if(gameType==="checkers") return this.maybeStartCheckersClock();
+  }
 
   sideForUser(gameType, players, userId){
-    if(players.black?.id===userId) return gameType === "chess" ? "b" : AB_BLACK;
-    if(players.white?.id===userId) return gameType === "chess" ? "w" : AB_WHITE;
+    if(players.black?.id===userId){
+      if(gameType === "chess") return "b";
+      if(gameType === "checkers") return 0;
+      return AB_BLACK;
+    }
+    if(players.white?.id===userId){
+      if(gameType === "chess") return "w";
+      if(gameType === "checkers") return 1;
+      return AB_WHITE;
+    }
     return null;
   }
 
@@ -57,6 +102,11 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "chess"){
       if(winner === "b") return players.black?.id || null;
       if(winner === "w") return players.white?.id || null;
+      return null;
+    }
+    if(gameType === "checkers"){
+      if(winner===0) return players.black?.id || null;
+      if(winner===1) return players.white?.id || null;
       return null;
     }
     if(winner === AB_BLACK) return players.black?.id || null;
@@ -186,6 +236,96 @@ export class AbaloneRoom extends DurableObject {
   async resetChessClock(){
     const clock=await this.initialChessClock();
     await this.ctx.storage.put("chessClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  // ----------------------------
+  // Pendule serveur des Dames.
+  // Le format est volontairement distinct de celui des Échecs :
+  // side 0 = première couleur de la variante, side 1 = seconde couleur.
+  // ----------------------------
+  async initialCheckersClock(){
+    const settings=await this.getCheckersSettings();
+    const initialMs=Math.max(30000,Number(settings.timeControl?.initialSeconds||600)*1000);
+    return {side0Ms:initialMs,side1Ms:initialMs,runningSide:null,lastStartedAt:null,started:false};
+  }
+
+  async getCheckersClock(){
+    let clock=await this.ctx.storage.get("checkersClock");
+    if(!clock){
+      clock=await this.initialCheckersClock();
+      await this.ctx.storage.put("checkersClock",clock);
+    }
+    return clock;
+  }
+
+  checkersClockKey(side){ return Number(side)===0?"side0Ms":"side1Ms"; }
+
+  async checkersClockSnapshot(now=Date.now()){
+    if((await this.getGameType())!=="checkers") return null;
+    const clock={...(await this.getCheckersClock())};
+    if(clock.started && clock.runningSide!==null && clock.runningSide!==undefined && clock.lastStartedAt){
+      const key=this.checkersClockKey(clock.runningSide);
+      clock[key]=Math.max(0,Number(clock[key]||0)-Math.max(0,now-Number(clock.lastStartedAt)));
+    }
+    return {...clock,serverNow:now};
+  }
+
+  async settleCheckersClock(now=Date.now()){
+    const clock=await this.getCheckersClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined || !clock.lastStartedAt) return {clock,flagged:null};
+    const side=Number(clock.runningSide),key=this.checkersClockKey(side);
+    const elapsed=Math.max(0,now-Number(clock.lastStartedAt));
+    clock[key]=Math.max(0,Number(clock[key]||0)-elapsed);
+    clock.lastStartedAt=now;
+    const flagged=clock[key]<=0?side:null;
+    if(flagged!==null){
+      clock[key]=0; clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+    }
+    await this.ctx.storage.put("checkersClock",clock);
+    return {clock,flagged};
+  }
+
+  async scheduleCheckersClockAlarm(clock=null){
+    if((await this.getGameType())!=="checkers") return;
+    clock=clock||await this.getCheckersClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined){
+      try{ await this.ctx.storage.deleteAlarm(); }catch{}
+      return;
+    }
+    const key=this.checkersClockKey(clock.runningSide);
+    await this.ctx.storage.setAlarm(Date.now()+Math.max(1,Number(clock[key]||0))+25);
+  }
+
+  async stopCheckersClock(){
+    if((await this.getGameType())!=="checkers") return null;
+    const {clock}=await this.settleCheckersClock(Date.now());
+    clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+    await this.ctx.storage.put("checkersClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  async maybeStartCheckersClock(){
+    if((await this.getGameType())!=="checkers") return;
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const players=await this.getPlayers();
+    if(!this.bothPlayersConnected(players)) return;
+    const clock=await this.getCheckersClock();
+    if(clock.started) return;
+    clock.started=true;
+    clock.runningSide=Number(game?.state?.turn||0);
+    clock.lastStartedAt=Date.now();
+    await this.ctx.storage.put("checkersClock",clock);
+    await this.scheduleCheckersClockAlarm(clock);
+    await this.broadcast({type:"clock",gameType:"checkers",clock:await this.checkersClockSnapshot()});
+  }
+
+  async resetCheckersClock(){
+    const clock=await this.initialCheckersClock();
+    await this.ctx.storage.put("checkersClock",clock);
     try{ await this.ctx.storage.deleteAlarm(); }catch{}
     return clock;
   }
@@ -344,16 +484,158 @@ export class AbaloneRoom extends DurableObject {
     });
   }
 
-  async alarm(){
-    if((await this.getGameType())!=="chess") return;
-    const game=await this.getGame();
-    if(game?.result?.over) return;
-    const {clock,flagged}=await this.settleClock(Date.now());
-    if(flagged){
-      await this.finishOnTime(flagged);
+  // ----------------------------
+  // Classement Elo + archive des Dames.
+  // Un Elo est conservé séparément pour chaque variante ET chaque cadence.
+  // ----------------------------
+  async currentCheckersRating(userId,variant,category){
+    const row=await this.env.DB.prepare(`SELECT rating,games,wins,draws,losses FROM checkers_ratings
+      WHERE user_id=? AND variant=? AND category=?`).bind(userId,variant,category).first();
+    return row?{
+      rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses)
+    }:{rating:ELO_INITIAL,games:0,wins:0,draws:0,losses:0};
+  }
+
+  async checkersRoomRatings(){
+    if((await this.getGameType())!=="checkers") return null;
+    const settings=await this.getCheckersSettings();
+    const variant=await this.getCheckersVariant();
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    const players=await this.getPlayers();
+    return {
+      variant,category,
+      side0:players.black?await this.currentCheckersRating(players.black.id,variant,category):null,
+      side1:players.white?await this.currentCheckersRating(players.white.id,variant,category):null
+    };
+  }
+
+  async recordCheckersResult(game,reason){
+    const settings=await this.getCheckersSettings();
+    if(!settings.rated) return null;
+    const players=await this.getPlayers();
+    if(!players.black?.id||!players.white?.id) return null;
+    const code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!code) return null;
+    const already=await this.env.DB.prepare("SELECT id FROM checkers_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(already) return await this.getRatingUpdate();
+
+    const variant=await this.getCheckersVariant();
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    await this.env.DB.batch([
+      this.env.DB.prepare("INSERT OR IGNORE INTO checkers_ratings(user_id,variant,category,rating) VALUES(?,?,?,?)")
+        .bind(players.black.id,variant,category,ELO_INITIAL),
+      this.env.DB.prepare("INSERT OR IGNORE INTO checkers_ratings(user_id,variant,category,rating) VALUES(?,?,?,?)")
+        .bind(players.white.id,variant,category,ELO_INITIAL)
+    ]);
+    const side0=await this.currentCheckersRating(players.black.id,variant,category);
+    const side1=await this.currentCheckersRating(players.white.id,variant,category);
+    const winner=game?.result?.winner;
+    const score0=winner===0?1:winner===1?0:0.5;
+    const expected0=this.eloExpected(side0.rating,side1.rating);
+    let delta0=Math.round(ELO_K*(score0-expected0)),delta1=-delta0;
+    const after0=Math.max(100,side0.rating+delta0),after1=Math.max(100,side1.rating+delta1);
+    delta0=after0-side0.rating; delta1=after1-side1.rating;
+    const win0=score0===1?1:0,win1=score0===0?1:0,isDraw=score0===0.5?1:0;
+    const result=score0===1?"1-0":score0===0?"0-1":"1/2-1/2";
+    const resultId=crypto.randomUUID();
+
+    await this.env.DB.batch([
+      this.env.DB.prepare(`UPDATE checkers_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND variant=? AND category=?`)
+        .bind(after0,win0,isDraw,win1,players.black.id,variant,category),
+      this.env.DB.prepare(`UPDATE checkers_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND variant=? AND category=?`)
+        .bind(after1,win1,isDraw,win0,players.white.id,variant,category),
+      this.env.DB.prepare(`INSERT INTO checkers_results(
+        id,room_code,game_number,variant,side0_user_id,side1_user_id,category,rated,result,reason,
+        side0_rating_before,side1_rating_before,side0_rating_after,side1_rating_after,side0_delta,side1_delta
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(resultId,code,gameNumber,variant,players.black.id,players.white.id,category,1,result,String(reason||"game"),
+          side0.rating,side1.rating,after0,after1,delta0,delta1)
+    ]);
+
+    const update={
+      rated:true,variant,category,result,reason:String(reason||"game"),gameNumber,
+      side0:{username:players.black.username,before:side0.rating,after:after0,delta:delta0},
+      side1:{username:players.white.username,before:side1.rating,after:after1,delta:delta1}
+    };
+    await this.ctx.storage.put("ratingUpdate",update);
+    return update;
+  }
+
+  async archiveCheckersGame(game,reason){
+    const players=await this.getPlayers(),code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!this.env.DB||!code||!players.black?.id||!players.white?.id) return;
+    const settings=await this.getCheckersSettings(),variant=await this.getCheckersVariant();
+    const winner=game?.result?.winner;
+    const result=winner===0?"1-0":winner===1?"0-1":"1/2-1/2";
+    const initialSeconds=Math.max(0,Number(settings.timeControl?.initialSeconds||0));
+    const incrementSeconds=Math.max(0,Number(settings.timeControl?.incrementSeconds||0));
+    const existing=await this.env.DB.prepare("SELECT id FROM checkers_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(existing){
+      await this.env.DB.prepare(`UPDATE checkers_results SET game_json=?,time_initial_seconds=?,time_increment_seconds=?,reason=?,result=? WHERE id=?`)
+        .bind(JSON.stringify(game),initialSeconds,incrementSeconds,String(reason||"game"),result,existing.id).run();
       return;
     }
-    await this.scheduleClockAlarm(clock);
+    await this.env.DB.prepare(`INSERT INTO checkers_results(
+      id,room_code,game_number,variant,side0_user_id,side1_user_id,category,rated,result,reason,game_json,time_initial_seconds,time_increment_seconds
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(),code,gameNumber,variant,players.black.id,players.white.id,
+        CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid",settings.rated?1:0,result,String(reason||"game"),
+        JSON.stringify(game),initialSeconds,incrementSeconds).run();
+  }
+
+  async finishCheckersGame(game,reason){
+    await this.stopCheckersClock();
+    await this.ctx.storage.put("game",game);
+    await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
+    await this.markFinished(game?.result?.winner ?? null);
+    const ratingUpdate=await this.recordCheckersResult(game,reason);
+    await this.archiveCheckersGame(game,reason);
+    return ratingUpdate;
+  }
+
+  async finishCheckersOnTime(flaggedSide){
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const clock=await this.checkersClockSnapshot();
+    const players=await this.getPlayers(),variant=await this.getCheckersVariant();
+    const cfg=CHECKERS_VARIANTS[variant]||CHECKERS_VARIANTS.international;
+    const winner=Number(flaggedSide)===0?1:0;
+    const winnerPlayer=winner===0?players.black:players.white;
+    const loserPlayer=Number(flaggedSide)===0?players.black:players.white;
+    const winnerName=winnerPlayer?.username||cfg.sideNames[winner];
+    const loserName=loserPlayer?.username||cfg.sideNames[Number(flaggedSide)];
+    const winnerRemainingMs=winner===0?Number(clock?.side0Ms||0):Number(clock?.side1Ms||0);
+    game.result={
+      over:true,type:"timeout",winner,
+      winnerUsername:winnerPlayer?.username||null,loserUsername:loserPlayer?.username||null,winnerRemainingMs,
+      text:`La partie se termine par la victoire de ${winnerName} par manque de temps de ${loserName}. Il reste ${formatChessDuration(winnerRemainingMs)} à ${winnerName}.`
+    };
+    const ratingUpdate=await this.finishCheckersGame(game,"timeout");
+    await this.broadcast({
+      type:"state",gameType:"checkers",game,clock:await this.checkersClockSnapshot(),
+      settings:await this.getCheckersSettings(),ratings:await this.checkersRoomRatings(),ratingUpdate
+    });
+  }
+
+  async alarm(){
+    const gameType=await this.getGameType();
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    if(gameType==="chess"){
+      const {clock,flagged}=await this.settleClock(Date.now());
+      if(flagged){ await this.finishOnTime(flagged); return; }
+      await this.scheduleClockAlarm(clock);
+      return;
+    }
+    if(gameType==="checkers"){
+      const {clock,flagged}=await this.settleCheckersClock(Date.now());
+      if(flagged!==null){ await this.finishCheckersOnTime(flagged); return; }
+      await this.scheduleCheckersClockAlarm(clock);
+    }
   }
 
   async fetch(request){
@@ -363,26 +645,37 @@ export class AbaloneRoom extends DurableObject {
       const body=await request.json();
       const existing=await this.ctx.storage.get("players");
       if(!existing){
-        const gameType=body.game === "chess" ? "chess" : "abalone";
-        const creatorSlot = gameType === "chess" && body.creatorSide === "w" ? "white" : "black";
+        let gameType="abalone",checkersVariant=null;
+        if(body.game==="chess") gameType="chess";
+        else if(body.game==="checkers-international" || body.game==="checkers-english"){
+          gameType="checkers";
+          checkersVariant=body.game==="checkers-english"?"english":"international";
+        }
+        let creatorSlot="black";
+        if(gameType==="chess" && body.creatorSide==="w") creatorSlot="white";
+        if(gameType==="checkers" && Number(body.creatorSide)===1) creatorSlot="white";
         const players={black:null,white:null};
         players[creatorSlot]={id:body.userId,username:body.username};
         await this.ctx.storage.put("gameType",gameType);
+        if(gameType==="checkers") await this.ctx.storage.put("checkersVariant",checkersVariant||"international");
         await this.ctx.storage.put("players",players);
-        await this.ctx.storage.put("game",gameType === "chess" ? initialChessGameState() : initialGameState());
+        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):initialGameState();
+        await this.ctx.storage.put("game",initialGame);
         await this.ctx.storage.put("code",body.code);
         await this.ctx.storage.put("gameNumber",1);
         await this.ctx.storage.delete(["drawOffer","rematchOffer","ratingUpdate"]);
-        if(gameType==="chess"){
+        if(gameType==="chess" || gameType==="checkers"){
           const initialSeconds=Math.min(10800,Math.max(30,Number(body.timeControl?.initialSeconds||600)));
           const incrementSeconds=Math.min(60,Math.max(0,Number(body.timeControl?.incrementSeconds||0)));
           const category=CHESS_CATEGORIES.has(body.ratingCategory)?body.ratingCategory:"rapid";
-          await this.ctx.storage.put("chessSettings",{
-            timeControl:{initialSeconds,incrementSeconds},
-            rated:body.rated!==false,
-            ratingCategory:category
-          });
-          await this.resetChessClock();
+          const settings={timeControl:{initialSeconds,incrementSeconds},rated:body.rated!==false,ratingCategory:category};
+          if(gameType==="chess"){
+            await this.ctx.storage.put("chessSettings",settings);
+            await this.resetChessClock();
+          }else{
+            await this.ctx.storage.put("checkersSettings",settings);
+            await this.resetCheckersClock();
+          }
         }
       }
       return json({ok:true});
@@ -397,18 +690,20 @@ export class AbaloneRoom extends DurableObject {
       if(players[slot]) return json({error:"Cette couleur est déjà occupée."},409);
       players[slot]={id:body.userId,username:body.username};
       await this.ctx.storage.put("players",players);
+      const gameType=await this.getGameType();
       await this.broadcast({
-        type:"players",players,gameType:await this.getGameType(),
-        clock:await this.clockSnapshot(),settings:await this.getChessSettings(),ratings:await this.roomRatings()
+        type:"players",players,gameType,
+        clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType)
       });
       return json({ok:true,players});
     }
 
     if(request.method==="GET" && url.pathname==="/state"){
+      const gameType=await this.getGameType();
       return json({
-        gameType:await this.getGameType(),players:await this.getPlayers(),game:await this.getGame(),
+        gameType,players:await this.getPlayers(),game:await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
-        clock:await this.clockSnapshot(),settings:await this.getChessSettings(),ratings:await this.roomRatings(),
+        clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType),
         ratingUpdate:await this.getRatingUpdate()
       });
     }
@@ -426,12 +721,12 @@ export class AbaloneRoom extends DurableObject {
       const [client,server]=Object.values(pair);
       this.ctx.acceptWebSocket(server);
       server.serializeAttachment({userId,username,side,gameType});
-      if(gameType==="chess") await this.maybeStartChessClock();
+      await this.maybeStartClockForGame(gameType);
       server.send(JSON.stringify({
-        type:"welcome",gameType,side,players,game:await this.getGame(),
+        type:"welcome",gameType,side,players,game:await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
-        clock:await this.clockSnapshot(),settings:gameType==="chess"?await this.getChessSettings():null,
-        ratings:gameType==="chess"?await this.roomRatings():null,ratingUpdate:await this.getRatingUpdate()
+        clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
+        ratings:await this.ratingsForGameType(gameType),ratingUpdate:await this.getRatingUpdate()
       }));
       await this.broadcastPresence();
       return new Response(null,{status:101,webSocket:client});
@@ -481,6 +776,33 @@ export class AbaloneRoom extends DurableObject {
           await this.ctx.storage.put("chessClock",clock);
           await this.scheduleClockAlarm(clock);
         }
+      }else if(gameType === "checkers"){
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+        await this.maybeStartCheckersClock();
+        const now=Date.now();
+        const settled=await this.settleCheckersClock(now);
+        if(settled.flagged!==null){ await this.finishCheckersOnTime(settled.flagged); return; }
+        result=playServerCheckersMove(game,Number(session.side),data.move||{});
+        if(!result.ok){
+          await this.scheduleCheckersClockAlarm(settled.clock);
+          ws.send(JSON.stringify({type:"error",message:result.error}));
+          return;
+        }
+        const settings=await this.getCheckersSettings();
+        const clock=settled.clock,moverKey=this.checkersClockKey(session.side);
+        clock[moverKey]=Number(clock[moverKey]||0)+Number(settings.timeControl?.incrementSeconds||0)*1000;
+        if(result.state?.result?.over){
+          clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+          await this.ctx.storage.put("checkersClock",clock);
+          try{ await this.ctx.storage.deleteAlarm(); }catch{}
+        }else{
+          clock.started=true;
+          clock.runningSide=Number(result.state?.state?.turn);
+          clock.lastStartedAt=now;
+          await this.ctx.storage.put("checkersClock",clock);
+          await this.scheduleCheckersClockAlarm(clock);
+        }
       }else{
         result=playServerMove(game,session.side,Array.isArray(data.group)?data.group:[],Number(data.dir));
       }
@@ -488,7 +810,7 @@ export class AbaloneRoom extends DurableObject {
       if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
       await this.ctx.storage.put("game",result.state);
 
-      if(gameType === "chess"){
+      if(gameType === "chess" || gameType === "checkers"){
         const offer=await this.getDrawOffer();
         if(offer && offer.userId!==session.userId){
           await this.ctx.storage.delete("drawOffer");
@@ -496,21 +818,21 @@ export class AbaloneRoom extends DurableObject {
         }
       }
 
-      const finished = gameType === "chess" ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
-      const winner = gameType === "chess" ? result.state?.result?.winner : result.state?.winner;
+      const structuredResult = gameType === "chess" || gameType === "checkers";
+      const finished = structuredResult ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
+      const winner = structuredResult ? result.state?.result?.winner : result.state?.winner;
       let ratingUpdate=null;
       if(finished){
         await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
         if(gameType==="chess") ratingUpdate=await this.finishChessGame(result.state,result.state?.result?.type||"game");
+        else if(gameType==="checkers") ratingUpdate=await this.finishCheckersGame(result.state,result.state?.result?.type||"game");
         else await this.markFinished(winner ?? null);
       }
 
       await this.broadcast({
         type:"state",gameType,game:result.state,lastMove:result.move,
-        clock:gameType==="chess"?await this.clockSnapshot():null,
-        settings:gameType==="chess"?await this.getChessSettings():null,
-        ratings:gameType==="chess"?await this.roomRatings():null,
-        ratingUpdate
+        clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
+        ratings:await this.ratingsForGameType(gameType),ratingUpdate
       });
       return;
     }
@@ -534,6 +856,22 @@ export class AbaloneRoom extends DurableObject {
         return;
       }
 
+      if(gameType === "checkers"){
+        if(game?.result?.over) return;
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"La partie n’a pas encore commencé."})); return; }
+        const variant=await this.getCheckersVariant();
+        const cfg=CHECKERS_VARIANTS[variant]||CHECKERS_VARIANTS.international;
+        const resigned=Number(session.side),winner=resigned===0?1:0;
+        game.result={over:true,type:"resign",winner,text:`${cfg.sideNames[resigned]} abandonnent : ${cfg.sideNames[winner].toLowerCase()} gagnent.`};
+        const ratingUpdate=await this.finishCheckersGame(game,"resign");
+        await this.broadcast({
+          type:"state",gameType,game,resigned,clock:await this.checkersClockSnapshot(),
+          settings:await this.getCheckersSettings(),ratings:await this.checkersRoomRatings(),ratingUpdate
+        });
+        return;
+      }
+
       if(game.over) return;
       game.over=true;
       game.winner=session.side===AB_BLACK?AB_WHITE:AB_BLACK;
@@ -544,7 +882,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_offer"){
-      if(gameType!=="chess"){ ws.send(JSON.stringify({type:"error",message:"Action réservée aux Échecs."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie est terminée."})); return; }
@@ -558,7 +896,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_response"){
-      if(gameType!=="chess") return;
+      if(gameType!=="chess" && gameType!=="checkers") return;
       const offer=await this.getDrawOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de nulle à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -570,16 +908,18 @@ export class AbaloneRoom extends DurableObject {
       const game=await this.getGame();
       if(game?.result?.over) return;
       game.result={over:true,type:"draw-agreement",winner:null,text:"Partie nulle d’un commun accord."};
-      const ratingUpdate=await this.finishChessGame(game,"draw-agreement");
+      const ratingUpdate=gameType==="chess"
+        ? await this.finishChessGame(game,"draw-agreement")
+        : await this.finishCheckersGame(game,"draw-agreement");
       await this.broadcast({
-        type:"state",gameType,game,drawAccepted:true,clock:await this.clockSnapshot(),
-        settings:await this.getChessSettings(),ratings:await this.roomRatings(),ratingUpdate
+        type:"state",gameType,game,drawAccepted:true,clock:await this.clockForGameType(gameType),
+        settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType),ratingUpdate
       });
       return;
     }
 
     if(data.type==="rematch_offer"){
-      if(gameType!=="chess"){ ws.send(JSON.stringify({type:"error",message:"Action réservée aux Échecs."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
@@ -593,7 +933,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_response"){
-      if(gameType!=="chess") return;
+      if(gameType!=="chess" && gameType!=="checkers") return;
       const offer=await this.getRematchOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -605,32 +945,33 @@ export class AbaloneRoom extends DurableObject {
 
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
-      const newGame=initialChessGameState();
+      const variant=gameType==="checkers"?await this.getCheckersVariant():null;
+      const newGame=gameType==="chess"?initialChessGameState():initialCheckersGameState(variant||"international");
       const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
       await this.ctx.storage.put("gameNumber",nextGameNumber);
       await this.ctx.storage.delete(["drawOffer","ratingUpdate"]);
-      await this.resetChessClock();
+      if(gameType==="chess") await this.resetChessClock(); else await this.resetCheckersClock();
       await this.markPlaying(swapped);
 
       for(const socket of this.ctx.getWebSockets()){
         const att=socket.deserializeAttachment();
         if(!att) continue;
-        const side=this.sideForUser("chess",swapped,att.userId);
-        socket.serializeAttachment({...att,side,gameType:"chess"});
+        const side=this.sideForUser(gameType,swapped,att.userId);
+        socket.serializeAttachment({...att,side,gameType});
       }
-      await this.maybeStartChessClock();
+      await this.maybeStartClockForGame(gameType);
 
-      const clock=await this.clockSnapshot();
-      const settings=await this.getChessSettings();
-      const ratings=await this.roomRatings();
+      const clock=await this.clockForGameType(gameType);
+      const settings=await this.settingsForGameType(gameType);
+      const ratings=await this.ratingsForGameType(gameType);
       for(const socket of this.ctx.getWebSockets()){
         const att=socket.deserializeAttachment();
         if(!att) continue;
-        const side=this.sideForUser("chess",swapped,att.userId);
+        const side=this.sideForUser(gameType,swapped,att.userId);
         try{
-          socket.send(JSON.stringify({type:"rematch_started",gameType:"chess",side,players:swapped,game:newGame,clock,settings,ratings}));
+          socket.send(JSON.stringify({type:"rematch_started",gameType,side,players:swapped,game:newGame,variant,clock,settings,ratings}));
         }catch{}
       }
       return;
@@ -638,10 +979,10 @@ export class AbaloneRoom extends DurableObject {
 
     if(data.type==="sync"){
       ws.send(JSON.stringify({
-        type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),
+        type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
-        clock:await this.clockSnapshot(),settings:gameType==="chess"?await this.getChessSettings():null,
-        ratings:gameType==="chess"?await this.roomRatings():null,ratingUpdate:await this.getRatingUpdate()
+        clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
+        ratings:await this.ratingsForGameType(gameType),ratingUpdate:await this.getRatingUpdate()
       }));
     }
   }

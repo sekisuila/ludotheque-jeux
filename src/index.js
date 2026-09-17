@@ -152,7 +152,17 @@ async function saveById(request,env,user,id){
 
 const ROOM_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function roomCode(){ let s=''; const a=new Uint8Array(6); crypto.getRandomValues(a); for(const b of a) s+=ROOM_ALPHABET[b%ROOM_ALPHABET.length]; return s; }
-function validRoomGame(game){ return game === "chess" || game === "abalone"; }
+function validRoomGame(game){
+  return game === "chess" || game === "abalone" || game === "checkers-international" || game === "checkers-english";
+}
+function isCheckersRoomGame(game){ return game === "checkers-international" || game === "checkers-english"; }
+function checkersVariantFromRoomGame(game){ return game === "checkers-english" ? "english" : "international"; }
+function isTimedRoomGame(game){ return game === "chess" || isCheckersRoomGame(game); }
+function publicSideForRoomGame(game,slot){
+  if(game==="chess") return slot==="black"?"b":"w";
+  if(isCheckersRoomGame(game)) return slot==="black"?0:1;
+  return slot==="black"?1:2;
+}
 
 function clampInt(value,min,max,fallback){
   const n=Number.parseInt(value,10);
@@ -173,24 +183,37 @@ const CHESS_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classica
 async function createRoom(request,env,user){
   const body=await readJson(request);
   const game=validRoomGame(body?.game)?body.game:"abalone";
+  const checkers=isCheckersRoomGame(game);
 
-  let creatorSide=game==="chess"?String(body?.creatorColor||"random").toLowerCase():"black";
+  // Les colonnes historiques black/white de rooms servent maintenant de
+  // "slot 0 / slot 1" pour les Dames. Les libellés visibles dépendent de la variante.
+  let creatorSlot="black";
+  let creatorColor="black";
   if(game==="chess"){
-    if(creatorSide!=="white" && creatorSide!=="black"){
+    creatorColor=String(body?.creatorColor||"random").toLowerCase();
+    if(creatorColor!=="white" && creatorColor!=="black"){
       const random=new Uint8Array(1); crypto.getRandomValues(random);
-      creatorSide=(random[0]&1)===0?"white":"black";
+      creatorColor=(random[0]&1)===0?"white":"black";
     }
-  }else{
-    creatorSide="black";
+    creatorSlot=creatorColor;
+  }else if(checkers){
+    const requested=String(body?.creatorSide??"random").toLowerCase();
+    let sideIndex;
+    if(requested==="0"||requested==="side0") sideIndex=0;
+    else if(requested==="1"||requested==="side1") sideIndex=1;
+    else { const random=new Uint8Array(1); crypto.getRandomValues(random); sideIndex=random[0]&1; }
+    creatorSlot=sideIndex===0?"black":"white";
+    creatorColor=String(sideIndex);
   }
 
-  const initialSeconds=game==="chess"?clampInt(body?.initialSeconds,30,10800,600):0;
-  const incrementSeconds=game==="chess"?clampInt(body?.incrementSeconds,0,60,0):0;
-  const rated=game==="chess" ? body?.rated!==false : false;
-  const ratingCategory=game==="chess"?chessRatingCategory(initialSeconds,incrementSeconds):null;
+  const timed=isTimedRoomGame(game);
+  const initialSeconds=timed?clampInt(body?.initialSeconds,30,10800,600):0;
+  const incrementSeconds=timed?clampInt(body?.incrementSeconds,0,60,0):0;
+  const rated=timed ? body?.rated!==false : false;
+  const ratingCategory=timed?chessRatingCategory(initialSeconds,incrementSeconds):null;
 
-  const blackId=creatorSide==="black"?user.id:null;
-  const whiteId=creatorSide==="white"?user.id:null;
+  const blackId=creatorSlot==="black"?user.id:null;
+  const whiteId=creatorSlot==="white"?user.id:null;
   let code=null;
 
   for(let i=0;i<8;i++){
@@ -203,33 +226,29 @@ async function createRoom(request,env,user){
         .bind(candidate,game,blackId,whiteId,initialSeconds,incrementSeconds,rated?1:0,ratingCategory).run();
       code=candidate;
       break;
-    }catch(error){
-      console.error("Création salon:",error?.message||error);
-    }
+    }catch(error){ console.error("Création salon:",error?.message||error); }
   }
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
   const stub=env.ABALONE_ROOMS.getByName(code);
+  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):null;
   await stub.fetch("https://room/init",{
-    method:"POST",
-    headers:{"content-type":"application/json"},
+    method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({
       code,game,userId:user.id,username:user.username,
-      creatorSide:creatorSide==="white"?"w":"b",
-      timeControl:{initialSeconds,incrementSeconds},
-      rated,
-      ratingCategory
+      creatorSide:creatorSideForRoom,
+      timeControl:{initialSeconds,incrementSeconds},rated,ratingCategory
     })
   });
 
   return json({
     code,game,
-    side:game==="chess"?(creatorSide==="white"?"w":"b"):1,
-    creatorColor:creatorSide,
-    timeControl:game==="chess"?{initialSeconds,incrementSeconds}:null,
-    rated,
-    ratingCategory,
-    ratingLabel:ratingCategory?CHESS_RATING_LABELS[ratingCategory]:null
+    side:game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):1,
+    creatorColor,
+    creatorSide:checkers?Number(creatorColor):null,
+    variant:checkers?checkersVariantFromRoomGame(game):null,
+    timeControl:timed?{initialSeconds,incrementSeconds}:null,
+    rated,ratingCategory,ratingLabel:ratingCategory?CHESS_RATING_LABELS[ratingCategory]:null
   },201);
 }
 
@@ -239,26 +258,18 @@ async function joinRoom(request,env,user){
 
   let room=await env.DB.prepare("SELECT * FROM rooms WHERE code=?").bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
+  const timed=isTimedRoomGame(room.game);
+  const payloadForSlot=slot=>({
+    code,game:room.game,side:publicSideForRoomGame(room.game,slot),
+    variant:isCheckersRoomGame(room.game)?checkersVariantFromRoomGame(room.game):null,
+    timeControl:timed?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
+    rated:timed?Boolean(room.rated):false,ratingCategory:room.rating_category||null
+  });
 
-  // Un joueur déjà inscrit dans le salon peut se reconnecter même si la
-  // partie vient de se terminer : cela lui permet notamment de proposer
-  // ou d'accepter une revanche.
-  if(room.black_user_id===user.id){
-    return json({
-      code,game:room.game,side:room.game==="chess"?"b":1,
-      timeControl:room.game==="chess"?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
-      rated:room.game==="chess"?Boolean(room.rated):false,
-      ratingCategory:room.rating_category||null
-    });
-  }
-  if(room.white_user_id===user.id){
-    return json({
-      code,game:room.game,side:room.game==="chess"?"w":2,
-      timeControl:room.game==="chess"?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
-      rated:room.game==="chess"?Boolean(room.rated):false,
-      ratingCategory:room.rating_category||null
-    });
-  }
+  // Reconnexion : un joueur déjà inscrit peut revenir, y compris après la fin
+  // pour accepter/proposer une revanche.
+  if(room.black_user_id===user.id) return json(payloadForSlot("black"));
+  if(room.white_user_id===user.id) return json(payloadForSlot("white"));
 
   if(room.status==='finished') return json({error:"Cette partie est terminée."},409);
   if(room.black_user_id && room.white_user_id) return json({error:"Ce salon est déjà complet."},409);
@@ -279,22 +290,12 @@ async function joinRoom(request,env,user){
 
   const stub=env.ABALONE_ROOMS.getByName(code);
   const r=await stub.fetch("https://room/join",{
-    method:"POST",
-    headers:{"content-type":"application/json"},
+    method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({userId:user.id,username:user.username,side:joinSlot})
   });
   if(!r.ok) return json({error:(await r.json()).error||"Impossible de rejoindre."},r.status);
 
-  return json({
-    code,game:room.game,
-    side:room.game==="chess"?(joinSlot==="black"?"b":"w"):(joinSlot==="black"?1:2),
-    timeControl:room.game==="chess"?{
-      initialSeconds:Number(room.time_initial_seconds||600),
-      incrementSeconds:Number(room.time_increment_seconds||0)
-    }:null,
-    rated:room.game==="chess"?Boolean(room.rated):false,
-    ratingCategory:room.rating_category||null
-  });
+  return json(payloadForSlot(joinSlot));
 }
 
 async function roomInfo(env,user,code){
@@ -304,16 +305,20 @@ async function roomInfo(env,user,code){
     r.black_user_id,r.white_user_id FROM rooms r
     LEFT JOIN users ub ON ub.id=r.black_user_id LEFT JOIN users uw ON uw.id=r.white_user_id WHERE r.code=?`).bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
-  const side=room.black_user_id===user.id?(room.game==="chess"?"b":1):room.white_user_id===user.id?(room.game==="chess"?"w":2):null;
+  let side=null;
+  if(room.black_user_id===user.id) side=publicSideForRoomGame(room.game,"black");
+  else if(room.white_user_id===user.id) side=publicSideForRoomGame(room.game,"white");
+  const timed=isTimedRoomGame(room.game);
   return json({room:{
     code:room.code,game:room.game,status:room.status,
     blackUsername:room.black_username,whiteUsername:room.white_username,
     createdAt:room.created_at,
-    timeControl:room.game==="chess"?{
+    variant:isCheckersRoomGame(room.game)?checkersVariantFromRoomGame(room.game):null,
+    timeControl:timed?{
       initialSeconds:Number(room.time_initial_seconds||600),
       incrementSeconds:Number(room.time_increment_seconds||0)
     }:null,
-    rated:room.game==="chess"?Boolean(room.rated):false,
+    rated:timed?Boolean(room.rated):false,
     ratingCategory:room.rating_category||null
   },side});
 }
@@ -387,6 +392,76 @@ async function chessGameById(env,user,id){
   }});
 }
 
+
+async function checkersRatingsForUser(env,userId,variant){
+  variant=variant==="english"?"english":"international";
+  const {results=[]}=await env.DB.prepare(`SELECT category,rating,games,wins,draws,losses,updated_at
+    FROM checkers_ratings WHERE user_id=? AND variant=?`).bind(userId,variant).all();
+  const ratings={};
+  for(const category of ["bullet","blitz","rapid","classical"]){
+    const row=results.find(r=>r.category===category);
+    ratings[category]=row?{
+      rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses),updatedAt:row.updated_at
+    }:{rating:1200,games:0,wins:0,draws:0,losses:0,updatedAt:null};
+  }
+  return ratings;
+}
+
+async function myCheckersRatings(request,env,user){
+  const url=new URL(request.url),variant=url.searchParams.get("variant")==="english"?"english":"international";
+  return json({variant,ratings:await checkersRatingsForUser(env,user.id,variant)});
+}
+
+async function checkersLeaderboard(request,env){
+  const url=new URL(request.url);
+  const variant=url.searchParams.get("variant")==="english"?"english":"international";
+  const category=["bullet","blitz","rapid","classical"].includes(url.searchParams.get("category"))?url.searchParams.get("category"):"rapid";
+  const limit=clampInt(url.searchParams.get("limit"),1,100,30);
+  const {results=[]}=await env.DB.prepare(`SELECT u.username,r.rating,r.games,r.wins,r.draws,r.losses
+    FROM checkers_ratings r JOIN users u ON u.id=r.user_id
+    WHERE r.variant=? AND r.category=? AND r.games>0
+    ORDER BY r.rating DESC,r.games DESC,u.username COLLATE NOCASE ASC LIMIT ?`).bind(variant,category,limit).all();
+  return json({variant,category,label:CHESS_RATING_LABELS[category],players:results});
+}
+
+async function listCheckersGames(request,env,user){
+  const url=new URL(request.url);
+  const requested=url.searchParams.get("variant");
+  const variant=requested==="english"||requested==="international"?requested:null;
+  const sql=`SELECT r.id,r.room_code,r.game_number,r.variant,r.category,r.rated,r.result,r.reason,
+    r.side0_rating_before,r.side1_rating_before,r.side0_rating_after,r.side1_rating_after,r.side0_delta,r.side1_delta,
+    r.time_initial_seconds,r.time_increment_seconds,r.created_at,
+    u0.username AS side0_username,u1.username AS side1_username,
+    CASE WHEN r.game_json IS NULL THEN 0 ELSE 1 END AS replay_available
+    FROM checkers_results r
+    JOIN users u0 ON u0.id=r.side0_user_id JOIN users u1 ON u1.id=r.side1_user_id
+    WHERE (r.side0_user_id=? OR r.side1_user_id=?) ${variant?"AND r.variant=?":""}
+    ORDER BY r.created_at DESC LIMIT 200`;
+  const stmt=env.DB.prepare(sql);
+  const {results=[]}=variant?await stmt.bind(user.id,user.id,variant).all():await stmt.bind(user.id,user.id).all();
+  return json({games:results.map(row=>({
+    id:row.id,roomCode:row.room_code,gameNumber:Number(row.game_number),variant:row.variant,category:row.category,rated:Boolean(row.rated),
+    result:row.result,reason:row.reason,createdAt:row.created_at,side0Username:row.side0_username,side1Username:row.side1_username,
+    side0RatingBefore:row.side0_rating_before,side1RatingBefore:row.side1_rating_before,side0RatingAfter:row.side0_rating_after,side1RatingAfter:row.side1_rating_after,
+    side0Delta:row.side0_delta,side1Delta:row.side1_delta,initialSeconds:row.time_initial_seconds,incrementSeconds:row.time_increment_seconds,
+    replayAvailable:Boolean(row.replay_available)
+  }))});
+}
+
+async function checkersGameById(env,user,id){
+  const row=await env.DB.prepare(`SELECT r.*,u0.username AS side0_username,u1.username AS side1_username
+    FROM checkers_results r JOIN users u0 ON u0.id=r.side0_user_id JOIN users u1 ON u1.id=r.side1_user_id
+    WHERE r.id=? AND (r.side0_user_id=? OR r.side1_user_id=?)`).bind(id,user.id,user.id).first();
+  if(!row) return json({error:"Partie introuvable."},404);
+  return json({game:{
+    id:row.id,roomCode:row.room_code,gameNumber:Number(row.game_number),variant:row.variant,category:row.category,rated:Boolean(row.rated),
+    result:row.result,reason:row.reason,createdAt:row.created_at,side0Username:row.side0_username,side1Username:row.side1_username,
+    initialSeconds:row.time_initial_seconds,incrementSeconds:row.time_increment_seconds,
+    side0RatingBefore:row.side0_rating_before,side1RatingBefore:row.side1_rating_before,side0RatingAfter:row.side0_rating_after,side1RatingAfter:row.side1_rating_after,
+    side0Delta:row.side0_delta,side1Delta:row.side1_delta,replay:row.game_json?JSON.parse(row.game_json):null
+  }});
+}
+
 async function roomWebSocket(request,env,user,code){
   const room=await env.DB.prepare("SELECT game,black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
   if(!room || (room.black_user_id!==user.id && room.white_user_id!==user.id)) return new Response("Accès refusé",{status:403});
@@ -413,8 +488,12 @@ async function api(request,env){
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
   if(p==="/api/ratings/me"&&request.method==="GET") return myChessRatings(env,user);
   if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
+  if(p==="/api/ratings/checkers/me"&&request.method==="GET") return myCheckersRatings(request,env,user);
+  if(p==="/api/ratings/checkers"&&request.method==="GET") return checkersLeaderboard(request,env);
   if(p==="/api/chess/games"&&request.method==="GET") return listChessGames(env,user);
   const chessGameMatch=p.match(/^\/api\/chess\/games\/([0-9a-f-]{36})$/i); if(chessGameMatch&&request.method==="GET") return chessGameById(env,user,chessGameMatch[1]);
+  if(p==="/api/checkers/games"&&request.method==="GET") return listCheckersGames(request,env,user);
+  const checkersGameMatch=p.match(/^\/api\/checkers\/games\/([0-9a-f-]{36})$/i); if(checkersGameMatch&&request.method==="GET") return checkersGameById(env,user,checkersGameMatch[1]);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
