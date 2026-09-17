@@ -1106,7 +1106,7 @@ function renderChessInfo() {
     const online = chessUi.online;
     if (online.result?.over) {
       text = online.result.text || "Partie terminée.";
-      alert = online.result.type === "checkmate";
+      alert = ["checkmate", "timeout", "resign"].includes(online.result.type);
     } else if (!online.connected) {
       text = "Mode en ligne : créez un salon ou rejoignez-en un avec son code.";
       alert = false;
