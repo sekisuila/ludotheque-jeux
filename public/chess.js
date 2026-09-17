@@ -625,7 +625,7 @@ function chessUpdateClockDisplay(){
     const escapeHtml=(value)=>String(value ?? "").replace(/[&<>"']/g,(ch)=>({
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     }[ch]));
-    readout.innerHTML=`
+    const blackCard=`
       <div class="clock-side-row black ${blackActive?"active":""}">
         <div class="clock-side-head">
           <span class="clock-side-indicator" aria-hidden="true">
@@ -639,7 +639,9 @@ function chessUpdateClockDisplay(){
           <span class="clock-side-rating">Elo ${blackRating}</span>
         </div>
         <div class="clock-side-time">${chessFormatClock(values.blackMs)}</div>
-      </div>
+      </div>`;
+
+    const whiteCard=`
       <div class="clock-side-row white ${whiteActive?"active":""}">
         <div class="clock-side-head">
           <span class="clock-side-indicator" aria-hidden="true">
@@ -654,6 +656,15 @@ function chessUpdateClockDisplay(){
         </div>
         <div class="clock-side-time">${chessFormatClock(values.whiteMs)}</div>
       </div>`;
+
+    // V6.17 : les pendules suivent l'orientation réelle de l'échiquier.
+    // La couleur qui se trouve en bas du plateau est aussi affichée en bas
+    // dans le panneau des pendules. Cela reste vrai si le joueur retourne
+    // manuellement l'échiquier pendant la partie.
+    const bottomSide=chessUi.orientation === "b" ? "black" : "white";
+    readout.innerHTML=bottomSide === "black"
+      ? `${whiteCard}${blackCard}`
+      : `${blackCard}${whiteCard}`;
   }
 
   const meta=panel.querySelector('[data-clock-role="meta"]');
