@@ -1450,3 +1450,40 @@ main { min-height: calc(100vh - 160px); }
   .chess-clock-stack{grid-template-columns:1fr}
   .chess-clock-card{min-height:68px}
 }
+
+/* ============================================================
+   V6.9 — Pendules Blancs/Noirs isolées du reste du DOM
+   ============================================================ */
+.chess-shell{overflow:visible}
+.chess-clock-panel{overflow:visible!important}
+.chess-clock-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.7rem;
+  width:100%;
+  min-width:0;
+}
+.chess-clock-grid>.chess-clock-card{
+  display:flex!important;
+  position:relative!important;
+  visibility:visible!important;
+  opacity:1!important;
+}
+@media (min-width:760px){
+  .chess-clock-grid{
+    grid-template-columns:1fr;
+    gap:.55rem;
+  }
+}
+@media (max-width:759px){
+  .chess-clock-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .chess-clock-grid>.chess-clock-card{
+    min-height:70px;
+    padding:.6rem .65rem;
+  }
+  .chess-clock-grid>.chess-clock-card strong{
+    font-size:clamp(1.2rem,6vw,1.7rem);
+  }
+}

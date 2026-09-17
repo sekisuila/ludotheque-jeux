@@ -588,26 +588,36 @@ function chessRenderRatingResult(update){
 function chessEnsureClockPanel(){
   const panel=document.getElementById("chessClockPanel");
   if(!panel) return null;
-  const complete=panel.querySelector(".chess-clock-stack")
-    && document.getElementById("chessWhiteClock")
-    && document.getElementById("chessBlackClock")
-    && document.getElementById("chessWhitePlayer")
-    && document.getElementById("chessBlackPlayer");
-  if(!complete){
+
+  // V6.9 : le panneau de pendules est entièrement autonome.
+  // On évite les getElementById globaux, qui pouvaient pointer vers un ancien
+  // exemplaire de l'échiquier dans l'application mono-page.
+  if(panel.dataset.clockVersion!=="69"){
     panel.innerHTML=`
-      <div class="chess-clock-stack">
-        <div class="chess-clock-card black-clock" data-side="b">
-          <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
-          <strong id="chessBlackClock">0:00</strong>
+      <div class="chess-clock-grid" aria-label="Pendules de la partie">
+        <div class="chess-clock-card black-clock" data-clock-side="b">
+          <div>
+            <span data-clock-role="name">Noirs</span>
+            <small data-clock-role="rating">Elo —</small>
+          </div>
+          <strong data-clock-role="time">0:00</strong>
         </div>
-        <div class="chess-clock-card white-clock" data-side="w">
-          <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
-          <strong id="chessWhiteClock">0:00</strong>
+        <div class="chess-clock-card white-clock" data-clock-side="w">
+          <div>
+            <span data-clock-role="name">Blancs</span>
+            <small data-clock-role="rating">Elo —</small>
+          </div>
+          <strong data-clock-role="time">0:00</strong>
         </div>
       </div>
-      <div id="chessTimeMeta" class="chess-time-meta"></div>`;
+      <div class="chess-time-meta" data-clock-role="meta"></div>`;
+    panel.dataset.clockVersion="69";
   }
   return panel;
+}
+
+function chessClockCard(panel,side){
+  return panel?.querySelector(`[data-clock-side="${side}"]`)||null;
 }
 
 function chessUpdateClockDisplay(){
@@ -618,38 +628,44 @@ function chessUpdateClockDisplay(){
   if(!online?.connected) return;
 
   const values=chessOnlineClockValues();
-  const whiteClock=document.getElementById("chessWhiteClock");
-  const blackClock=document.getElementById("chessBlackClock");
+  const whiteCard=chessClockCard(panel,"w");
+  const blackCard=chessClockCard(panel,"b");
+
+  // Les deux cartes sont volontairement mises à jour séparément et localement.
+  // Cela garantit que Blancs et Noirs ne peuvent pas se retrouver dans le même
+  // élément DOM, même si une ancienne vue existe encore ailleurs dans la page.
+  const whiteTime=whiteCard?.querySelector('[data-clock-role="time"]');
+  const blackTime=blackCard?.querySelector('[data-clock-role="time"]');
   if(values){
-    if(whiteClock) whiteClock.textContent=chessFormatClock(values.whiteMs);
-    if(blackClock) blackClock.textContent=chessFormatClock(values.blackMs);
+    if(whiteTime) whiteTime.textContent=chessFormatClock(values.whiteMs);
+    if(blackTime) blackTime.textContent=chessFormatClock(values.blackMs);
   }
 
-  const whiteCard=panel.querySelector('[data-side="w"]');
-  const blackCard=panel.querySelector('[data-side="b"]');
   whiteCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="w"&&!online.result?.over));
   blackCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="b"&&!online.result?.over));
 
   const players=online.players||{};
-  const whiteName=document.getElementById("chessWhitePlayer");
-  const blackName=document.getElementById("chessBlackPlayer");
+  const whiteName=whiteCard?.querySelector('[data-clock-role="name"]');
+  const blackName=blackCard?.querySelector('[data-clock-role="name"]');
   if(whiteName) whiteName.textContent=players.white?.username||"Blancs";
   if(blackName) blackName.textContent=players.black?.username||"Noirs";
 
   const category=online.settings?.ratingCategory||"rapid";
   const ratings=online.ratings||{};
-  const whiteRating=document.getElementById("chessWhiteRating");
-  const blackRating=document.getElementById("chessBlackRating");
+  const whiteRating=whiteCard?.querySelector('[data-clock-role="rating"]');
+  const blackRating=blackCard?.querySelector('[data-clock-role="rating"]');
   if(whiteRating) whiteRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.white?.rating ?? 1200}`;
   if(blackRating) blackRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.black?.rating ?? 1200}`;
 
-  const meta=document.getElementById("chessTimeMeta");
+  const meta=panel.querySelector('[data-clock-role="meta"]');
   if(meta){
     const tc=online.settings?.timeControl;
     if(tc){
       const min=Number(tc.initialSeconds||0)/60;
       const inc=Number(tc.incrementSeconds||0);
       meta.textContent=`${Number.isInteger(min)?min:min.toFixed(1)}+${inc} · ${CHESS_RATING_LABELS[category]||category} · ${online.settings?.rated?"classée Elo":"amicale"}`;
+    }else{
+      meta.textContent="";
     }
   }
 }
