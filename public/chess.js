@@ -591,11 +591,11 @@ function chessEnsureClockPanel(){
 
   // V6.11 : on conserve un SEUL panneau parent pour garantir la robustesse,
   // mais on rend deux lignes/carte internes pour retrouver une vraie qualité visuelle.
-  if(panel.dataset.clockVersion!=="613"){
+  if(panel.dataset.clockVersion!=="614"){
     panel.innerHTML=`
       <div class="chess-dual-clock-readout" data-clock-role="readout" aria-label="Pendules Noir et Blanc"></div>
       <div class="chess-time-meta" data-clock-role="meta"></div>`;
-    panel.dataset.clockVersion="613";
+    panel.dataset.clockVersion="614";
   }
   return panel;
 }
@@ -621,13 +621,39 @@ function chessUpdateClockDisplay(){
 
   const readout=panel.querySelector('[data-clock-role="readout"]');
   if(readout){
-    // Les deux temps sont volontairement dans LE MÊME élément DOM.
-    // Une ligne ne peut donc plus être supprimée ou masquée indépendamment.
-    readout.textContent=
-      `${blackActive?"▶":"●"} Noirs · ${blackName}\n`+
-      `${chessFormatClock(values.blackMs)} · Elo ${blackRating}\n\n`+
-      `${whiteActive?"▶":"○"} Blancs · ${whiteName}\n`+
-      `${chessFormatClock(values.whiteMs)} · Elo ${whiteRating}`;
+    // V6.14 : deux vrais blocs internes, toujours dans le même panneau parent.
+    const escapeHtml=(value)=>String(value ?? "").replace(/[&<>"']/g,(ch)=>({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[ch]));
+    readout.innerHTML=`
+      <div class="clock-side-row black ${blackActive?"active":""}">
+        <div class="clock-side-head">
+          <span class="clock-side-indicator" aria-hidden="true">
+            <span class="clock-color-dot black-dot"></span>
+            ${blackActive?'<span class="clock-turn-arrow">▶</span>':''}
+          </span>
+          <div class="clock-side-identity">
+            <span class="clock-side-label">Noirs</span>
+            <strong class="clock-side-name" title="${escapeHtml(blackName)}">${escapeHtml(blackName)}</strong>
+          </div>
+          <span class="clock-side-rating">Elo ${blackRating}</span>
+        </div>
+        <div class="clock-side-time">${chessFormatClock(values.blackMs)}</div>
+      </div>
+      <div class="clock-side-row white ${whiteActive?"active":""}">
+        <div class="clock-side-head">
+          <span class="clock-side-indicator" aria-hidden="true">
+            <span class="clock-color-dot white-dot"></span>
+            ${whiteActive?'<span class="clock-turn-arrow">▶</span>':''}
+          </span>
+          <div class="clock-side-identity">
+            <span class="clock-side-label">Blancs</span>
+            <strong class="clock-side-name" title="${escapeHtml(whiteName)}">${escapeHtml(whiteName)}</strong>
+          </div>
+          <span class="clock-side-rating">Elo ${whiteRating}</span>
+        </div>
+        <div class="clock-side-time">${chessFormatClock(values.whiteMs)}</div>
+      </div>`;
   }
 
   const meta=panel.querySelector('[data-clock-role="meta"]');

@@ -1721,3 +1721,29 @@ main { min-height: calc(100vh - 160px); }
     row-gap:1.75rem !important;
   }
 }
+
+
+/* ============================================================
+   V6.14 — correction effective du rendu HTML des deux pendules
+   ============================================================ */
+.chess-dual-clock-readout{
+  gap:2.25rem !important;
+}
+.chess-dual-clock-readout .clock-side-row + .clock-side-row{
+  margin-top:0 !important;
+}
+.chess-dual-clock-readout .clock-color-dot{
+  width:20px !important;
+  height:20px !important;
+  min-width:20px !important;
+  min-height:20px !important;
+  flex-basis:20px !important;
+}
+.chess-dual-clock-readout .black-dot,
+.chess-dual-clock-readout .white-dot{
+  box-sizing:border-box !important;
+  border-width:2px !important;
+}
+@media (max-width:640px){
+  .chess-dual-clock-readout{gap:1.8rem !important;}
+}
