@@ -78,6 +78,17 @@
     get: async id => (await request(`/api/chess/games/${encodeURIComponent(id)}`)).game
   };
 
+  const checkersRatings = {
+    mine: async (variant = "international") => (await request(`/api/ratings/checkers/me?variant=${encodeURIComponent(variant)}`)).ratings,
+    leaderboard: async (variant = "international", category = "rapid", limit = 30) =>
+      request(`/api/ratings/checkers?variant=${encodeURIComponent(variant)}&category=${encodeURIComponent(category)}&limit=${encodeURIComponent(limit)}`)
+  };
+
+  const checkersGames = {
+    list: async (variant = "") => (await request(`/api/checkers/games${variant?`?variant=${encodeURIComponent(variant)}`:""}`)).games,
+    get: async id => (await request(`/api/checkers/games/${encodeURIComponent(id)}`)).game
+  };
+
   const rooms = {
     create: async (game = "abalone", options = {}) => request("/api/rooms", { method: "POST", body: { game, ...options } }),
     join: async code => request("/api/rooms/join", { method: "POST", body: { code } }),
@@ -99,7 +110,7 @@
   window.LudoOnline = {
     state, request, me, register, login, logout,
     changePassword, generateRecoveryKey, resetWithRecovery,
-    saves, ratings, chessGames, rooms, updateNav
+    saves, ratings, chessGames, checkersRatings, checkersGames, rooms, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));
 })();

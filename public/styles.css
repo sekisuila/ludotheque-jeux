@@ -1861,3 +1861,100 @@ main { min-height: calc(100vh - 160px); }
     justify-self:start !important;
   }
 }
+
+/* ============================================================
+   V6.18 — Dames multijoueur : salons, pendules et décisions
+   ============================================================ */
+.draught-online-settings{align-items:end}
+.draught-clock-panel{
+  margin:.8rem auto 1rem;
+  width:min(100%,720px);
+}
+.draught-clock-panel[hidden]{display:none!important}
+.draught-clock-readout{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1rem;
+  margin-bottom:.55rem;
+}
+.draught-clock-row{
+  display:grid;
+  grid-template-rows:auto auto;
+  gap:.7rem;
+  min-width:0;
+  min-height:112px;
+  padding:.85rem .95rem .9rem;
+  border:1px solid var(--line);
+  border-radius:14px;
+  box-shadow:0 6px 16px rgba(35,30,25,.08);
+  transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+.draught-clock-row.active{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent),0 8px 18px rgba(35,30,25,.12);
+  transform:translateY(-1px);
+}
+.draught-clock-row.color-black{background:linear-gradient(180deg,#262422,#141311);color:#fff7e9;border-color:#4e4943}
+.draught-clock-row.color-white{background:linear-gradient(180deg,#fffdf8,#f1ede3);color:#211f1a}
+.draught-clock-row.color-red{background:linear-gradient(180deg,#b9473e,#91342d);color:#fff9ee;border-color:#7f2e28}
+.draught-clock-player{
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr);
+  gap:.65rem;
+  align-items:center;
+  min-width:0;
+}
+.draught-clock-player>div{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:.6rem;align-items:center;min-width:0}
+.draught-clock-player span{grid-column:1;font-size:.72rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+.draught-clock-player strong{grid-column:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1rem}
+.draught-clock-player small{grid-column:2;grid-row:1 / span 2;align-self:center;padding:.18rem .45rem;border-radius:999px;background:rgba(255,255,255,.13);font-weight:800;white-space:nowrap}
+.draught-clock-row.color-white .draught-clock-player small{background:rgba(0,0,0,.06)}
+.draught-clock-dot{display:block;width:20px;height:20px;border-radius:50%;box-sizing:border-box}
+.color-black .draught-clock-dot{background:#050505;border:2px solid #888;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+.color-white .draught-clock-dot{background:#fff;border:2px solid #555}
+.color-red .draught-clock-dot{background:#c84339;border:2px solid rgba(75,15,15,.65);box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+.draught-clock-time{
+  border-top:1px solid rgba(255,255,255,.16);
+  padding-top:.45rem;
+  text-align:center;
+  font-size:clamp(1.8rem,3vw,2.45rem);
+  line-height:1;
+  font-weight:900;
+  letter-spacing:.04em;
+  font-variant-numeric:tabular-nums;
+}
+.color-white .draught-clock-time{border-top-color:rgba(0,0,0,.11)}
+.draught-clock-panel .chess-time-meta{text-align:center;margin:0}
+
+@media (min-width:1101px) and (min-height:760px){
+  .draught-board-wrap{width:min(100%,720px,calc(100vh - 330px));}
+}
+@media (max-width:680px){
+  .draught-clock-readout{grid-template-columns:1fr;gap:.85rem}
+  .draught-clock-row{min-height:104px}
+  .draught-clock-player>div{grid-template-columns:minmax(0,1fr) auto}
+}
+
+/* Relecture des parties de Dames dans Compte. */
+.archive-draught-board{
+  display:grid;
+  grid-template-columns:repeat(var(--archive-draught-size),1fr);
+  width:min(100%,560px);
+  aspect-ratio:1/1;
+  margin:0 auto;
+  border:6px solid #4e3828;
+  border-radius:8px;
+  overflow:hidden;
+  background:#4e3828;
+}
+.archive-draught-square{display:grid;place-items:center;min-width:0;min-height:0}
+.archive-draught-square.light{background:#eadfca}
+.archive-draught-square.dark{background:#76583e}
+.archive-draught-piece{
+  display:grid;place-items:center;
+  width:70%;height:70%;border-radius:50%;
+  border:2px solid rgba(30,25,20,.35);
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.14),0 2px 4px rgba(0,0,0,.23);
+  font-size:clamp(.7rem,2.2vw,1.5rem);
+}
+.archive-draught-piece.king{box-shadow:inset 0 0 0 3px rgba(210,166,52,.82),inset 0 -4px 0 rgba(0,0,0,.14),0 2px 4px rgba(0,0,0,.23)}

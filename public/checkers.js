@@ -497,11 +497,27 @@ function draughtChooseAiMove(game, level, aiSide) {
 }
 
 // ------------------------------------------------------------
-// Interface utilisateur.
+// Interface utilisateur — local, IA et multijoueur Cloudflare.
 // ------------------------------------------------------------
 let draughtUi = null;
 
+const DRAUGHT_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
+
+function draughtEmptyOnlineState(){
+  return {
+    ws:null,code:null,connected:false,side:null,players:{black:null,white:null},
+    result:null,clock:null,settings:null,ratings:null,ratingUpdate:null,
+    drawOffer:null,rematchOffer:null,pendingProposal:null,clockTimer:null
+  };
+}
+
+function draughtGameKey(){ return draughtUi?.variant==="english"?"checkers-english":"checkers-international"; }
+function draughtPlayerForSide(side){ return Number(side)===0?draughtUi?.online?.players?.black:draughtUi?.online?.players?.white; }
+function draughtRatingForSide(side){ return Number(side)===0?draughtUi?.online?.ratings?.side0:draughtUi?.online?.ratings?.side1; }
+
 function initDraughts(variant = "international") {
+  if(draughtUi?.online?.ws){ try{draughtUi.online.ws.close();}catch{} }
+  if(draughtUi?.online?.clockTimer) clearInterval(draughtUi.online.clockTimer);
   const game = new DraughtsGame(variant);
   const cfg = game.config;
   draughtUi = {
@@ -513,13 +529,17 @@ function initDraughts(variant = "international") {
     humanSide: cfg.firstSide,
     orientation: cfg.firstSide,
     thinking: false,
-    variant
+    variant,
+    online:draughtEmptyOnlineState()
   };
 
   document.getElementById("draughtMode")?.addEventListener("change", e => {
+    if(draughtUi.mode==="online") draughtDisconnectOnline();
     draughtUi.mode = e.target.value;
     document.getElementById("draughtAiSettings").hidden = draughtUi.mode !== "ai";
+    document.getElementById("draughtOnlineSettings").hidden = draughtUi.mode !== "online";
     newDraughtGame();
+    if(draughtUi.mode==="online") draughtRefreshOnlineLoginStatus();
   });
   document.getElementById("draughtAiLevel")?.addEventListener("change", e => draughtUi.aiLevel = e.target.value);
   document.getElementById("draughtSide")?.addEventListener("change", e => {
@@ -527,17 +547,37 @@ function initDraughts(variant = "international") {
     draughtUi.orientation = draughtUi.humanSide;
     newDraughtGame();
   });
+  document.getElementById("draughtTimePreset")?.addEventListener("change",draughtUpdateCustomTimeVisibility);
+  document.getElementById("createDraughtRoom")?.addEventListener("click",draughtCreateOnlineRoom);
+  document.getElementById("joinDraughtRoom")?.addEventListener("click",draughtJoinOnlineRoom);
+  document.getElementById("draughtRoomCode")?.addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,6));
   document.getElementById("newDraught")?.addEventListener("click", newDraughtGame);
   document.getElementById("undoDraught")?.addEventListener("click", undoDraughtMove);
   document.getElementById("flipDraught")?.addEventListener("click", () => {
     draughtUi.orientation = 1 - draughtUi.orientation;
     renderDraughtBoard();
+    draughtUpdateClockDisplay();
   });
+  document.getElementById("resignDraughtOnline")?.addEventListener("click",draughtResignOnline);
+  document.getElementById("offerDrawDraught")?.addEventListener("click",()=>draughtSendOnlineAction("draw_offer"));
+  document.getElementById("offerRematchDraught")?.addEventListener("click",()=>draughtSendOnlineAction("rematch_offer"));
+  document.getElementById("acceptDraughtProposal")?.addEventListener("click",()=>draughtRespondToOnlineProposal(true));
+  document.getElementById("declineDraughtProposal")?.addEventListener("click",()=>draughtRespondToOnlineProposal(false));
 
+  draughtUpdateCustomTimeVisibility();
   newDraughtGame();
 }
 
 function newDraughtGame() {
+  if(!draughtUi) return;
+  if(draughtUi.mode==="online"){
+    draughtUi.selected=null; draughtUi.candidateMoves=[]; draughtUi.thinking=false;
+    hideDraughtPathPicker();
+    if(draughtUi.online.side===0||draughtUi.online.side===1) draughtUi.orientation=Number(draughtUi.online.side);
+    renderDraughtBoard();
+    draughtUpdateOnlineControls();
+    return;
+  }
   draughtUi.game.reset();
   draughtUi.selected = null;
   draughtUi.candidateMoves = [];
@@ -552,7 +592,6 @@ function draughtBoardOrder() {
   const size = draughtUi.game.config.size;
   const normal = Array.from({ length: size }, (_, i) => i);
   const reverse = [...normal].reverse();
-  // L'orientation place le camp choisi visuellement en bas.
   const bottomSide = draughtUi.game.config.setupBottomSide;
   const shouldReverse = draughtUi.orientation !== bottomSide;
   return { rows: shouldReverse ? reverse : normal, cols: shouldReverse ? reverse : normal };
@@ -598,19 +637,26 @@ function renderDraughtBoard() {
   renderDraughtInfo();
 }
 
+function draughtEffectiveStatus(){
+  if(draughtUi?.mode==="online" && draughtUi.online?.result?.over) return draughtUi.online.result;
+  return draughtUi.game.status();
+}
+
 function renderDraughtInfo() {
   if (!draughtUi) return;
   const game = draughtUi.game;
   const cfg = game.config;
-  const status = game.status();
+  const status = draughtEffectiveStatus();
   const counts = game.pieceCounts();
   const statusEl = document.getElementById("draughtStatus");
   const turnEl = document.getElementById("draughtTurn");
   const historyEl = document.getElementById("draughtHistory");
   if (!statusEl || !turnEl || !historyEl) return;
 
-  statusEl.textContent = draughtUi.thinking ? "L’IA réfléchit…" : status.text;
-  statusEl.classList.toggle("alert", status.type === "capture" || status.type === "win");
+  let text=draughtUi.thinking ? "L’IA réfléchit…" : status.text;
+  if(draughtUi.mode==="online"&&draughtUi.online.connected&&!draughtOnlineHasTwoPlayers()) text="Salon créé. En attente du deuxième joueur…";
+  statusEl.textContent = text;
+  statusEl.classList.toggle("alert", status.type === "capture" || status.type === "win" || status.over);
   turnEl.textContent = cfg.sideNames[game.state.turn];
 
   document.getElementById("draughtCount0").textContent = `${counts[0].total} (${counts[0].kings} dame${counts[0].kings > 1 ? "s" : ""})`;
@@ -618,16 +664,20 @@ function renderDraughtInfo() {
   document.getElementById("draughtLabel0").textContent = cfg.sideNames[0];
   document.getElementById("draughtLabel1").textContent = cfg.sideNames[1];
 
-  const items = game.history.map((item, i) => `<div class="draught-history-row"><span>${i + 1}.</span><span>${item.notation}</span></div>`);
+  const items = game.history.map((item, i) => `<div class="draught-history-row"><span>${i + 1}.</span><span>${item.notation||draughtMoveNotation(cfg,item.move)}</span></div>`);
   historyEl.innerHTML = items.length ? items.join("") : `<div class="history-empty">Les coups apparaîtront ici.</div>`;
   historyEl.scrollTop = historyEl.scrollHeight;
 
   const undo = document.getElementById("undoDraught");
-  if (undo) undo.disabled = draughtUi.thinking || !game.history.length;
+  if (undo) undo.disabled = draughtUi.mode==="online" || draughtUi.thinking || !game.history.length;
+  const newer=document.getElementById("newDraught"); if(newer) newer.disabled=draughtUi.mode==="online";
+  draughtRenderRatingUpdate();
+  draughtUpdateOnlineControls();
+  draughtUpdateClockDisplay();
 }
 
 function onDraughtSquareClick(event) {
-  if (!draughtUi || draughtUi.thinking || draughtUi.game.status().over) return;
+  if (!draughtUi || draughtUi.thinking || draughtEffectiveStatus().over) return;
   const r = Number(event.currentTarget.dataset.r);
   const c = Number(event.currentTarget.dataset.c);
   const game = draughtUi.game;
@@ -635,35 +685,28 @@ function onDraughtSquareClick(event) {
   const turn = game.state.turn;
 
   if (draughtUi.mode === "ai" && turn !== draughtUi.humanSide) return;
+  if (draughtUi.mode === "online") {
+    if(!draughtUi.online.connected || !draughtOnlineHasTwoPlayers()) return;
+    if(Number(draughtUi.online.side)!==Number(turn)) return;
+  }
 
   if (draughtUi.selected) {
     const matches = draughtUi.candidateMoves.filter(move => move.to[0] === r && move.to[1] === c);
-    if (matches.length === 1) {
-      playDraughtMove(matches[0]);
-      return;
-    }
-    if (matches.length > 1) {
-      showDraughtPathPicker(matches);
-      return;
-    }
+    if (matches.length === 1) { playDraughtMove(matches[0]); return; }
+    if (matches.length > 1) { showDraughtPathPicker(matches); return; }
   }
 
   if (piece && piece.side === turn) {
+    if(draughtUi.mode==="online" && piece.side!==Number(draughtUi.online.side)) return;
     const moves = game.legalMovesFrom(r,c);
-    if (moves.length) {
-      draughtUi.selected = [r,c];
-      draughtUi.candidateMoves = moves;
-    } else {
-      draughtUi.selected = null;
-      draughtUi.candidateMoves = [];
-    }
+    if (moves.length) { draughtUi.selected = [r,c]; draughtUi.candidateMoves = moves; }
+    else { draughtUi.selected = null; draughtUi.candidateMoves = []; }
   } else {
     draughtUi.selected = null;
     draughtUi.candidateMoves = [];
   }
   renderDraughtBoard();
 }
-
 
 function showDraughtPathPicker(moves) {
   const picker = document.getElementById("draughtPathPicker");
@@ -688,6 +731,13 @@ function hideDraughtPathPicker() {
 
 function playDraughtMove(move) {
   hideDraughtPathPicker();
+  if(draughtUi.mode==="online"){
+    if(!draughtUi.online.ws || draughtUi.online.ws.readyState!==WebSocket.OPEN) return;
+    draughtUi.online.ws.send(JSON.stringify({type:"move",move:{path:move.path}}));
+    draughtUi.selected=null; draughtUi.candidateMoves=[];
+    renderDraughtBoard();
+    return;
+  }
   if (!draughtUi.game.play(move)) return;
   draughtUi.selected = null;
   draughtUi.candidateMoves = [];
@@ -696,16 +746,14 @@ function playDraughtMove(move) {
 }
 
 function undoDraughtMove() {
-  if (!draughtUi || draughtUi.thinking) return;
+  if (!draughtUi || draughtUi.thinking || draughtUi.mode==="online") return;
   hideDraughtPathPicker();
   const game = draughtUi.game;
   if (draughtUi.mode === "ai") {
     if (!game.history.length) return;
     game.undo();
     if (game.state.turn !== draughtUi.humanSide && game.history.length) game.undo();
-  } else {
-    game.undo();
-  }
+  } else game.undo();
   draughtUi.selected = null;
   draughtUi.candidateMoves = [];
   renderDraughtBoard();
@@ -723,3 +771,285 @@ function maybeDraughtAiTurn() {
     renderDraughtBoard();
   }, 140);
 }
+
+// ------------------------------------------------------------
+// Multijoueur Dames.
+// ------------------------------------------------------------
+function draughtOnlineHasTwoPlayers(){ return Boolean(draughtUi?.online?.players?.black&&draughtUi?.online?.players?.white); }
+function draughtSetRoomStatus(text,error=false){
+  const el=document.getElementById("draughtRoomStatus"); if(!el) return;
+  el.textContent=text; el.classList.toggle("error",Boolean(error));
+}
+
+async function draughtRefreshOnlineLoginStatus(){
+  if(!window.LudoOnline){ draughtSetRoomStatus("Service en ligne indisponible.",true); return null; }
+  try{
+    const user=await LudoOnline.me(true);
+    if(!user){ draughtSetRoomStatus("Connectez-vous dans Compte pour jouer en ligne.",true); return null; }
+    if(!draughtUi.online.connected) draughtSetRoomStatus(`Connecté : ${user.username}. Créez ou rejoignez un salon.`);
+    return user;
+  }catch(err){ draughtSetRoomStatus(err.message,true); return null; }
+}
+
+function draughtUpdateCustomTimeVisibility(){
+  const select=document.getElementById("draughtTimePreset"),custom=document.getElementById("draughtCustomTime");
+  if(custom) custom.hidden=select?.value!=="custom";
+}
+
+function draughtSelectedTimeControl(){
+  const preset=document.getElementById("draughtTimePreset")?.value||"600,5";
+  if(preset!=="custom"){
+    const [initialSeconds,incrementSeconds]=preset.split(",").map(Number);
+    return {initialSeconds,incrementSeconds};
+  }
+  const mins=Math.min(180,Math.max(1,Number(document.getElementById("draughtInitialMinutes")?.value||10)));
+  const inc=Math.min(60,Math.max(0,Number(document.getElementById("draughtIncrementSeconds")?.value||0)));
+  return {initialSeconds:Math.round(mins*60),incrementSeconds:Math.round(inc)};
+}
+
+async function draughtCreateOnlineRoom(){
+  const user=await draughtRefreshOnlineLoginStatus(); if(!user) return;
+  try{
+    draughtSetRoomStatus("Création du salon…");
+    const time=draughtSelectedTimeControl();
+    const data=await LudoOnline.rooms.create(draughtGameKey(),{
+      creatorSide:document.getElementById("draughtCreatorSide")?.value||"random",
+      initialSeconds:time.initialSeconds,incrementSeconds:time.incrementSeconds,
+      rated:Boolean(document.getElementById("draughtRated")?.checked)
+    });
+    document.getElementById("draughtRoomCode").value=data.code;
+    draughtUi.online.code=data.code;
+    draughtUi.online.side=Number(data.side);
+    draughtUi.orientation=Number(data.side);
+    draughtSetRoomStatus(`Salon ${data.code} créé. Partagez ce code avec votre adversaire.`);
+    draughtConnectOnline(data.code);
+  }catch(err){ draughtSetRoomStatus(err.message,true); }
+}
+
+async function draughtJoinOnlineRoom(){
+  const user=await draughtRefreshOnlineLoginStatus(); if(!user) return;
+  const code=(document.getElementById("draughtRoomCode")?.value||"").trim().toUpperCase();
+  if(code.length!==6){ draughtSetRoomStatus("Saisissez un code de salon à 6 caractères.",true); return; }
+  try{
+    draughtSetRoomStatus("Vérification du salon…");
+    const info=await LudoOnline.rooms.info(code);
+    if(info?.room?.game!==draughtGameKey()){
+      const label=info?.room?.game==="checkers-english"?"Dames anglaises 8×8":info?.room?.game==="checkers-international"?"Dames internationales 10×10":"un autre jeu";
+      throw new Error(`Ce code correspond à ${label}. Ouvrez la variante correspondante avant de le rejoindre.`);
+    }
+    const data=await LudoOnline.rooms.join(code);
+    draughtUi.online.code=data.code;
+    draughtUi.online.side=Number(data.side);
+    draughtUi.orientation=Number(data.side);
+    draughtSetRoomStatus(`Salon ${data.code} rejoint.`);
+    draughtConnectOnline(data.code);
+  }catch(err){ draughtSetRoomStatus(err.message,true); }
+}
+
+function draughtDisconnectOnline(){
+  if(!draughtUi?.online) return;
+  try{draughtUi.online.ws?.close();}catch{}
+  if(draughtUi.online.clockTimer) clearInterval(draughtUi.online.clockTimer);
+  draughtUi.online=draughtEmptyOnlineState();
+  document.getElementById("draughtClockPanel")?.setAttribute("hidden","");
+  draughtHideOnlinePrompt();
+}
+
+function draughtConnectOnline(code){
+  if(!window.LudoOnline) return;
+  try{draughtUi.online.ws?.close();}catch{}
+  const ws=LudoOnline.rooms.connect(code,{
+    open(){ draughtUi.online.connected=true; draughtSetRoomStatus(`Connecté au salon ${code}.`); draughtUpdateOnlineControls(); },
+    message(data){ draughtHandleOnlineMessage(data); },
+    close(){
+      if(!draughtUi) return;
+      draughtUi.online.connected=false;
+      draughtSetRoomStatus("Connexion au salon fermée.",true);
+      draughtUpdateOnlineControls();
+    },
+    error(err){ draughtSetRoomStatus(err?.message||"Erreur de connexion.",true); }
+  });
+  draughtUi.online.ws=ws;
+  if(draughtUi.online.clockTimer) clearInterval(draughtUi.online.clockTimer);
+  draughtUi.online.clockTimer=setInterval(()=>draughtUpdateClockDisplay(),250);
+}
+
+function draughtApplyServerGame(serverGame){
+  if(!serverGame?.state) return;
+  draughtUi.game.state=draughtUi.game.cloneState(serverGame.state);
+  draughtUi.game.history=Array.isArray(serverGame.history)?serverGame.history.map(item=>({
+    ...item,state:item.state?draughtUi.game.cloneState(item.state):item.state
+  })):[];
+  draughtUi.game.positionHistory=Array.isArray(serverGame.positionHistory)?[...serverGame.positionHistory]:[];
+  draughtUi.online.result=serverGame.result||null;
+  draughtUi.selected=null; draughtUi.candidateMoves=[];
+}
+
+function draughtSetOnlineClock(clock){ draughtUi.online.clock=clock?{...clock,clientReceivedAt:Date.now()}:null; }
+
+function draughtHandleOnlineMessage(data){
+  if(!draughtUi||draughtUi.mode!=="online") return;
+  if(data.gameType&&data.gameType!=="checkers") return;
+  if(data.type==="welcome"){
+    draughtUi.online.connected=true;
+    draughtUi.online.side=Number(data.side);
+    draughtUi.orientation=Number(data.side);
+    draughtUi.online.players=data.players||{black:null,white:null};
+    draughtUi.online.settings=data.settings||null;
+    draughtUi.online.ratings=data.ratings||null;
+    draughtUi.online.ratingUpdate=data.ratingUpdate||null;
+    draughtUi.online.drawOffer=data.drawOffer||null;
+    draughtUi.online.rematchOffer=data.rematchOffer||null;
+    draughtSetOnlineClock(data.clock||null);
+    draughtApplyServerGame(data.game);
+    draughtSetRoomStatus(`Salon ${draughtUi.online.code||""} connecté.`);
+    renderDraughtBoard();
+    draughtHandleIncomingOffers();
+    return;
+  }
+  if(data.type==="state"){
+    if(data.players) draughtUi.online.players=data.players;
+    if(data.settings) draughtUi.online.settings=data.settings;
+    if(data.ratings) draughtUi.online.ratings=data.ratings;
+    if(data.ratingUpdate!==undefined) draughtUi.online.ratingUpdate=data.ratingUpdate;
+    if(data.clock) draughtSetOnlineClock(data.clock);
+    draughtApplyServerGame(data.game);
+    renderDraughtBoard();
+    return;
+  }
+  if(data.type==="players"){
+    draughtUi.online.players=data.players||draughtUi.online.players;
+    if(data.clock) draughtSetOnlineClock(data.clock);
+    if(data.settings) draughtUi.online.settings=data.settings;
+    if(data.ratings) draughtUi.online.ratings=data.ratings;
+    renderDraughtInfo();
+    return;
+  }
+  if(data.type==="clock"){ draughtSetOnlineClock(data.clock||null); draughtUpdateClockDisplay(); return; }
+  if(data.type==="draw_offer"){
+    draughtUi.online.drawOffer=data.offer||null;
+    if(Number(data.offer?.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("draw",`${data.offer?.username||"Votre adversaire"} propose la partie nulle.`);
+    return;
+  }
+  if(data.type==="draw_declined"){
+    draughtUi.online.drawOffer=null; draughtHideOnlinePrompt();
+    draughtSetRoomStatus(data.implicit?"La proposition de nulle est annulée par le coup joué.":"La proposition de nulle a été refusée.");
+    return;
+  }
+  if(data.type==="rematch_offer"){
+    draughtUi.online.rematchOffer=data.offer||null;
+    if(Number(data.offer?.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des camps.`);
+    return;
+  }
+  if(data.type==="rematch_declined"){
+    draughtUi.online.rematchOffer=null; draughtHideOnlinePrompt(); draughtSetRoomStatus("La revanche a été refusée."); return;
+  }
+  if(data.type==="rematch_started"){
+    draughtUi.online.side=Number(data.side);
+    draughtUi.orientation=Number(data.side);
+    draughtUi.online.players=data.players||draughtUi.online.players;
+    draughtUi.online.settings=data.settings||draughtUi.online.settings;
+    draughtUi.online.ratings=data.ratings||null;
+    draughtUi.online.ratingUpdate=null; draughtUi.online.drawOffer=null; draughtUi.online.rematchOffer=null;
+    draughtSetOnlineClock(data.clock||null); draughtApplyServerGame(data.game); draughtHideOnlinePrompt();
+    draughtSetRoomStatus("Revanche démarrée : les camps ont été inversés."); renderDraughtBoard(); return;
+  }
+  if(data.type==="error"){ draughtSetRoomStatus(data.message||"Erreur de partie.",true); }
+}
+
+function draughtHandleIncomingOffers(){
+  const draw=draughtUi.online.drawOffer,rematch=draughtUi.online.rematchOffer;
+  if(draw&&Number(draw.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("draw",`${draw.username||"Votre adversaire"} propose la partie nulle.`);
+  else if(rematch&&Number(rematch.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("rematch",`${rematch.username||"Votre adversaire"} propose une revanche.`);
+}
+
+function draughtShowOnlinePrompt(type,text){
+  const box=document.getElementById("draughtOnlinePrompt"); if(!box) return;
+  draughtUi.online.pendingProposal=type;
+  document.getElementById("draughtOnlinePromptTitle").textContent=type==="draw"?"Proposition de nulle":"Proposition de revanche";
+  document.getElementById("draughtOnlinePromptText").textContent=text;
+  box.hidden=false;
+}
+function draughtHideOnlinePrompt(){
+  if(draughtUi?.online) draughtUi.online.pendingProposal=null;
+  const box=document.getElementById("draughtOnlinePrompt"); if(box) box.hidden=true;
+}
+function draughtRespondToOnlineProposal(accept){
+  const type=draughtUi?.online?.pendingProposal;
+  if(!type||!draughtUi.online.ws||draughtUi.online.ws.readyState!==WebSocket.OPEN) return;
+  draughtUi.online.ws.send(JSON.stringify({type:type==="draw"?"draw_response":"rematch_response",accept:Boolean(accept)}));
+  draughtHideOnlinePrompt();
+}
+function draughtSendOnlineAction(type){
+  if(!draughtUi?.online?.ws||draughtUi.online.ws.readyState!==WebSocket.OPEN) return;
+  draughtUi.online.ws.send(JSON.stringify({type}));
+}
+function draughtResignOnline(){
+  if(!draughtUi?.online?.result?.over && confirm("Voulez-vous vraiment abandonner cette partie ?")) draughtSendOnlineAction("resign");
+}
+
+function draughtUpdateOnlineControls(){
+  const box=document.getElementById("draughtOnlineActions"); if(!box||!draughtUi) return;
+  const online=draughtUi.mode==="online"&&draughtUi.online.connected;
+  box.hidden=!online;
+  if(!online) return;
+  const over=Boolean(draughtUi.online.result?.over),two=draughtOnlineHasTwoPlayers();
+  const resign=document.getElementById("resignDraughtOnline"),draw=document.getElementById("offerDrawDraught"),rematch=document.getElementById("offerRematchDraught");
+  if(resign) resign.disabled=!two||over;
+  if(draw) draw.disabled=!two||over||Boolean(draughtUi.online.drawOffer);
+  if(rematch){ rematch.hidden=!over; rematch.disabled=!two||Boolean(draughtUi.online.rematchOffer); }
+}
+
+function draughtOnlineClockValues(){
+  const c=draughtUi?.online?.clock; if(!c) return null;
+  let side0Ms=Number(c.side0Ms||0),side1Ms=Number(c.side1Ms||0);
+  if(c.started && c.runningSide!==null && c.runningSide!==undefined && !draughtUi.online.result?.over){
+    const elapsed=Math.max(0,Date.now()-Number(c.clientReceivedAt||Date.now()));
+    if(Number(c.runningSide)===0) side0Ms=Math.max(0,side0Ms-elapsed);
+    else side1Ms=Math.max(0,side1Ms-elapsed);
+  }
+  return {side0Ms,side1Ms,runningSide:c.runningSide,started:c.started};
+}
+function draughtFormatClock(ms){
+  let seconds=Math.max(0,Math.ceil(Number(ms||0)/1000));
+  const h=Math.floor(seconds/3600); seconds%=3600; const m=Math.floor(seconds/60),s=seconds%60;
+  return h>0?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`;
+}
+function draughtEscape(value){ return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch])); }
+
+function draughtUpdateClockDisplay(){
+  const panel=document.getElementById("draughtClockPanel"),readout=document.getElementById("draughtClockReadout"),meta=document.getElementById("draughtTimeMeta");
+  if(!panel||!readout||!draughtUi) return;
+  const online=draughtUi.mode==="online"?draughtUi.online:null;
+  panel.hidden=!online?.connected;
+  if(!online?.connected) return;
+  const cfg=draughtUi.game.config,values=draughtOnlineClockValues()||{side0Ms:0,side1Ms:0,runningSide:null,started:false};
+  const order=[1-Number(draughtUi.orientation),Number(draughtUi.orientation)];
+  readout.innerHTML=order.map(side=>{
+    const player=draughtPlayerForSide(side),rating=draughtRatingForSide(side)?.rating??1200;
+    const active=Boolean(values.started&&Number(values.runningSide)===side&&!online.result?.over);
+    const time=side===0?values.side0Ms:values.side1Ms;
+    const colorClass=cfg.pieceClass[side].replace("draught-","");
+    return `<div class="draught-clock-row color-${colorClass} ${active?"active":""}" data-side="${side}">
+      <div class="draught-clock-player"><span class="draught-clock-dot"></span><div><span>${draughtEscape(cfg.sideNames[side])}</span><strong>${draughtEscape(player?.username||cfg.sideNames[side])}</strong><small>Elo ${rating}</small></div></div>
+      <div class="draught-clock-time">${draughtFormatClock(time)}</div>
+    </div>`;
+  }).join("");
+  const tc=online.settings?.timeControl;
+  if(meta&&tc){
+    const mins=Number(tc.initialSeconds||0)/60,inc=Number(tc.incrementSeconds||0),cat=online.settings?.ratingCategory||"rapid";
+    meta.textContent=`${Number.isInteger(mins)?mins:mins.toFixed(1)}+${inc} · ${DRAUGHT_RATING_LABELS[cat]||cat} · ${online.settings?.rated?"classée Elo":"amicale"}`;
+  }
+}
+
+function draughtRenderRatingUpdate(){
+  const box=document.getElementById("draughtRatingResult"); if(!box||!draughtUi) return;
+  const update=draughtUi.online?.ratingUpdate;
+  if(draughtUi.mode!=="online"||!update?.rated){ box.hidden=true; return; }
+  const mine=Number(draughtUi.online.side)===0?update.side0:update.side1;
+  const other=Number(draughtUi.online.side)===0?update.side1:update.side0;
+  const delta=Number(mine?.delta||0);
+  box.hidden=false;
+  box.innerHTML=`<strong>Elo ${DRAUGHT_RATING_LABELS[update.category]||update.category}</strong><span>Vous : ${mine?.before??"—"} → ${mine?.after??"—"} (${delta>=0?"+":""}${delta})</span><span>${draughtEscape(other?.username||"Adversaire")} : ${other?.before??"—"} → ${other?.after??"—"} (${Number(other?.delta||0)>=0?"+":""}${other?.delta??0})</span>`;
+}
+

@@ -1013,6 +1013,105 @@ async function loadChessGamesPanel(){
   }catch(err){ list.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
 }
 
+
+const CHECKERS_VARIANT_LABELS={international:"Internationales 10×10",english:"Anglaises 8×8"};
+
+async function loadCheckersRatingsPanel(){
+  const mine=document.getElementById("myCheckersRatings"),board=document.getElementById("checkersEloLeaderboard");
+  const variant=document.getElementById("checkersEloVariant"),category=document.getElementById("checkersEloCategory");
+  if(!mine||!board||!variant||!category||!window.LudoOnline?.checkersRatings) return;
+  const loadMine=async()=>{
+    mine.innerHTML="<p>Chargement…</p>";
+    try{
+      const ratings=await LudoOnline.checkersRatings.mine(variant.value);
+      mine.innerHTML=["bullet","blitz","rapid","classical"].map(cat=>{
+        const r=ratings[cat]||{rating:1200,games:0};
+        return `<div class="elo-chip"><span>${ELO_CATEGORY_LABELS[cat]}</span><strong>${Number(r.rating||1200)}</strong><small>${Number(r.games||0)} partie${Number(r.games||0)>1?"s":""}</small></div>`;
+      }).join("");
+    }catch(err){ mine.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+  };
+  const loadBoard=async()=>{
+    board.innerHTML="<p>Chargement…</p>";
+    try{
+      const data=await LudoOnline.checkersRatings.leaderboard(variant.value,category.value,30);
+      const players=Array.isArray(data.players)?data.players:[];
+      if(!players.length){ board.innerHTML="<p>Aucune partie classée dans cette catégorie pour le moment.</p>"; return; }
+      board.innerHTML=`<div class="elo-table"><div class="elo-row elo-head"><span>#</span><span>Joueur</span><span>Elo</span><span>Parties</span></div>${players.map((p,i)=>`<div class="elo-row"><span>${i+1}</span><strong>${escapeHtml(p.username)}</strong><span>${Number(p.rating)}</span><span>${Number(p.games)}</span></div>`).join("")}</div>`;
+    }catch(err){ board.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+  };
+  variant.addEventListener("change",async()=>{await loadMine();await loadBoard();});
+  category.addEventListener("change",loadBoard);
+  await loadMine(); await loadBoard();
+}
+
+let checkersArchiveReplay={game:null,ply:0};
+function checkersArchiveReasonLabel(reason){
+  return ({win:"Victoire",timeout:"Temps",resign:"Abandon","draw-agreement":"Nulle convenue",repetition:"Répétition","quiet-draw":"Règle de nulle"})[reason]||reason||"Partie terminée";
+}
+function checkersArchiveSnapshots(replay){
+  if(!replay?.state) return [];
+  const hist=Array.isArray(replay.history)?replay.history:[];
+  const snaps=hist.map(x=>x?.state).filter(Boolean); snaps.push(replay.state); return snaps;
+}
+function checkersSideLabels(variant){ return variant==="english"?["Rouges","Blancs"]:["Blancs","Noirs"]; }
+function checkersPieceClass(variant,side){ return variant==="english"?(side===0?"draught-red":"draught-white"):(side===0?"draught-white":"draught-black"); }
+function renderCheckersArchiveBoard(){
+  const panel=document.getElementById("checkersArchiveReplay");
+  if(!panel||!checkersArchiveReplay.game?.replay) return;
+  const replay=checkersArchiveReplay.game.replay,snaps=checkersArchiveSnapshots(replay),max=Math.max(0,snaps.length-1);
+  checkersArchiveReplay.ply=Math.max(0,Math.min(max,checkersArchiveReplay.ply));
+  const state=snaps[checkersArchiveReplay.ply],variant=checkersArchiveReplay.game.variant||replay.variant||"international";
+  const size=variant==="english"?8:10,board=state?.board||[],moves=Array.isArray(replay.history)?replay.history:[];
+  const last=checkersArchiveReplay.ply>0?moves[checkersArchiveReplay.ply-1]?.notation:"Position initiale";
+  const boardEl=panel.querySelector(".archive-draught-board");
+  boardEl.style.setProperty("--archive-draught-size",size);
+  boardEl.innerHTML=Array.from({length:size*size},(_,i)=>{
+    const r=Math.floor(i/size),c=i%size,piece=board?.[r]?.[c],dark=(r+c)%2===1;
+    return `<div class="archive-draught-square ${dark?"dark":"light"}">${piece?`<span class="archive-draught-piece ${checkersPieceClass(variant,piece.side)} ${piece.king?"king":""}">${piece.king?"♛":""}</span>`:""}</div>`;
+  }).join("");
+  panel.querySelector("[data-checkers-archive-ply]").textContent=`${checkersArchiveReplay.ply}/${max} — ${escapeHtml(last||"")}`;
+  panel.querySelector('[data-checkers-step="start"]').disabled=checkersArchiveReplay.ply===0;
+  panel.querySelector('[data-checkers-step="prev"]').disabled=checkersArchiveReplay.ply===0;
+  panel.querySelector('[data-checkers-step="next"]').disabled=checkersArchiveReplay.ply===max;
+  panel.querySelector('[data-checkers-step="end"]').disabled=checkersArchiveReplay.ply===max;
+}
+function closeCheckersArchiveReplay(){ checkersArchiveReplay={game:null,ply:0}; const p=document.getElementById("checkersArchiveReplay"); if(p)p.hidden=true; }
+async function openCheckersArchiveReplay(id){
+  const panel=document.getElementById("checkersArchiveReplay"); if(!panel)return;
+  panel.hidden=false; panel.innerHTML="<p>Chargement de la partie…</p>";
+  try{
+    const game=await LudoOnline.checkersGames.get(id);
+    if(!game.replay){ panel.innerHTML=`<div class="archive-replay-head"><h3>Relecture indisponible</h3><button class="btn small outline" id="closeCheckersArchive">Fermer</button></div>`; document.getElementById("closeCheckersArchive")?.addEventListener("click",closeCheckersArchiveReplay); return; }
+    checkersArchiveReplay={game,ply:0};
+    const labels=checkersSideLabels(game.variant);
+    panel.innerHTML=`<div class="archive-replay-head"><div><h3>${escapeHtml(game.side0Username)} — ${escapeHtml(game.side1Username)}</h3><p>${escapeHtml(CHECKERS_VARIANT_LABELS[game.variant]||game.variant)} · ${escapeHtml(game.result)} · ${escapeHtml(checkersArchiveReasonLabel(game.reason))} · ${escapeHtml(chessArchiveTimeLabel(game))}</p><small>${labels[0]} : ${escapeHtml(game.side0Username)} · ${labels[1]} : ${escapeHtml(game.side1Username)}</small></div><button class="btn small outline" id="closeCheckersArchive">Fermer</button></div><div class="archive-draught-board" aria-label="Damier de relecture"></div><div class="archive-replay-controls"><button class="btn small outline" data-checkers-step="start">⏮ Début</button><button class="btn small outline" data-checkers-step="prev">◀ Précédent</button><strong data-checkers-archive-ply></strong><button class="btn small outline" data-checkers-step="next">Suivant ▶</button><button class="btn small outline" data-checkers-step="end">Fin ⏭</button></div>`;
+    document.getElementById("closeCheckersArchive")?.addEventListener("click",closeCheckersArchiveReplay);
+    panel.querySelectorAll("[data-checkers-step]").forEach(btn=>btn.addEventListener("click",()=>{
+      const max=Math.max(0,checkersArchiveSnapshots(checkersArchiveReplay.game.replay).length-1);
+      if(btn.dataset.checkersStep==="start")checkersArchiveReplay.ply=0;
+      if(btn.dataset.checkersStep==="prev")checkersArchiveReplay.ply--;
+      if(btn.dataset.checkersStep==="next")checkersArchiveReplay.ply++;
+      if(btn.dataset.checkersStep==="end")checkersArchiveReplay.ply=max;
+      renderCheckersArchiveBoard();
+    }));
+    renderCheckersArchiveBoard();
+    requestAnimationFrame(()=>panel.scrollIntoView({behavior:"smooth",block:"start"}));
+  }catch(err){ panel.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+}
+async function loadCheckersGamesPanel(){
+  const list=document.getElementById("checkersGameArchiveList"); if(!list||!window.LudoOnline?.checkersGames)return;
+  list.innerHTML="<p>Chargement des parties…</p>";
+  try{
+    const games=await LudoOnline.checkersGames.list();
+    if(!games.length){ list.innerHTML="<p>Aucune partie de Dames en ligne terminée pour le moment.</p>"; return; }
+    list.innerHTML=games.map(g=>{
+      const labels=checkersSideLabels(g.variant);
+      return `<article class="archive-game-row"><div><strong>${escapeHtml(g.side0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.side1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · ${escapeHtml(CHECKERS_VARIANT_LABELS[g.variant]||g.variant)} · ${escapeHtml(chessArchiveTimeLabel(g))} · ${escapeHtml(ELO_CATEGORY_LABELS[g.category]||g.category||"")} · ${g.rated?"Classée":"Amicale"} · ${escapeHtml(checkersArchiveReasonLabel(g.reason))}</small><small>${labels[0]} : ${escapeHtml(g.side0Username)} · ${labels[1]} : ${escapeHtml(g.side1Username)}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-checkers-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`;
+    }).join("");
+    list.querySelectorAll("[data-checkers-replay-id]:not([disabled])").forEach(btn=>btn.addEventListener("click",()=>openCheckersArchiveReplay(btn.dataset.checkersReplayId)));
+  }catch(err){ list.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -1052,6 +1151,25 @@ function renderAccountContent(user, newRecoveryKey = null) {
         <div id="chessGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div>
         <div id="chessArchiveReplay" class="chess-archive-replay" hidden></div>
         <div class="note">Les parties jouées avant la V6.6 peuvent apparaître sans relecture complète, car leurs coups n’étaient pas encore archivés dans D1.</div>
+      </section>
+
+      <section class="panel account-card chess-ratings-card">
+        <h2>Classement Elo — Dames</h2>
+        <div class="elo-leaderboard-head">
+          <label><span>Variante</span><select id="checkersEloVariant"><option value="international" selected>Internationales 10×10</option><option value="english">Anglaises 8×8</option></select></label>
+          <label><span>Cadence du classement</span><select id="checkersEloCategory"><option value="bullet">Bullet</option><option value="blitz">Blitz</option><option value="rapid" selected>Rapide</option><option value="classical">Classique</option></select></label>
+        </div>
+        <div id="myCheckersRatings" class="elo-grid"><p>Chargement des classements…</p></div>
+        <h3>Classement des joueurs</h3>
+        <div id="checkersEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
+        <div class="note">Chaque variante et chaque cadence possèdent leur propre Elo. Une nouvelle catégorie commence à <strong>1200</strong>.</div>
+      </section>
+
+      <section class="panel account-card chess-archive-card">
+        <h2>Mes parties de Dames</h2>
+        <p>Les parties internationales et anglaises terminées sont archivées et peuvent être rejouées coup par coup.</p>
+        <div id="checkersGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div>
+        <div id="checkersArchiveReplay" class="chess-archive-replay" hidden></div>
       </section>
 
       <form id="changePasswordForm" class="panel account-card">
@@ -1107,6 +1225,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
     attachRecoveryCopy();
     loadChessRatingsPanel();
     loadChessGamesPanel();
+    loadCheckersRatingsPanel();
+    loadCheckersGamesPanel();
     return;
   }
 
@@ -1247,19 +1367,45 @@ function renderDraughtsPlay(variant) {
     <div class="page draughts-play-page">
       <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><a href="#/jouer/dames">Dames</a><span>›</span><span>${cfg.shortTitle}</span></div>
       <div class="section-head">
-        <div><div class="eyebrow">Jeu interactif</div><h1>${cfg.title}</h1><p class="section-lead">${isInternational ? "Damier 10 × 10, 20 pions par camp et règle de la rafle maximale." : "Damier 8 × 8, 12 pions par camp et règles anglaises WCDF."}</p></div>
+        <div><div class="eyebrow">Jeu interactif</div><h1>${cfg.title}</h1><p class="section-lead">${isInternational ? "Damier 10 × 10, 20 pions par camp et règle de la rafle maximale." : "Damier 8 × 8, 12 pions par camp et règles anglaises WCDF."} Jouez aussi à distance grâce au mode multijoueur.</p></div>
         <div class="variant-switch"><a class="btn outline small" href="#/jeu/dames">Voir les règles</a><a class="btn outline small" href="#/jouer/${isInternational ? "dames-anglaises" : "dames-internationales"}">Passer au ${isInternational ? "8 × 8" : "10 × 10"}</a></div>
       </div>
 
       <div class="draught-play-layout">
         <section class="game-shell draught-shell">
           <div class="chess-toolbar">
-            <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
             <div id="draughtAiSettings" class="toolbar-group">
               <label><span>Niveau IA</span><select id="draughtAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre camp</span><select id="draughtSide">${cfg.sideNames.map((name, i) => `<option value="${i}" ${i === cfg.firstSide ? "selected" : ""}>${name}</option>`).join("")}</select></label>
             </div>
+            <div id="draughtOnlineSettings" class="toolbar-group draught-online-settings" hidden>
+              <label><span>Camp si vous créez</span><select id="draughtCreatorSide"><option value="random" selected>Aléatoire</option>${cfg.sideNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("")}</select></label>
+              <label><span>Cadence</span><select id="draughtTimePreset">
+                <option value="60,0">1+0 — Bullet</option>
+                <option value="180,2">3+2 — Blitz</option>
+                <option value="300,0">5+0 — Blitz</option>
+                <option value="600,5" selected>10+5 — Rapide</option>
+                <option value="900,10">15+10 — Rapide</option>
+                <option value="1800,0">30+0 — Classique</option>
+                <option value="custom">Personnalisée…</option>
+              </select></label>
+              <span id="draughtCustomTime" class="custom-time-fields" hidden>
+                <label><span>Minutes</span><input id="draughtInitialMinutes" type="number" min="1" max="180" value="10"></label>
+                <label><span>+ secondes/coup</span><input id="draughtIncrementSeconds" type="number" min="0" max="60" value="5"></label>
+              </span>
+              <label class="inline-check"><input id="draughtRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+              <button id="createDraughtRoom" class="btn small">Créer un salon</button>
+              <label><span>Code du salon</span><input id="draughtRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+              <button id="joinDraughtRoom" class="btn outline small">Rejoindre</button>
+              <span id="draughtRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
+            </div>
             <div class="toolbar-actions"><button id="newDraught" class="btn small">Nouvelle partie</button><button id="undoDraught" class="btn outline small">Annuler</button><button id="flipDraught" class="btn outline small">↻ Plateau</button></div>
+          </div>
+
+          <div id="draughtClockPanel" class="draught-clock-panel" hidden>
+            <div id="draughtClockReadout" class="draught-clock-readout" aria-label="Pendules des deux joueurs"></div>
+            <div id="draughtTimeMeta" class="chess-time-meta"></div>
           </div>
 
           <div class="draught-board-wrap">
@@ -1267,12 +1413,22 @@ function renderDraughtsPlay(variant) {
             <div id="draughtPathPicker" class="draught-path-picker" hidden></div>
           </div>
           <div id="draughtStatus" class="status draught-status"></div>
+          <div id="draughtOnlineActions" class="chess-online-actions" hidden>
+            <button id="resignDraughtOnline" class="btn danger small">Abandonner</button>
+            <button id="offerDrawDraught" class="btn outline small">Proposer la nulle</button>
+            <button id="offerRematchDraught" class="btn small" hidden>Proposer une revanche</button>
+          </div>
+          <div id="draughtOnlinePrompt" class="online-decision" hidden>
+            <strong id="draughtOnlinePromptTitle"></strong>
+            <span id="draughtOnlinePromptText"></span>
+            <div class="online-decision-actions"><button id="acceptDraughtProposal" class="btn small">Accepter</button><button id="declineDraughtProposal" class="btn outline small">Refuser</button></div>
+          </div>
         </section>
 
         <aside class="draught-side-column">
-          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="draughtTurn">${cfg.sideNames[cfg.firstSide]}</strong></div><div class="piece-count-grid"><div><span id="draughtLabel0">${cfg.sideNames[0]}</span><strong id="draughtCount0">${cfg.piecesPerSide}</strong></div><div><span id="draughtLabel1">${cfg.sideNames[1]}</span><strong id="draughtCount1">${cfg.piecesPerSide}</strong></div></div><h3>Historique</h3><div id="draughtHistory" class="draught-history"></div></section>
-          <section class="panel"><h3>Règles actives</h3>${isInternational ? `<p>✓ Pions : prise avant et arrière</p><p>✓ Rafle maximale obligatoire</p><p>✓ Dames volantes</p><p>✓ Promotion seulement à la fin du coup</p>` : `<p>✓ Pions : prise vers l’avant</p><p>✓ Toute prise est obligatoire</p><p>✓ Choix libre entre plusieurs rafles</p><p>✓ Dame : une case en diagonale</p>`}<div class="note"><strong>Conseil :</strong> cliquez sur une pièce. Seuls les coups légalement autorisés sont proposés. Pour une rafle, cliquez sur sa case d’arrivée finale. Si plusieurs rafles différentes finissent sur la même case, le site vous demandera laquelle choisir.</div></section>
-          <section class="panel"><h3>IA</h3><p><strong>Facile :</strong> coup légal aléatoire.</p><p><strong>Intermédiaire :</strong> recherche courte avec valeur des pièces, promotion et contrôle du centre.</p><p><strong>Difficile :</strong> recherche alpha-bêta plus profonde.</p></section>
+          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="draughtTurn">${cfg.sideNames[cfg.firstSide]}</strong></div><div id="draughtRatingResult" class="rating-result" hidden></div><div class="piece-count-grid"><div><span id="draughtLabel0">${cfg.sideNames[0]}</span><strong id="draughtCount0">${cfg.piecesPerSide}</strong></div><div><span id="draughtLabel1">${cfg.sideNames[1]}</span><strong id="draughtCount1">${cfg.piecesPerSide}</strong></div></div><h3>Historique</h3><div id="draughtHistory" class="draught-history"></div></section>
+          <section class="panel"><h3>Multijoueur en ligne</h3><p>Créez un salon privé ou rejoignez un code. Le créateur choisit son camp, la cadence et si la partie compte pour le classement Elo.</p><p>La pendule et la légalité des déplacements sont contrôlées côté Cloudflare. Les prises obligatoires et les rafles sont donc vérifiées par le serveur.</p><p>Abandon, proposition de nulle et revanche avec inversion des camps sont disponibles comme aux Échecs.</p><div class="note"><strong>Elo :</strong> les Dames ${isInternational?"internationales":"anglaises"} possèdent leurs propres classements Bullet, Blitz, Rapide et Classique.</div></section>
+          <section class="panel"><h3>Règles actives</h3>${isInternational ? `<p>✓ Pions : prise avant et arrière</p><p>✓ Rafle maximale obligatoire</p><p>✓ Dames volantes</p><p>✓ Promotion seulement à la fin du coup</p>` : `<p>✓ Pions : prise vers l’avant</p><p>✓ Toute prise est obligatoire</p><p>✓ Choix libre entre plusieurs rafles</p><p>✓ Dame : une case en diagonale</p>`}<div class="note"><strong>Conseil :</strong> cliquez sur une pièce. Seuls les coups légalement autorisés sont proposés. Pour une rafle, cliquez sur sa case d’arrivée finale.</div></section>
         </aside>
       </div>
     </div>
