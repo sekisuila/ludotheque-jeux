@@ -515,6 +515,124 @@ function chessChooseAiMove(game, level) {
 // Interface utilisateur de l'échiquier.
 // ------------------------------------------------------------
 let chessUi = null;
+let chessClockTimer = null;
+
+const CHESS_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
+
+function chessTimeCategory(initialSeconds,incrementSeconds){
+  const estimated=Number(initialSeconds||0)+Number(incrementSeconds||0)*40;
+  if(estimated<180) return "bullet";
+  if(estimated<600) return "blitz";
+  if(estimated<1800) return "rapid";
+  return "classical";
+}
+
+function chessReadTimeControl(){
+  const preset=document.getElementById("chessTimePreset")?.value||"600,5";
+  if(preset!=="custom"){
+    const [initialSeconds,incrementSeconds]=preset.split(",").map(Number);
+    return {initialSeconds,incrementSeconds};
+  }
+  const minutes=Math.min(180,Math.max(1,Number(document.getElementById("chessInitialMinutes")?.value||10)));
+  const incrementSeconds=Math.min(60,Math.max(0,Number(document.getElementById("chessIncrementSeconds")?.value||0)));
+  return {initialSeconds:Math.round(minutes*60),incrementSeconds:Math.round(incrementSeconds)};
+}
+
+function chessFormatClock(ms){
+  ms=Math.max(0,Number(ms||0));
+  const totalSeconds=ms/1000;
+  const minutes=Math.floor(totalSeconds/60);
+  const seconds=Math.floor(totalSeconds%60);
+  if(ms<20000){
+    const tenths=Math.floor((ms%1000)/100);
+    return `${minutes}:${String(seconds).padStart(2,"0")}.${tenths}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2,"0")}`;
+}
+
+function chessSetOnlineClock(clock){
+  if(!chessUi?.online) return;
+  chessUi.online.clock=clock?{...clock,clientReceivedAt:Date.now()}:null;
+  chessUpdateClockDisplay();
+}
+
+function chessOnlineClockValues(){
+  const clock=chessUi?.online?.clock;
+  if(!clock) return null;
+  let whiteMs=Number(clock.whiteMs||0),blackMs=Number(clock.blackMs||0);
+  if(clock.started && clock.runningSide && !chessUi?.online?.result?.over){
+    const elapsed=Math.max(0,Date.now()-Number(clock.clientReceivedAt||Date.now()));
+    if(clock.runningSide==="w") whiteMs=Math.max(0,whiteMs-elapsed);
+    if(clock.runningSide==="b") blackMs=Math.max(0,blackMs-elapsed);
+  }
+  return {whiteMs,blackMs,runningSide:clock.runningSide,started:clock.started};
+}
+
+function chessRenderRatingResult(update){
+  const box=document.getElementById("chessRatingResult");
+  if(!box) return;
+  if(!update?.rated){
+    box.hidden=true;
+    box.innerHTML="";
+    return;
+  }
+  const mine=chessUi?.online?.side==="w"?update.white:update.black;
+  const other=chessUi?.online?.side==="w"?update.black:update.white;
+  const delta=Number(mine?.delta||0);
+  box.hidden=false;
+  box.innerHTML=`<strong>Elo ${CHESS_RATING_LABELS[update.category]||update.category}</strong>
+    <span>Vous : ${mine?.before ?? "—"} → ${mine?.after ?? "—"} (${delta>=0?"+":""}${delta})</span>
+    <span>${other?.username||"Adversaire"} : ${other?.before ?? "—"} → ${other?.after ?? "—"} (${Number(other?.delta||0)>=0?"+":""}${other?.delta ?? 0})</span>`;
+}
+
+function chessUpdateClockDisplay(){
+  const panel=document.getElementById("chessClockPanel");
+  if(!panel || !chessUi) return;
+  const online=chessUi.mode==="online"?chessUi.online:null;
+  panel.hidden=!online?.connected;
+  if(!online?.connected) return;
+
+  const values=chessOnlineClockValues();
+  const whiteClock=document.getElementById("chessWhiteClock");
+  const blackClock=document.getElementById("chessBlackClock");
+  if(values){
+    if(whiteClock) whiteClock.textContent=chessFormatClock(values.whiteMs);
+    if(blackClock) blackClock.textContent=chessFormatClock(values.blackMs);
+  }
+
+  const whiteCard=panel.querySelector('[data-side="w"]');
+  const blackCard=panel.querySelector('[data-side="b"]');
+  whiteCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="w"&&!online.result?.over));
+  blackCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="b"&&!online.result?.over));
+
+  const players=online.players||{};
+  const whiteName=document.getElementById("chessWhitePlayer");
+  const blackName=document.getElementById("chessBlackPlayer");
+  if(whiteName) whiteName.textContent=players.white?.username||"Blancs";
+  if(blackName) blackName.textContent=players.black?.username||"Noirs";
+
+  const category=online.settings?.ratingCategory||"rapid";
+  const ratings=online.ratings||{};
+  const whiteRating=document.getElementById("chessWhiteRating");
+  const blackRating=document.getElementById("chessBlackRating");
+  if(whiteRating) whiteRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.white?.rating ?? 1200}`;
+  if(blackRating) blackRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.black?.rating ?? 1200}`;
+
+  const meta=document.getElementById("chessTimeMeta");
+  if(meta){
+    const tc=online.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60;
+      const inc=Number(tc.incrementSeconds||0);
+      meta.textContent=`${Number.isInteger(min)?min:min.toFixed(1)}+${inc} · ${CHESS_RATING_LABELS[category]||category} · ${online.settings?.rated?"classée Elo":"amicale"}`;
+    }
+  }
+}
+
+function chessStartClockTicker(){
+  if(chessClockTimer) clearInterval(chessClockTimer);
+  chessClockTimer=setInterval(()=>chessUpdateClockDisplay(),100);
+}
 
 function chessSetRoomStatus(text) {
   const el = document.getElementById("chessRoomStatus");
@@ -525,7 +643,7 @@ function chessEmptyOnlineState() {
   return {
     ws: null, code: "", connected: false, side: null, players: null,
     awaiting: false, result: null, drawOffer: null, rematchOffer: null,
-    pendingProposal: null
+    pendingProposal: null, clock: null, settings: null, ratings: null, ratingUpdate: null
   };
 }
 
@@ -533,6 +651,8 @@ function chessDisconnectOnlineRoom() {
   if (!chessUi?.online) return;
   try { chessUi.online.ws?.close(1000, "Déconnexion"); } catch {}
   chessUi.online = chessEmptyOnlineState();
+  const panel=document.getElementById("chessClockPanel"); if(panel) panel.hidden=true;
+  const ratingBox=document.getElementById("chessRatingResult"); if(ratingBox){ratingBox.hidden=true;ratingBox.innerHTML="";}
   chessUpdateOnlineControls();
 }
 
@@ -555,11 +675,15 @@ async function chessCreateOnlineRoom() {
     const user = await LudoOnline.me(true);
     if (!user) throw new Error("Connectez-vous d’abord.");
     const creatorColor = document.getElementById("chessCreatorColor")?.value || "random";
-    const room = await LudoOnline.rooms.create("chess", { creatorColor });
+    const {initialSeconds,incrementSeconds}=chessReadTimeControl();
+    const rated=document.getElementById("chessRated")?.checked!==false;
+    const room = await LudoOnline.rooms.create("chess", { creatorColor, initialSeconds, incrementSeconds, rated });
     const input = document.getElementById("chessRoomCode");
     if (input) input.value = room.code;
     const chosen = room.side === "w" ? "Blancs" : "Noirs";
-    chessSetRoomStatus(`Salon ${room.code} créé — vous jouerez les ${chosen}.`);
+    const tc=room.timeControl||{initialSeconds:600,incrementSeconds:0};
+    const cadence=`${tc.initialSeconds/60}+${tc.incrementSeconds}`;
+    chessSetRoomStatus(`Salon ${room.code} créé — ${chosen}, cadence ${cadence}${room.rated?" classée":" amicale"}.`);
     chessConnectOnlineRoom(room.code);
   } catch (error) {
     chessSetRoomStatus(error.message);
@@ -734,8 +858,14 @@ function chessConnectOnlineRoom(code) {
         chessUi.online.players = data.players || null;
         chessUi.online.drawOffer = data.drawOffer || null;
         chessUi.online.rematchOffer = data.rematchOffer || null;
+        chessUi.online.settings = data.settings || null;
+        chessUi.online.ratings = data.ratings || null;
+        chessUi.online.ratingUpdate = data.ratingUpdate || null;
+        chessSetOnlineClock(data.clock || null);
         chessUi.orientation = data.side === "b" ? "b" : "w";
         chessApplyOnlineState(data.game);
+        chessRenderRatingResult(chessUi.online.ratingUpdate);
+        chessUpdateClockDisplay();
         const color = data.side === "b" ? "Noirs" : "Blancs";
         chessSetRoomStatus(`Salon ${chessUi.online.code} — vous jouez les ${color}. ${chessPlayersStatus(data.players)}`);
         if (chessProposalIsIncoming(chessUi.online.drawOffer)) chessShowOnlinePrompt("draw", chessUi.online.drawOffer);
@@ -745,7 +875,13 @@ function chessConnectOnlineRoom(code) {
         if (data.players) chessUi.online.players = data.players;
         if (data.drawOffer !== undefined) chessUi.online.drawOffer = data.drawOffer;
         if (data.rematchOffer !== undefined) chessUi.online.rematchOffer = data.rematchOffer;
+        if (data.settings) chessUi.online.settings = data.settings;
+        if (data.ratings) chessUi.online.ratings = data.ratings;
+        if (data.ratingUpdate !== undefined && data.ratingUpdate !== null) chessUi.online.ratingUpdate = data.ratingUpdate;
+        if (data.clock) chessSetOnlineClock(data.clock);
         chessApplyOnlineState(data.game);
+        if (data.ratingUpdate) chessRenderRatingResult(data.ratingUpdate);
+        chessUpdateClockDisplay();
         if (data.game?.result?.over) {
           chessUi.online.drawOffer = null;
           chessHideOnlinePrompt();
@@ -753,9 +889,15 @@ function chessConnectOnlineRoom(code) {
         chessUpdateOnlineControls();
       } else if (data.type === "players") {
         chessUi.online.players = data.players || null;
+        if(data.settings) chessUi.online.settings=data.settings;
+        if(data.ratings) chessUi.online.ratings=data.ratings;
+        if(data.clock) chessSetOnlineClock(data.clock);
         chessSetRoomStatus(`Salon ${chessUi.online.code} — ${chessPlayersStatus(data.players)}`);
         renderChessInfo();
+        chessUpdateClockDisplay();
         chessUpdateOnlineControls();
+      } else if (data.type === "clock") {
+        chessSetOnlineClock(data.clock || null);
       } else if (data.type === "draw_offer") {
         chessUi.online.drawOffer = data.offer || null;
         if (chessProposalIsIncoming(data.offer)) {
@@ -789,6 +931,11 @@ function chessConnectOnlineRoom(code) {
         chessUi.online.players = data.players || null;
         chessUi.online.drawOffer = null;
         chessUi.online.rematchOffer = null;
+        chessUi.online.settings = data.settings || chessUi.online.settings;
+        chessUi.online.ratings = data.ratings || chessUi.online.ratings;
+        chessUi.online.ratingUpdate = null;
+        chessSetOnlineClock(data.clock || null);
+        chessRenderRatingResult(null);
         chessHideOnlinePrompt();
         chessUi.orientation = data.side === "b" ? "b" : "w";
         chessApplyOnlineState(data.game);
@@ -866,6 +1013,10 @@ function initChess() {
     chessUi.orientation = chessUi.orientation === "w" ? "b" : "w";
     renderChessBoard();
   });
+  document.getElementById("chessTimePreset")?.addEventListener("change", e => {
+    const custom=document.getElementById("chessCustomTime");
+    if(custom) custom.hidden=e.target.value!=="custom";
+  });
   document.getElementById("createChessRoom")?.addEventListener("click", chessCreateOnlineRoom);
   document.getElementById("joinChessRoom")?.addEventListener("click", chessJoinOnlineRoom);
   document.getElementById("resignChessOnline")?.addEventListener("click", chessResignOnline);
@@ -878,6 +1029,7 @@ function initChess() {
     if (piece) finishPromotion(piece);
   });
 
+  chessStartClockTicker();
   newChessGame();
 }
 

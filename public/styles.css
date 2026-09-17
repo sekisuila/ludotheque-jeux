@@ -1220,3 +1220,44 @@ main { min-height: calc(100vh - 160px); }
 .online-decision span{color:var(--muted);line-height:1.4}
 .online-decision-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 @media (max-width:700px){.chess-online-actions,.online-decision-actions{display:grid;grid-template-columns:1fr}.chess-online-actions .btn,.online-decision-actions .btn{width:100%}}
+
+/* ============================================================
+   V6.5 — Pendules, cadences et classement Elo
+   ============================================================ */
+.custom-time-fields{display:flex;gap:.55rem;align-items:end;flex-wrap:wrap}
+.custom-time-fields[hidden]{display:none!important}
+.inline-check{display:flex!important;align-items:center!important;gap:.45rem!important;min-height:42px}
+.inline-check input{width:18px;height:18px;margin:0}
+
+.chess-clock-panel{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin:0 0 .8rem}
+.chess-clock-panel[hidden]{display:none!important}
+.chess-clock-card{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border:1px solid var(--border);border-radius:14px;padding:.75rem .9rem;background:var(--card);transition:border-color .15s,transform .15s}
+.chess-clock-card>div{display:flex;flex-direction:column;gap:.12rem;min-width:0}
+.chess-clock-card span{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chess-clock-card small{color:var(--muted)}
+.chess-clock-card strong{font-variant-numeric:tabular-nums;font-size:clamp(1.45rem,4vw,2.2rem);letter-spacing:.03em}
+.chess-clock-card.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+.chess-clock-card.black-clock{background:color-mix(in srgb,#111 94%,var(--card));color:#fff}
+.chess-clock-card.black-clock small{color:#c7c7c7}
+.chess-clock-card.white-clock{background:#f8f8f6;color:#151515}
+.chess-time-meta{grid-column:1/-1;text-align:center;color:var(--muted);font-size:.92rem}
+.rating-result{display:grid;gap:.25rem;padding:.7rem .8rem;margin:.6rem 0;border:1px solid var(--border);border-radius:12px;background:var(--surface-soft)}
+.rating-result[hidden]{display:none!important}
+.rating-result span{font-size:.9rem}
+
+.elo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin:.7rem 0 1rem}
+.elo-chip{display:flex;flex-direction:column;align-items:center;gap:.15rem;border:1px solid var(--border);border-radius:12px;padding:.65rem .4rem;background:var(--surface-soft)}
+.elo-chip span,.elo-chip small{color:var(--muted);font-size:.82rem;text-align:center}
+.elo-chip strong{font-size:1.35rem}
+.elo-leaderboard-head{display:flex;align-items:end;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.elo-leaderboard-head h3{margin-bottom:.25rem}
+.elo-table{display:grid;gap:.2rem;margin-top:.6rem}
+.elo-row{display:grid;grid-template-columns:2.3rem minmax(0,1fr) 4rem 4.5rem;gap:.5rem;align-items:center;padding:.45rem .4rem;border-bottom:1px solid var(--border)}
+.elo-row.elo-head{font-size:.8rem;color:var(--muted);font-weight:700}
+
+@media (max-width:700px){
+  .chess-clock-panel{grid-template-columns:1fr}
+  .chess-time-meta{grid-column:1}
+  .elo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .elo-row{grid-template-columns:2rem minmax(0,1fr) 3.6rem 3.8rem;font-size:.9rem}
+}

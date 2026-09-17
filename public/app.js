@@ -887,6 +887,46 @@ function attachRecoveryCopy() {
   });
 }
 
+
+const ELO_CATEGORY_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
+
+async function loadChessRatingsPanel() {
+  const mine=document.getElementById("myChessRatings");
+  const board=document.getElementById("eloLeaderboard");
+  const select=document.getElementById("eloCategory");
+  if(!mine || !board || !select || !window.LudoOnline?.ratings) return;
+
+  try{
+    const ratings=await LudoOnline.ratings.mine();
+    mine.innerHTML=["bullet","blitz","rapid","classical"].map(category=>{
+      const r=ratings[category]||{rating:1200,games:0,wins:0,draws:0,losses:0};
+      return `<div class="elo-chip"><span>${ELO_CATEGORY_LABELS[category]}</span><strong>${Number(r.rating||1200)}</strong><small>${Number(r.games||0)} partie${Number(r.games||0)>1?"s":""}</small></div>`;
+    }).join("");
+  }catch(err){
+    mine.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`;
+  }
+
+  const loadBoard=async()=>{
+    board.innerHTML="<p>Chargement…</p>";
+    try{
+      const data=await LudoOnline.ratings.leaderboard(select.value,30);
+      const players=Array.isArray(data.players)?data.players:[];
+      if(!players.length){
+        board.innerHTML="<p>Aucune partie classée dans cette cadence pour le moment.</p>";
+        return;
+      }
+      board.innerHTML=`<div class="elo-table">
+        <div class="elo-row elo-head"><span>#</span><span>Joueur</span><span>Elo</span><span>Parties</span></div>
+        ${players.map((p,i)=>`<div class="elo-row"><span>${i+1}</span><strong>${escapeHtml(p.username)}</strong><span>${Number(p.rating)}</span><span>${Number(p.games)}</span></div>`).join("")}
+      </div>`;
+    }catch(err){
+      board.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`;
+    }
+  };
+  select.addEventListener("change",loadBoard);
+  await loadBoard();
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -902,6 +942,22 @@ function renderAccountContent(user, newRecoveryKey = null) {
           <button id="logoutAccount" class="btn outline" type="button">Se déconnecter</button>
         </div>
         <div class="note"><strong>En ligne :</strong> sauvegardes Abalone, salons multijoueurs privés et récupération du compte.</div>
+      </section>
+
+      <section class="panel account-card chess-ratings-card">
+        <h2>Classement Elo — Échecs</h2>
+        <div id="myChessRatings" class="elo-grid"><p>Chargement des classements…</p></div>
+        <div class="elo-leaderboard-head">
+          <h3>Classement des joueurs</h3>
+          <label><span>Cadence</span><select id="eloCategory">
+            <option value="bullet">Bullet</option>
+            <option value="blitz">Blitz</option>
+            <option value="rapid" selected>Rapide</option>
+            <option value="classical">Classique</option>
+          </select></label>
+        </div>
+        <div id="eloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
+        <div class="note">Chaque catégorie possède son Elo propre. Une nouvelle catégorie commence à <strong>1200</strong>. Seules les parties marquées « classée Elo » modifient le classement.</div>
       </section>
 
       <form id="changePasswordForm" class="panel account-card">
@@ -955,6 +1011,7 @@ function renderAccountContent(user, newRecoveryKey = null) {
     });
 
     attachRecoveryCopy();
+    loadChessRatingsPanel();
     return;
   }
 
@@ -1198,12 +1255,38 @@ function renderChessPlay() {
             </div>
             <div id="chessOnlineSettings" class="toolbar-group chess-online-settings" hidden>
               <label><span>Couleur si vous créez</span><select id="chessCreatorColor"><option value="random" selected>Aléatoire</option><option value="white">Blancs</option><option value="black">Noirs</option></select></label>
+              <label><span>Cadence</span><select id="chessTimePreset">
+                <option value="60,0">1+0 — Bullet</option>
+                <option value="180,2">3+2 — Blitz</option>
+                <option value="300,0">5+0 — Blitz</option>
+                <option value="600,5" selected>10+5 — Rapide</option>
+                <option value="900,10">15+10 — Rapide</option>
+                <option value="1800,0">30+0 — Classique</option>
+                <option value="custom">Personnalisée…</option>
+              </select></label>
+              <span id="chessCustomTime" class="custom-time-fields" hidden>
+                <label><span>Minutes</span><input id="chessInitialMinutes" type="number" min="1" max="180" value="10"></label>
+                <label><span>+ secondes/coup</span><input id="chessIncrementSeconds" type="number" min="0" max="60" value="5"></label>
+              </span>
+              <label class="inline-check"><input id="chessRated" type="checkbox" checked><span>Partie classée Elo</span></label>
               <button id="createChessRoom" class="btn small">Créer un salon</button>
               <label><span>Code du salon</span><input id="chessRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
               <button id="joinChessRoom" class="btn outline small">Rejoindre</button>
               <span id="chessRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
             <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
+          </div>
+
+          <div id="chessClockPanel" class="chess-clock-panel" hidden>
+            <div class="chess-clock-card black-clock" data-side="b">
+              <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
+              <strong id="chessBlackClock">10:00</strong>
+            </div>
+            <div class="chess-clock-card white-clock" data-side="w">
+              <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
+              <strong id="chessWhiteClock">10:00</strong>
+            </div>
+            <div id="chessTimeMeta" class="chess-time-meta">10+5 · Rapide · classée</div>
           </div>
 
           <div class="chess-board-wrap">
@@ -1227,8 +1310,8 @@ function renderChessPlay() {
         </section>
 
         <aside class="chess-side-column">
-          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div><h3>Historique</h3><div id="chessHistory" class="chess-history"></div></section>
-          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur du salon peut choisir <strong>Blancs</strong>, <strong>Noirs</strong> ou <strong>Aléatoire</strong>. Le joueur qui rejoint reçoit automatiquement l’autre couleur.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une fois la partie terminée, une revanche peut être proposée ; si elle est acceptée, les couleurs sont automatiquement inversées.</p><p>Le serveur Cloudflare vérifie chaque coup avant de le transmettre à l’adversaire : déplacements, roque, prise en passant, promotion et sécurité du roi.</p><div class="note"><strong>Astuce :</strong> créez un salon, partagez le code à six caractères et attendez que le second joueur rejoigne la partie.</div></section>
+          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div><div id="chessRatingResult" class="rating-result" hidden></div><h3>Historique</h3><div id="chessHistory" class="chess-history"></div></section>
+          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur choisit sa couleur, la <strong>cadence</strong> et si la partie compte pour le <strong>classement Elo</strong>. Une cadence comme <strong>10+5</strong> signifie 10 minutes au départ et 5 secondes ajoutées après chaque coup joué.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une revanche acceptée inverse automatiquement les couleurs tout en conservant la même cadence.</p><p>La pendule et la légalité des coups sont contrôlées côté Cloudflare : fermer l’onglet n’arrête donc pas le temps.</p><div class="note"><strong>Classements :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre Elo, avec 1200 comme valeur de départ.</div></section>
           <section class="panel"><h3>Les trois niveaux d’IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> compare les positions à courte profondeur et valorise matériel, centre et sécurité du roi.</p><p><strong>Difficile :</strong> utilise la même évaluation avec une recherche plus profonde et un élagage alpha-bêta.</p><div class="note">Cette IA est destinée à la démonstration. Elle n’a pas la force d’un moteur spécialisé comme Stockfish.</div></section>
         </aside>
       </div>
