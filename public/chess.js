@@ -589,14 +589,13 @@ function chessEnsureClockPanel(){
   const panel=document.getElementById("chessClockPanel");
   if(!panel) return null;
 
-  // V6.10 : un seul bloc de texte affiche simultanément les deux pendules.
-  // Cela évite définitivement qu'une carte Noir ou Blanc disparaisse à cause
-  // d'un conflit de mise en page, d'un ancien élément DOM ou d'une règle CSS.
-  if(panel.dataset.clockVersion!=="610"){
+  // V6.11 : on conserve un SEUL panneau parent pour garantir la robustesse,
+  // mais on rend deux lignes/carte internes pour retrouver une vraie qualité visuelle.
+  if(panel.dataset.clockVersion!=="611"){
     panel.innerHTML=`
       <div class="chess-dual-clock-readout" data-clock-role="readout" aria-label="Pendules Noir et Blanc"></div>
       <div class="chess-time-meta" data-clock-role="meta"></div>`;
-    panel.dataset.clockVersion="610";
+    panel.dataset.clockVersion="611";
   }
   return panel;
 }

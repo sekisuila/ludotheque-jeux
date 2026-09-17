@@ -1536,3 +1536,135 @@ main { min-height: calc(100vh - 160px); }
     line-height:1.25;
   }
 }
+
+/* ============================================================
+   V6.11 — pendules à 2 lignes, plus élégantes mais toujours robustes
+   ============================================================ */
+.chess-dual-clock-readout{
+  display:grid!important;
+  grid-template-columns:1fr;
+  gap:.65rem;
+  width:100%;
+  min-width:0;
+  min-height:auto;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:inherit;
+  font-size:inherit;
+  white-space:normal;
+  text-shadow:none;
+  overflow:visible!important;
+}
+.chess-dual-clock-readout .clock-side-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.9rem;
+  width:100%;
+  min-width:0;
+  padding:.8rem .9rem;
+  border-radius:14px;
+  border:1px solid var(--border);
+  box-shadow:0 2px 10px rgba(0,0,0,.04);
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.chess-dual-clock-readout .clock-side-row.black{
+  background:linear-gradient(180deg,#202020,#111);
+  color:#f4f4f4;
+}
+.chess-dual-clock-readout .clock-side-row.white{
+  background:linear-gradient(180deg,#fbfbf8,#f1f1ec);
+  color:#151515;
+}
+.chess-dual-clock-readout .clock-side-row.active{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 20%,transparent), 0 10px 22px rgba(0,0,0,.08);
+  transform:translateY(-1px);
+}
+.chess-dual-clock-readout .clock-side-head{
+  display:flex;
+  align-items:center;
+  gap:.8rem;
+  min-width:0;
+  flex:1 1 auto;
+}
+.chess-dual-clock-readout .clock-side-indicator{
+  display:grid;
+  place-items:center;
+  width:1.9rem;
+  height:1.9rem;
+  border-radius:999px;
+  font-size:.9rem;
+  font-weight:900;
+  flex:0 0 auto;
+  background:rgba(255,255,255,.12);
+}
+.chess-dual-clock-readout .clock-side-row.white .clock-side-indicator{
+  background:rgba(0,0,0,.07);
+}
+.chess-dual-clock-readout .clock-side-identity{
+  display:flex;
+  flex-direction:column;
+  gap:.08rem;
+  min-width:0;
+  flex:1 1 auto;
+}
+.chess-dual-clock-readout .clock-side-label{
+  font-size:.73rem;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  opacity:.82;
+}
+.chess-dual-clock-readout .clock-side-name{
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:1rem;
+  line-height:1.15;
+}
+.chess-dual-clock-readout .clock-side-rating{
+  flex:0 0 auto;
+  padding:.2rem .5rem;
+  border-radius:999px;
+  background:rgba(255,255,255,.1);
+  font-size:.8rem;
+  font-weight:800;
+  white-space:nowrap;
+}
+.chess-dual-clock-readout .clock-side-row.white .clock-side-rating{
+  background:rgba(0,0,0,.06);
+}
+.chess-dual-clock-readout .clock-side-time{
+  flex:0 0 auto;
+  min-width:6.6ch;
+  text-align:right;
+  font-size:clamp(1.35rem,2.3vw,2.05rem);
+  line-height:1;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.04em;
+}
+@media (max-width: 640px){
+  .chess-dual-clock-readout .clock-side-row{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:.5rem;
+  }
+  .chess-dual-clock-readout .clock-side-head{
+    width:100%;
+  }
+  .chess-dual-clock-readout .clock-side-rating{
+    margin-left:auto;
+  }
+  .chess-dual-clock-readout .clock-side-time{
+    width:100%;
+    text-align:left;
+    min-width:0;
+    font-size:1.7rem;
+  }
+}
