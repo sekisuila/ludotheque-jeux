@@ -351,6 +351,42 @@ async function chessLeaderboard(request,env){
   return json({category,label:CHESS_RATING_LABELS[category],players:results});
 }
 
+
+async function listChessGames(env,user){
+  const {results=[]}=await env.DB.prepare(`SELECT r.id,r.room_code,r.game_number,r.category,r.rated,r.result,r.reason,
+    r.white_rating_before,r.black_rating_before,r.white_rating_after,r.black_rating_after,r.white_delta,r.black_delta,
+    r.time_initial_seconds,r.time_increment_seconds,r.created_at,
+    uw.username AS white_username,ub.username AS black_username,
+    CASE WHEN r.game_json IS NULL THEN 0 ELSE 1 END AS replay_available
+    FROM chess_results r
+    JOIN users uw ON uw.id=r.white_user_id
+    JOIN users ub ON ub.id=r.black_user_id
+    WHERE r.white_user_id=? OR r.black_user_id=?
+    ORDER BY r.created_at DESC LIMIT 200`).bind(user.id,user.id).all();
+  return json({games:results.map(row=>({
+    id:row.id,roomCode:row.room_code,gameNumber:Number(row.game_number),category:row.category,rated:Boolean(row.rated),
+    result:row.result,reason:row.reason,createdAt:row.created_at,whiteUsername:row.white_username,blackUsername:row.black_username,
+    whiteRatingBefore:row.white_rating_before,blackRatingBefore:row.black_rating_before,whiteRatingAfter:row.white_rating_after,blackRatingAfter:row.black_rating_after,
+    whiteDelta:row.white_delta,blackDelta:row.black_delta,initialSeconds:row.time_initial_seconds,incrementSeconds:row.time_increment_seconds,
+    replayAvailable:Boolean(row.replay_available)
+  }))});
+}
+
+async function chessGameById(env,user,id){
+  const row=await env.DB.prepare(`SELECT r.*,uw.username AS white_username,ub.username AS black_username
+    FROM chess_results r JOIN users uw ON uw.id=r.white_user_id JOIN users ub ON ub.id=r.black_user_id
+    WHERE r.id=? AND (r.white_user_id=? OR r.black_user_id=?)`).bind(id,user.id,user.id).first();
+  if(!row) return json({error:"Partie introuvable."},404);
+  return json({game:{
+    id:row.id,roomCode:row.room_code,gameNumber:Number(row.game_number),category:row.category,rated:Boolean(row.rated),
+    result:row.result,reason:row.reason,createdAt:row.created_at,whiteUsername:row.white_username,blackUsername:row.black_username,
+    initialSeconds:row.time_initial_seconds,incrementSeconds:row.time_increment_seconds,
+    whiteRatingBefore:row.white_rating_before,blackRatingBefore:row.black_rating_before,whiteRatingAfter:row.white_rating_after,blackRatingAfter:row.black_rating_after,
+    whiteDelta:row.white_delta,blackDelta:row.black_delta,
+    replay:row.game_json?JSON.parse(row.game_json):null
+  }});
+}
+
 async function roomWebSocket(request,env,user,code){
   const room=await env.DB.prepare("SELECT game,black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
   if(!room || (room.black_user_id!==user.id && room.white_user_id!==user.id)) return new Response("Accès refusé",{status:403});
@@ -377,6 +413,8 @@ async function api(request,env){
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
   if(p==="/api/ratings/me"&&request.method==="GET") return myChessRatings(env,user);
   if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
+  if(p==="/api/chess/games"&&request.method==="GET") return listChessGames(env,user);
+  const chessGameMatch=p.match(/^\/api\/chess\/games\/([0-9a-f-]{36})$/i); if(chessGameMatch&&request.method==="GET") return chessGameById(env,user,chessGameMatch[1]);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());

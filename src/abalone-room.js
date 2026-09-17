@@ -265,12 +265,39 @@ export class AbaloneRoom extends DurableObject {
     return update;
   }
 
+  async archiveChessGame(game,reason){
+    const players=await this.getPlayers();
+    const code=await this.ctx.storage.get("code");
+    const gameNumber=await this.getGameNumber();
+    if(!this.env.DB || !code || !players.white?.id || !players.black?.id) return;
+    const settings=await this.getChessSettings();
+    const winner=game?.result?.winner ?? null;
+    const result=winner==="w"?"1-0":winner==="b"?"0-1":"1/2-1/2";
+    const initialSeconds=Math.max(0,Number(settings.timeControl?.initialSeconds||0));
+    const incrementSeconds=Math.max(0,Number(settings.timeControl?.incrementSeconds||0));
+    const existing=await this.env.DB.prepare("SELECT id FROM chess_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(existing){
+      await this.env.DB.prepare(`UPDATE chess_results SET game_json=?,time_initial_seconds=?,time_increment_seconds=?,reason=?,result=? WHERE id=?`)
+        .bind(JSON.stringify(game),initialSeconds,incrementSeconds,String(reason||"game"),result,existing.id).run();
+      return;
+    }
+    await this.env.DB.prepare(`INSERT INTO chess_results(
+      id,room_code,game_number,white_user_id,black_user_id,category,rated,result,reason,game_json,time_initial_seconds,time_increment_seconds
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(),code,gameNumber,players.white.id,players.black.id,
+        CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid",settings.rated?1:0,result,String(reason||"game"),
+        JSON.stringify(game),initialSeconds,incrementSeconds).run();
+  }
+
   async finishChessGame(game,reason){
     await this.stopClock();
     await this.ctx.storage.put("game",game);
     await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
     await this.markFinished(game?.result?.winner ?? null);
-    return await this.recordChessResult(game,reason);
+    const ratingUpdate=await this.recordChessResult(game,reason);
+    await this.archiveChessGame(game,reason);
+    return ratingUpdate;
   }
 
   async finishOnTime(flaggedSide){
