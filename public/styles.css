@@ -1747,3 +1747,49 @@ main { min-height: calc(100vh - 160px); }
 @media (max-width:640px){
   .chess-dual-clock-readout{gap:1.8rem !important;}
 }
+
+/* ============================================================
+   V6.15 — informations en haut, temps en dessous
+   ============================================================ */
+.chess-dual-clock-readout .clock-side-row{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  grid-template-rows:auto auto !important;
+  align-items:stretch !important;
+  gap:.8rem !important;
+  min-height:132px !important;
+  padding:1rem 1.05rem 1.1rem !important;
+}
+.chess-dual-clock-readout .clock-side-head{
+  width:100% !important;
+  min-width:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:.75rem !important;
+  flex:0 0 auto !important;
+}
+.chess-dual-clock-readout .clock-side-time{
+  grid-column:1 !important;
+  width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding-top:.35rem !important;
+  text-align:center !important;
+  font-size:clamp(1.9rem,3.2vw,2.65rem) !important;
+  line-height:1.05 !important;
+}
+@media (max-width:640px){
+  .chess-dual-clock-readout .clock-side-row{
+    min-height:126px !important;
+    padding:.9rem .9rem 1rem !important;
+    gap:.7rem !important;
+  }
+  .chess-dual-clock-readout .clock-side-head{
+    flex-direction:row !important;
+    align-items:center !important;
+  }
+  .chess-dual-clock-readout .clock-side-time{
+    text-align:center !important;
+    font-size:2rem !important;
+  }
+}
