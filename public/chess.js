@@ -589,35 +589,16 @@ function chessEnsureClockPanel(){
   const panel=document.getElementById("chessClockPanel");
   if(!panel) return null;
 
-  // V6.9 : le panneau de pendules est entièrement autonome.
-  // On évite les getElementById globaux, qui pouvaient pointer vers un ancien
-  // exemplaire de l'échiquier dans l'application mono-page.
-  if(panel.dataset.clockVersion!=="69"){
+  // V6.10 : un seul bloc de texte affiche simultanément les deux pendules.
+  // Cela évite définitivement qu'une carte Noir ou Blanc disparaisse à cause
+  // d'un conflit de mise en page, d'un ancien élément DOM ou d'une règle CSS.
+  if(panel.dataset.clockVersion!=="610"){
     panel.innerHTML=`
-      <div class="chess-clock-grid" aria-label="Pendules de la partie">
-        <div class="chess-clock-card black-clock" data-clock-side="b">
-          <div>
-            <span data-clock-role="name">Noirs</span>
-            <small data-clock-role="rating">Elo —</small>
-          </div>
-          <strong data-clock-role="time">0:00</strong>
-        </div>
-        <div class="chess-clock-card white-clock" data-clock-side="w">
-          <div>
-            <span data-clock-role="name">Blancs</span>
-            <small data-clock-role="rating">Elo —</small>
-          </div>
-          <strong data-clock-role="time">0:00</strong>
-        </div>
-      </div>
+      <div class="chess-dual-clock-readout" data-clock-role="readout" aria-label="Pendules Noir et Blanc"></div>
       <div class="chess-time-meta" data-clock-role="meta"></div>`;
-    panel.dataset.clockVersion="69";
+    panel.dataset.clockVersion="610";
   }
   return panel;
-}
-
-function chessClockCard(panel,side){
-  return panel?.querySelector(`[data-clock-side="${side}"]`)||null;
 }
 
 function chessUpdateClockDisplay(){
@@ -627,35 +608,28 @@ function chessUpdateClockDisplay(){
   panel.hidden=!online?.connected;
   if(!online?.connected) return;
 
-  const values=chessOnlineClockValues();
-  const whiteCard=chessClockCard(panel,"w");
-  const blackCard=chessClockCard(panel,"b");
-
-  // Les deux cartes sont volontairement mises à jour séparément et localement.
-  // Cela garantit que Blancs et Noirs ne peuvent pas se retrouver dans le même
-  // élément DOM, même si une ancienne vue existe encore ailleurs dans la page.
-  const whiteTime=whiteCard?.querySelector('[data-clock-role="time"]');
-  const blackTime=blackCard?.querySelector('[data-clock-role="time"]');
-  if(values){
-    if(whiteTime) whiteTime.textContent=chessFormatClock(values.whiteMs);
-    if(blackTime) blackTime.textContent=chessFormatClock(values.blackMs);
-  }
-
-  whiteCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="w"&&!online.result?.over));
-  blackCard?.classList.toggle("active",Boolean(values?.started&&values?.runningSide==="b"&&!online.result?.over));
-
+  const values=chessOnlineClockValues() || {whiteMs:0,blackMs:0,runningSide:null,started:false};
   const players=online.players||{};
-  const whiteName=whiteCard?.querySelector('[data-clock-role="name"]');
-  const blackName=blackCard?.querySelector('[data-clock-role="name"]');
-  if(whiteName) whiteName.textContent=players.white?.username||"Blancs";
-  if(blackName) blackName.textContent=players.black?.username||"Noirs";
-
   const category=online.settings?.ratingCategory||"rapid";
   const ratings=online.ratings||{};
-  const whiteRating=whiteCard?.querySelector('[data-clock-role="rating"]');
-  const blackRating=blackCard?.querySelector('[data-clock-role="rating"]');
-  if(whiteRating) whiteRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.white?.rating ?? 1200}`;
-  if(blackRating) blackRating.textContent=`Elo ${CHESS_RATING_LABELS[category]||category} : ${ratings.black?.rating ?? 1200}`;
+
+  const blackName=players.black?.username||"Noirs";
+  const whiteName=players.white?.username||"Blancs";
+  const blackRating=ratings.black?.rating ?? 1200;
+  const whiteRating=ratings.white?.rating ?? 1200;
+  const blackActive=Boolean(values.started&&values.runningSide==="b"&&!online.result?.over);
+  const whiteActive=Boolean(values.started&&values.runningSide==="w"&&!online.result?.over);
+
+  const readout=panel.querySelector('[data-clock-role="readout"]');
+  if(readout){
+    // Les deux temps sont volontairement dans LE MÊME élément DOM.
+    // Une ligne ne peut donc plus être supprimée ou masquée indépendamment.
+    readout.textContent=
+      `${blackActive?"▶":"●"} Noirs · ${blackName}\n`+
+      `${chessFormatClock(values.blackMs)} · Elo ${blackRating}\n\n`+
+      `${whiteActive?"▶":"○"} Blancs · ${whiteName}\n`+
+      `${chessFormatClock(values.whiteMs)} · Elo ${whiteRating}`;
+  }
 
   const meta=panel.querySelector('[data-clock-role="meta"]');
   if(meta){
