@@ -3,10 +3,12 @@ import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-
 import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
+const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
+const ELO_INITIAL = 1200;
+const ELO_K = 32;
 
-// Ce Durable Object garde son ancien nom "AbaloneRoom" afin de rester
-// compatible avec le wrangler.jsonc déjà déployé. Il sert maintenant de
-// salle générique pour Abalone ET les Échecs.
+// Ce Durable Object garde son ancien nom "AbaloneRoom" pour rester compatible
+// avec le wrangler.jsonc déjà déployé. Il sert de salle générique à plusieurs jeux.
 export class AbaloneRoom extends DurableObject {
   constructor(ctx, env){
     super(ctx, env);
@@ -24,6 +26,15 @@ export class AbaloneRoom extends DurableObject {
   }
   async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
   async getRematchOffer(){ return (await this.ctx.storage.get("rematchOffer")) || null; }
+  async getChessSettings(){
+    return (await this.ctx.storage.get("chessSettings")) || {
+      timeControl:{initialSeconds:600,incrementSeconds:0},
+      rated:true,
+      ratingCategory:"rapid"
+    };
+  }
+  async getGameNumber(){ return Number((await this.ctx.storage.get("gameNumber")) || 1); }
+  async getRatingUpdate(){ return (await this.ctx.storage.get("ratingUpdate")) || null; }
 
   sideForUser(gameType, players, userId){
     if(players.black?.id===userId) return gameType === "chess" ? "b" : AB_BLACK;
@@ -59,6 +70,235 @@ export class AbaloneRoom extends DurableObject {
       .bind(players.black?.id || null, players.white?.id || null, code).run();
   }
 
+  // ----------------------------
+  // Pendule serveur des Échecs.
+  // ----------------------------
+  async initialChessClock(){
+    const settings=await this.getChessSettings();
+    const initialMs=Math.max(30000,Number(settings.timeControl?.initialSeconds||600)*1000);
+    return {
+      whiteMs:initialMs,
+      blackMs:initialMs,
+      runningSide:null,
+      lastStartedAt:null,
+      started:false
+    };
+  }
+
+  async getChessClock(){
+    let clock=await this.ctx.storage.get("chessClock");
+    if(!clock){
+      clock=await this.initialChessClock();
+      await this.ctx.storage.put("chessClock",clock);
+    }
+    return clock;
+  }
+
+  clockKey(side){ return side === "w" ? "whiteMs" : "blackMs"; }
+
+  async clockSnapshot(now=Date.now()){
+    if((await this.getGameType())!=="chess") return null;
+    const clock={...(await this.getChessClock())};
+    if(clock.started && clock.runningSide && clock.lastStartedAt){
+      const key=this.clockKey(clock.runningSide);
+      clock[key]=Math.max(0,Number(clock[key]||0)-Math.max(0,now-Number(clock.lastStartedAt)));
+    }
+    return {...clock,serverNow:now};
+  }
+
+  async settleClock(now=Date.now()){
+    const clock=await this.getChessClock();
+    if(!clock.started || !clock.runningSide || !clock.lastStartedAt) return {clock,flagged:null};
+    const side=clock.runningSide;
+    const key=this.clockKey(side);
+    const elapsed=Math.max(0,now-Number(clock.lastStartedAt));
+    clock[key]=Math.max(0,Number(clock[key]||0)-elapsed);
+    clock.lastStartedAt=now;
+    const flagged=clock[key]<=0 ? side : null;
+    if(flagged){
+      clock[key]=0;
+      clock.started=false;
+      clock.runningSide=null;
+      clock.lastStartedAt=null;
+    }
+    await this.ctx.storage.put("chessClock",clock);
+    return {clock,flagged};
+  }
+
+  async scheduleClockAlarm(clock=null){
+    if((await this.getGameType())!=="chess") return;
+    clock=clock || await this.getChessClock();
+    if(!clock.started || !clock.runningSide){
+      try{ await this.ctx.storage.deleteAlarm(); }catch{}
+      return;
+    }
+    const key=this.clockKey(clock.runningSide);
+    const remaining=Math.max(1,Number(clock[key]||0));
+    await this.ctx.storage.setAlarm(Date.now()+remaining+25);
+  }
+
+  async stopClock(){
+    if((await this.getGameType())!=="chess") return null;
+    const {clock}=await this.settleClock(Date.now());
+    clock.started=false;
+    clock.runningSide=null;
+    clock.lastStartedAt=null;
+    await this.ctx.storage.put("chessClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  bothPlayersConnected(players){
+    const ids=new Set(this.ctx.getWebSockets().map(ws=>ws.deserializeAttachment()?.userId).filter(Boolean));
+    return Boolean(players.black?.id && players.white?.id && ids.has(players.black.id) && ids.has(players.white.id));
+  }
+
+  async maybeStartChessClock(){
+    if((await this.getGameType())!=="chess") return;
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const players=await this.getPlayers();
+    if(!this.bothPlayersConnected(players)) return;
+    const clock=await this.getChessClock();
+    if(clock.started) return;
+    // Une pendule neuve démarre sur le trait courant dès que les deux joueurs
+    // sont réellement connectés. Une pendule arrêtée après une fin de partie
+    // n'est jamais relancée car game.result.over est testé plus haut.
+    clock.started=true;
+    clock.runningSide=game?.state?.turn || "w";
+    clock.lastStartedAt=Date.now();
+    await this.ctx.storage.put("chessClock",clock);
+    await this.scheduleClockAlarm(clock);
+    await this.broadcast({type:"clock",gameType:"chess",clock:await this.clockSnapshot()});
+  }
+
+  async resetChessClock(){
+    const clock=await this.initialChessClock();
+    await this.ctx.storage.put("chessClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  // ----------------------------
+  // Classement Elo des Échecs.
+  // ----------------------------
+  async currentRating(userId,category){
+    const row=await this.env.DB.prepare("SELECT rating,games,wins,draws,losses FROM chess_ratings WHERE user_id=? AND category=?")
+      .bind(userId,category).first();
+    return row?{
+      rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses)
+    }:{rating:ELO_INITIAL,games:0,wins:0,draws:0,losses:0};
+  }
+
+  async roomRatings(){
+    if((await this.getGameType())!=="chess") return null;
+    const settings=await this.getChessSettings();
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    const players=await this.getPlayers();
+    return {
+      category,
+      white:players.white ? await this.currentRating(players.white.id,category) : null,
+      black:players.black ? await this.currentRating(players.black.id,category) : null
+    };
+  }
+
+  eloExpected(a,b){ return 1/(1+Math.pow(10,(b-a)/400)); }
+
+  async recordChessResult(game,reason){
+    const settings=await this.getChessSettings();
+    if(!settings.rated) return null;
+    const players=await this.getPlayers();
+    if(!players.white?.id || !players.black?.id) return null;
+    const code=await this.ctx.storage.get("code");
+    const gameNumber=await this.getGameNumber();
+    if(!code) return null;
+
+    const already=await this.env.DB.prepare("SELECT id FROM chess_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(already) return await this.getRatingUpdate();
+
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    await this.env.DB.batch([
+      this.env.DB.prepare("INSERT OR IGNORE INTO chess_ratings(user_id,category,rating) VALUES(?,?,?)")
+        .bind(players.white.id,category,ELO_INITIAL),
+      this.env.DB.prepare("INSERT OR IGNORE INTO chess_ratings(user_id,category,rating) VALUES(?,?,?)")
+        .bind(players.black.id,category,ELO_INITIAL)
+    ]);
+
+    const white=await this.currentRating(players.white.id,category);
+    const black=await this.currentRating(players.black.id,category);
+    const winner=game?.result?.winner ?? null;
+    const scoreWhite=winner==="w"?1:winner==="b"?0:0.5;
+    const expectedWhite=this.eloExpected(white.rating,black.rating);
+    let whiteDelta=Math.round(ELO_K*(scoreWhite-expectedWhite));
+    let blackDelta=-whiteDelta;
+    const whiteAfter=Math.max(100,white.rating+whiteDelta);
+    const blackAfter=Math.max(100,black.rating+blackDelta);
+    whiteDelta=whiteAfter-white.rating;
+    blackDelta=blackAfter-black.rating;
+
+    const whiteWin=scoreWhite===1?1:0, blackWin=scoreWhite===0?1:0, isDraw=scoreWhite===0.5?1:0;
+    const result=scoreWhite===1?"1-0":scoreWhite===0?"0-1":"1/2-1/2";
+    const resultId=crypto.randomUUID();
+
+    await this.env.DB.batch([
+      this.env.DB.prepare(`UPDATE chess_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND category=?`)
+        .bind(whiteAfter,whiteWin,isDraw,blackWin,players.white.id,category),
+      this.env.DB.prepare(`UPDATE chess_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND category=?`)
+        .bind(blackAfter,blackWin,isDraw,whiteWin,players.black.id,category),
+      this.env.DB.prepare(`INSERT INTO chess_results(
+        id,room_code,game_number,white_user_id,black_user_id,category,rated,result,reason,
+        white_rating_before,black_rating_before,white_rating_after,black_rating_after,white_delta,black_delta
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(resultId,code,gameNumber,players.white.id,players.black.id,category,1,result,String(reason||"game"),
+          white.rating,black.rating,whiteAfter,blackAfter,whiteDelta,blackDelta)
+    ]);
+
+    const update={
+      rated:true,category,result,reason:String(reason||"game"),gameNumber,
+      white:{username:players.white.username,before:white.rating,after:whiteAfter,delta:whiteDelta},
+      black:{username:players.black.username,before:black.rating,after:blackAfter,delta:blackDelta}
+    };
+    await this.ctx.storage.put("ratingUpdate",update);
+    return update;
+  }
+
+  async finishChessGame(game,reason){
+    await this.stopClock();
+    await this.ctx.storage.put("game",game);
+    await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
+    await this.markFinished(game?.result?.winner ?? null);
+    return await this.recordChessResult(game,reason);
+  }
+
+  async finishOnTime(flaggedSide){
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const winner=flaggedSide==="w"?"b":"w";
+    const loserText=flaggedSide==="w"?"Les Blancs":"Les Noirs";
+    const winnerText=winner==="w"?"les Blancs":"les Noirs";
+    game.result={over:true,type:"timeout",winner,text:`${loserText} perdent au temps : ${winnerText} gagnent.`};
+    const ratingUpdate=await this.finishChessGame(game,"timeout");
+    await this.broadcast({
+      type:"state",gameType:"chess",game,clock:await this.clockSnapshot(),
+      settings:await this.getChessSettings(),ratings:await this.roomRatings(),ratingUpdate
+    });
+  }
+
+  async alarm(){
+    if((await this.getGameType())!=="chess") return;
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const {clock,flagged}=await this.settleClock(Date.now());
+    if(flagged){
+      await this.finishOnTime(flagged);
+      return;
+    }
+    await this.scheduleClockAlarm(clock);
+  }
+
   async fetch(request){
     const url = new URL(request.url);
 
@@ -74,7 +314,19 @@ export class AbaloneRoom extends DurableObject {
         await this.ctx.storage.put("players",players);
         await this.ctx.storage.put("game",gameType === "chess" ? initialChessGameState() : initialGameState());
         await this.ctx.storage.put("code",body.code);
-        await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
+        await this.ctx.storage.put("gameNumber",1);
+        await this.ctx.storage.delete(["drawOffer","rematchOffer","ratingUpdate"]);
+        if(gameType==="chess"){
+          const initialSeconds=Math.min(10800,Math.max(30,Number(body.timeControl?.initialSeconds||600)));
+          const incrementSeconds=Math.min(60,Math.max(0,Number(body.timeControl?.incrementSeconds||0)));
+          const category=CHESS_CATEGORIES.has(body.ratingCategory)?body.ratingCategory:"rapid";
+          await this.ctx.storage.put("chessSettings",{
+            timeControl:{initialSeconds,incrementSeconds},
+            rated:body.rated!==false,
+            ratingCategory:category
+          });
+          await this.resetChessClock();
+        }
       }
       return json({ok:true});
     }
@@ -88,17 +340,19 @@ export class AbaloneRoom extends DurableObject {
       if(players[slot]) return json({error:"Cette couleur est déjà occupée."},409);
       players[slot]={id:body.userId,username:body.username};
       await this.ctx.storage.put("players",players);
-      await this.broadcast({type:"players",players,gameType:await this.getGameType()});
+      await this.broadcast({
+        type:"players",players,gameType:await this.getGameType(),
+        clock:await this.clockSnapshot(),settings:await this.getChessSettings(),ratings:await this.roomRatings()
+      });
       return json({ok:true,players});
     }
 
     if(request.method==="GET" && url.pathname==="/state"){
       return json({
-        gameType:await this.getGameType(),
-        players:await this.getPlayers(),
-        game:await this.getGame(),
-        drawOffer:await this.getDrawOffer(),
-        rematchOffer:await this.getRematchOffer()
+        gameType:await this.getGameType(),players:await this.getPlayers(),game:await this.getGame(),
+        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
+        clock:await this.clockSnapshot(),settings:await this.getChessSettings(),ratings:await this.roomRatings(),
+        ratingUpdate:await this.getRatingUpdate()
       });
     }
 
@@ -115,9 +369,12 @@ export class AbaloneRoom extends DurableObject {
       const [client,server]=Object.values(pair);
       this.ctx.acceptWebSocket(server);
       server.serializeAttachment({userId,username,side,gameType});
+      if(gameType==="chess") await this.maybeStartChessClock();
       server.send(JSON.stringify({
         type:"welcome",gameType,side,players,game:await this.getGame(),
-        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer()
+        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
+        clock:await this.clockSnapshot(),settings:gameType==="chess"?await this.getChessSettings():null,
+        ratings:gameType==="chess"?await this.roomRatings():null,ratingUpdate:await this.getRatingUpdate()
       }));
       await this.broadcastPresence();
       return new Response(null,{status:101,webSocket:client});
@@ -139,7 +396,34 @@ export class AbaloneRoom extends DurableObject {
       let result;
 
       if(gameType === "chess"){
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+        await this.maybeStartChessClock();
+        const now=Date.now();
+        const settled=await this.settleClock(now);
+        if(settled.flagged){ await this.finishOnTime(settled.flagged); return; }
         result=playServerChessMove(game,session.side,data.move||{});
+        if(!result.ok){
+          await this.scheduleClockAlarm(settled.clock);
+          ws.send(JSON.stringify({type:"error",message:result.error}));
+          return;
+        }
+
+        const settings=await this.getChessSettings();
+        const clock=settled.clock;
+        const moverKey=this.clockKey(session.side);
+        clock[moverKey]=Number(clock[moverKey]||0)+Number(settings.timeControl?.incrementSeconds||0)*1000;
+        if(result.state?.result?.over){
+          clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+          await this.ctx.storage.put("chessClock",clock);
+          try{ await this.ctx.storage.deleteAlarm(); }catch{}
+        }else{
+          clock.started=true;
+          clock.runningSide=result.state?.state?.turn || (session.side==="w"?"b":"w");
+          clock.lastStartedAt=now;
+          await this.ctx.storage.put("chessClock",clock);
+          await this.scheduleClockAlarm(clock);
+        }
       }else{
         result=playServerMove(game,session.side,Array.isArray(data.group)?data.group:[],Number(data.dir));
       }
@@ -147,8 +431,6 @@ export class AbaloneRoom extends DurableObject {
       if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
       await this.ctx.storage.put("game",result.state);
 
-      // Aux Échecs, jouer un coup refuse implicitement une proposition de nulle
-      // faite par l'adversaire.
       if(gameType === "chess"){
         const offer=await this.getDrawOffer();
         if(offer && offer.userId!==session.userId){
@@ -159,12 +441,20 @@ export class AbaloneRoom extends DurableObject {
 
       const finished = gameType === "chess" ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
       const winner = gameType === "chess" ? result.state?.result?.winner : result.state?.winner;
+      let ratingUpdate=null;
       if(finished){
         await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
-        await this.markFinished(winner ?? null);
+        if(gameType==="chess") ratingUpdate=await this.finishChessGame(result.state,result.state?.result?.type||"game");
+        else await this.markFinished(winner ?? null);
       }
 
-      await this.broadcast({type:"state",gameType,game:result.state,lastMove:result.move});
+      await this.broadcast({
+        type:"state",gameType,game:result.state,lastMove:result.move,
+        clock:gameType==="chess"?await this.clockSnapshot():null,
+        settings:gameType==="chess"?await this.getChessSettings():null,
+        ratings:gameType==="chess"?await this.roomRatings():null,
+        ratingUpdate
+      });
       return;
     }
 
@@ -179,10 +469,11 @@ export class AbaloneRoom extends DurableObject {
         const resignedColor=session.side === "w" ? "Les Blancs" : "Les Noirs";
         const winnerColor=winner === "w" ? "les Blancs" : "les Noirs";
         game.result={over:true,type:"resign",winner,text:`${resignedColor} abandonnent : ${winnerColor} gagnent.`};
-        await this.ctx.storage.put("game",game);
-        await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
-        await this.markFinished(winner);
-        await this.broadcast({type:"state",gameType,game,resigned:session.side});
+        const ratingUpdate=await this.finishChessGame(game,"resign");
+        await this.broadcast({
+          type:"state",gameType,game,resigned:session.side,clock:await this.clockSnapshot(),
+          settings:await this.getChessSettings(),ratings:await this.roomRatings(),ratingUpdate
+        });
         return;
       }
 
@@ -222,10 +513,11 @@ export class AbaloneRoom extends DurableObject {
       const game=await this.getGame();
       if(game?.result?.over) return;
       game.result={over:true,type:"draw-agreement",winner:null,text:"Partie nulle d’un commun accord."};
-      await this.ctx.storage.put("game",game);
-      await this.ctx.storage.delete("rematchOffer");
-      await this.markFinished(null);
-      await this.broadcast({type:"state",gameType,game,drawAccepted:true});
+      const ratingUpdate=await this.finishChessGame(game,"draw-agreement");
+      await this.broadcast({
+        type:"state",gameType,game,drawAccepted:true,clock:await this.clockSnapshot(),
+        settings:await this.getChessSettings(),ratings:await this.roomRatings(),ratingUpdate
+      });
       return;
     }
 
@@ -254,24 +546,34 @@ export class AbaloneRoom extends DurableObject {
         return;
       }
 
-      // Une revanche inverse automatiquement les couleurs.
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
       const newGame=initialChessGameState();
+      const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
-      await this.ctx.storage.delete("drawOffer");
+      await this.ctx.storage.put("gameNumber",nextGameNumber);
+      await this.ctx.storage.delete(["drawOffer","ratingUpdate"]);
+      await this.resetChessClock();
       await this.markPlaying(swapped);
 
-      // Les pièces changent de couleur : on met à jour l'attachement de
-      // chaque WebSocket et on envoie un message personnalisé.
       for(const socket of this.ctx.getWebSockets()){
         const att=socket.deserializeAttachment();
         if(!att) continue;
         const side=this.sideForUser("chess",swapped,att.userId);
         socket.serializeAttachment({...att,side,gameType:"chess"});
+      }
+      await this.maybeStartChessClock();
+
+      const clock=await this.clockSnapshot();
+      const settings=await this.getChessSettings();
+      const ratings=await this.roomRatings();
+      for(const socket of this.ctx.getWebSockets()){
+        const att=socket.deserializeAttachment();
+        if(!att) continue;
+        const side=this.sideForUser("chess",swapped,att.userId);
         try{
-          socket.send(JSON.stringify({type:"rematch_started",gameType:"chess",side,players:swapped,game:newGame}));
+          socket.send(JSON.stringify({type:"rematch_started",gameType:"chess",side,players:swapped,game:newGame,clock,settings,ratings}));
         }catch{}
       }
       return;
@@ -280,7 +582,9 @@ export class AbaloneRoom extends DurableObject {
     if(data.type==="sync"){
       ws.send(JSON.stringify({
         type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),
-        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer()
+        drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
+        clock:await this.clockSnapshot(),settings:gameType==="chess"?await this.getChessSettings():null,
+        ratings:gameType==="chess"?await this.roomRatings():null,ratingUpdate:await this.getRatingUpdate()
       }));
     }
   }

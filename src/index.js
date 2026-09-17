@@ -154,12 +154,26 @@ const ROOM_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function roomCode(){ let s=''; const a=new Uint8Array(6); crypto.getRandomValues(a); for(const b of a) s+=ROOM_ALPHABET[b%ROOM_ALPHABET.length]; return s; }
 function validRoomGame(game){ return game === "chess" || game === "abalone"; }
 
+function clampInt(value,min,max,fallback){
+  const n=Number.parseInt(value,10);
+  if(!Number.isFinite(n)) return fallback;
+  return Math.min(max,Math.max(min,n));
+}
+
+function chessRatingCategory(initialSeconds,incrementSeconds){
+  const estimated=initialSeconds + incrementSeconds * 40;
+  if(estimated < 180) return "bullet";
+  if(estimated < 600) return "blitz";
+  if(estimated < 1800) return "rapid";
+  return "classical";
+}
+
+const CHESS_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
+
 async function createRoom(request,env,user){
   const body=await readJson(request);
   const game=validRoomGame(body?.game)?body.game:"abalone";
 
-  // Abalone garde le créateur en Noir. Pour les Échecs, le créateur
-  // peut choisir Blancs, Noirs ou laisser le serveur tirer au sort.
   let creatorSide=game==="chess"?String(body?.creatorColor||"random").toLowerCase():"black";
   if(game==="chess"){
     if(creatorSide!=="white" && creatorSide!=="black"){
@@ -170,6 +184,11 @@ async function createRoom(request,env,user){
     creatorSide="black";
   }
 
+  const initialSeconds=game==="chess"?clampInt(body?.initialSeconds,30,10800,600):0;
+  const incrementSeconds=game==="chess"?clampInt(body?.incrementSeconds,0,60,0):0;
+  const rated=game==="chess" ? body?.rated!==false : false;
+  const ratingCategory=game==="chess"?chessRatingCategory(initialSeconds,incrementSeconds):null;
+
   const blackId=creatorSide==="black"?user.id:null;
   const whiteId=creatorSide==="white"?user.id:null;
   let code=null;
@@ -177,11 +196,16 @@ async function createRoom(request,env,user){
   for(let i=0;i<8;i++){
     const candidate=roomCode();
     try{
-      await env.DB.prepare("INSERT INTO rooms(code,game,black_user_id,white_user_id,status) VALUES(?,?,?,?, 'waiting')")
-        .bind(candidate,game,blackId,whiteId).run();
+      await env.DB.prepare(`INSERT INTO rooms(
+        code,game,black_user_id,white_user_id,status,
+        time_initial_seconds,time_increment_seconds,rated,rating_category
+      ) VALUES(?,?,?,?, 'waiting',?,?,?,?)`)
+        .bind(candidate,game,blackId,whiteId,initialSeconds,incrementSeconds,rated?1:0,ratingCategory).run();
       code=candidate;
       break;
-    }catch{}
+    }catch(error){
+      console.error("Création salon:",error?.message||error);
+    }
   }
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
@@ -191,14 +215,21 @@ async function createRoom(request,env,user){
     headers:{"content-type":"application/json"},
     body:JSON.stringify({
       code,game,userId:user.id,username:user.username,
-      creatorSide:creatorSide==="white"?"w":"b"
+      creatorSide:creatorSide==="white"?"w":"b",
+      timeControl:{initialSeconds,incrementSeconds},
+      rated,
+      ratingCategory
     })
   });
 
   return json({
     code,game,
     side:game==="chess"?(creatorSide==="white"?"w":"b"):1,
-    creatorColor:creatorSide
+    creatorColor:creatorSide,
+    timeControl:game==="chess"?{initialSeconds,incrementSeconds}:null,
+    rated,
+    ratingCategory,
+    ratingLabel:ratingCategory?CHESS_RATING_LABELS[ratingCategory]:null
   },201);
 }
 
@@ -213,10 +244,20 @@ async function joinRoom(request,env,user){
   // partie vient de se terminer : cela lui permet notamment de proposer
   // ou d'accepter une revanche.
   if(room.black_user_id===user.id){
-    return json({code,game:room.game,side:room.game==="chess"?"b":1});
+    return json({
+      code,game:room.game,side:room.game==="chess"?"b":1,
+      timeControl:room.game==="chess"?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
+      rated:room.game==="chess"?Boolean(room.rated):false,
+      ratingCategory:room.rating_category||null
+    });
   }
   if(room.white_user_id===user.id){
-    return json({code,game:room.game,side:room.game==="chess"?"w":2});
+    return json({
+      code,game:room.game,side:room.game==="chess"?"w":2,
+      timeControl:room.game==="chess"?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
+      rated:room.game==="chess"?Boolean(room.rated):false,
+      ratingCategory:room.rating_category||null
+    });
   }
 
   if(room.status==='finished') return json({error:"Cette partie est terminée."},409);
@@ -246,18 +287,68 @@ async function joinRoom(request,env,user){
 
   return json({
     code,game:room.game,
-    side:room.game==="chess"?(joinSlot==="black"?"b":"w"):(joinSlot==="black"?1:2)
+    side:room.game==="chess"?(joinSlot==="black"?"b":"w"):(joinSlot==="black"?1:2),
+    timeControl:room.game==="chess"?{
+      initialSeconds:Number(room.time_initial_seconds||600),
+      incrementSeconds:Number(room.time_increment_seconds||0)
+    }:null,
+    rated:room.game==="chess"?Boolean(room.rated):false,
+    ratingCategory:room.rating_category||null
   });
 }
 
 async function roomInfo(env,user,code){
   const room=await env.DB.prepare(`SELECT r.code,r.game,r.status,r.created_at,r.updated_at,
+    r.time_initial_seconds,r.time_increment_seconds,r.rated,r.rating_category,
     ub.username AS black_username,uw.username AS white_username,
     r.black_user_id,r.white_user_id FROM rooms r
     LEFT JOIN users ub ON ub.id=r.black_user_id LEFT JOIN users uw ON uw.id=r.white_user_id WHERE r.code=?`).bind(code).first();
   if(!room) return json({error:"Salon introuvable."},404);
   const side=room.black_user_id===user.id?(room.game==="chess"?"b":1):room.white_user_id===user.id?(room.game==="chess"?"w":2):null;
-  return json({room:{code:room.code,game:room.game,status:room.status,blackUsername:room.black_username,whiteUsername:room.white_username,createdAt:room.created_at},side});
+  return json({room:{
+    code:room.code,game:room.game,status:room.status,
+    blackUsername:room.black_username,whiteUsername:room.white_username,
+    createdAt:room.created_at,
+    timeControl:room.game==="chess"?{
+      initialSeconds:Number(room.time_initial_seconds||600),
+      incrementSeconds:Number(room.time_increment_seconds||0)
+    }:null,
+    rated:room.game==="chess"?Boolean(room.rated):false,
+    ratingCategory:room.rating_category||null
+  },side});
+}
+
+async function chessRatingsForUser(env,userId){
+  const {results=[]}=await env.DB.prepare(
+    "SELECT category,rating,games,wins,draws,losses,updated_at FROM chess_ratings WHERE user_id=?"
+  ).bind(userId).all();
+  const ratings={};
+  for(const category of ["bullet","blitz","rapid","classical"]){
+    const row=results.find(r=>r.category===category);
+    ratings[category]=row?{
+      rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),
+      draws:Number(row.draws),losses:Number(row.losses),updatedAt:row.updated_at
+    }:{rating:1200,games:0,wins:0,draws:0,losses:0,updatedAt:null};
+  }
+  return ratings;
+}
+
+async function myChessRatings(env,user){
+  return json({ratings:await chessRatingsForUser(env,user.id)});
+}
+
+async function chessLeaderboard(request,env){
+  const url=new URL(request.url);
+  const category=["bullet","blitz","rapid","classical"].includes(url.searchParams.get("category"))
+    ? url.searchParams.get("category")
+    : "rapid";
+  const limit=clampInt(url.searchParams.get("limit"),1,100,30);
+  const {results=[]}=await env.DB.prepare(`SELECT u.username,r.rating,r.games,r.wins,r.draws,r.losses
+    FROM chess_ratings r JOIN users u ON u.id=r.user_id
+    WHERE r.category=? AND r.games>0
+    ORDER BY r.rating DESC,r.games DESC,u.username COLLATE NOCASE ASC
+    LIMIT ?`).bind(category,limit).all();
+  return json({category,label:CHESS_RATING_LABELS[category],players:results});
 }
 
 async function roomWebSocket(request,env,user,code){
@@ -284,6 +375,8 @@ async function api(request,env){
   if(p==="/api/saves"&&request.method==="GET") return listSaves(request,env,user);
   if(p==="/api/saves"&&request.method==="POST") return createSave(request,env,user);
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
+  if(p==="/api/ratings/me"&&request.method==="GET") return myChessRatings(env,user);
+  if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
