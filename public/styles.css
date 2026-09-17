@@ -1358,3 +1358,95 @@ main { min-height: calc(100vh - 160px); }
   .chess-clock-panel{grid-template-columns:1fr}
   .chess-time-meta{grid-column:1}
 }
+
+
+/* ============================================================
+   V6.8 — Deux pendules garanties + relecture d'historique compacte
+   ============================================================ */
+.chess-clock-panel{
+  min-width:0;
+}
+.chess-clock-stack{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.7rem;
+  min-width:0;
+}
+.chess-clock-card{
+  display:flex !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  min-width:0;
+  min-height:76px;
+}
+
+.archive-board{
+  container-type:inline-size;
+  box-sizing:border-box;
+}
+@supports (font-size:1cqi){
+  .archive-square{font-size:clamp(1.05rem,10cqi,3rem)}
+}
+
+/* Sur PC, la relecture tient dans la hauteur disponible : plateau à gauche,
+   informations et commandes à droite. Après ouverture, le panneau est amené
+   automatiquement en haut de la fenêtre par app.js. */
+@media (min-width:760px){
+  .chess-shell>.chess-clock-panel{
+    display:flex;
+    flex-direction:column;
+    gap:.55rem;
+  }
+  .chess-shell>.chess-clock-panel[hidden]{display:none!important}
+  .chess-clock-stack{
+    grid-template-columns:1fr;
+    gap:.55rem;
+    width:100%;
+  }
+  .chess-time-meta{width:100%}
+
+  .chess-archive-replay:not([hidden]){
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(190px,240px);
+    grid-template-rows:auto 1fr;
+    gap:12px 18px;
+    align-items:start;
+  }
+  .chess-archive-replay .archive-replay-head{
+    grid-column:2;
+    grid-row:1;
+    margin:0;
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .chess-archive-replay .archive-board{
+    grid-column:1;
+    grid-row:1 / span 2;
+    width:min(100%,520px,calc(100vh - 185px));
+    max-width:100%;
+    margin:0 auto;
+  }
+  .chess-archive-replay .archive-replay-controls{
+    grid-column:2;
+    grid-row:2;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:.5rem;
+    margin:0;
+    align-content:start;
+  }
+  .chess-archive-replay .archive-replay-controls strong{
+    grid-column:1/-1;
+    grid-row:1;
+    min-width:0;
+    padding:.35rem 0;
+  }
+  .chess-archive-replay .archive-replay-controls .btn{
+    width:100%;
+  }
+}
+
+@media (max-width:759px){
+  .chess-clock-stack{grid-template-columns:1fr}
+  .chess-clock-card{min-height:68px}
+}

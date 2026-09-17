@@ -585,8 +585,33 @@ function chessRenderRatingResult(update){
     <span>${other?.username||"Adversaire"} : ${other?.before ?? "—"} → ${other?.after ?? "—"} (${Number(other?.delta||0)>=0?"+":""}${other?.delta ?? 0})</span>`;
 }
 
-function chessUpdateClockDisplay(){
+function chessEnsureClockPanel(){
   const panel=document.getElementById("chessClockPanel");
+  if(!panel) return null;
+  const complete=panel.querySelector(".chess-clock-stack")
+    && document.getElementById("chessWhiteClock")
+    && document.getElementById("chessBlackClock")
+    && document.getElementById("chessWhitePlayer")
+    && document.getElementById("chessBlackPlayer");
+  if(!complete){
+    panel.innerHTML=`
+      <div class="chess-clock-stack">
+        <div class="chess-clock-card black-clock" data-side="b">
+          <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
+          <strong id="chessBlackClock">0:00</strong>
+        </div>
+        <div class="chess-clock-card white-clock" data-side="w">
+          <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
+          <strong id="chessWhiteClock">0:00</strong>
+        </div>
+      </div>
+      <div id="chessTimeMeta" class="chess-time-meta"></div>`;
+  }
+  return panel;
+}
+
+function chessUpdateClockDisplay(){
+  const panel=chessEnsureClockPanel();
   if(!panel || !chessUi) return;
   const online=chessUi.mode==="online"?chessUi.online:null;
   panel.hidden=!online?.connected;

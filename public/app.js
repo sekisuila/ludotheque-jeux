@@ -998,6 +998,7 @@ async function openChessArchiveReplay(id){
       renderChessArchiveBoard();
     }));
     renderChessArchiveBoard();
+    requestAnimationFrame(()=>panel.scrollIntoView({behavior:"smooth",block:"start"}));
   }catch(err){ panel.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
 }
 async function loadChessGamesPanel(){
@@ -1372,13 +1373,15 @@ function renderChessPlay() {
           </div>
 
           <div id="chessClockPanel" class="chess-clock-panel" hidden>
-            <div class="chess-clock-card black-clock" data-side="b">
-              <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
-              <strong id="chessBlackClock">10:00</strong>
-            </div>
-            <div class="chess-clock-card white-clock" data-side="w">
-              <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
-              <strong id="chessWhiteClock">10:00</strong>
+            <div class="chess-clock-stack">
+              <div class="chess-clock-card black-clock" data-side="b">
+                <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
+                <strong id="chessBlackClock">10:00</strong>
+              </div>
+              <div class="chess-clock-card white-clock" data-side="w">
+                <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
+                <strong id="chessWhiteClock">10:00</strong>
+              </div>
             </div>
             <div id="chessTimeMeta" class="chess-time-meta">10+5 · Rapide · classée</div>
           </div>
