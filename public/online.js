@@ -73,6 +73,11 @@
       request(`/api/ratings/chess?category=${encodeURIComponent(category)}&limit=${encodeURIComponent(limit)}`)
   };
 
+  const chessGames = {
+    list: async () => (await request("/api/chess/games")).games,
+    get: async id => (await request(`/api/chess/games/${encodeURIComponent(id)}`)).game
+  };
+
   const rooms = {
     create: async (game = "abalone", options = {}) => request("/api/rooms", { method: "POST", body: { game, ...options } }),
     join: async code => request("/api/rooms/join", { method: "POST", body: { code } }),
@@ -94,7 +99,7 @@
   window.LudoOnline = {
     state, request, me, register, login, logout,
     changePassword, generateRecoveryKey, resetWithRecovery,
-    saves, ratings, rooms, updateNav
+    saves, ratings, chessGames, rooms, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));
 })();

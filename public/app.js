@@ -927,6 +927,91 @@ async function loadChessRatingsPanel() {
   await loadBoard();
 }
 
+
+const CHESS_ARCHIVE_PIECES={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+let chessArchiveReplay={game:null,ply:0};
+
+function chessArchiveReasonLabel(reason){
+  return ({checkmate:"Mat",timeout:"Temps",resign:"Abandon","draw-agreement":"Nulle convenue",stalemate:"Pat",repetition:"Répétition",fifty:"50 coups",material:"Matériel insuffisant"})[reason]||reason||"Partie terminée";
+}
+function chessArchiveTimeLabel(game){
+  if(game.initialSeconds==null) return "Cadence ancienne";
+  const mins=Math.round(Number(game.initialSeconds||0)/60*10)/10;
+  return `${Number.isInteger(mins)?mins:mins.toFixed(1)}+${Number(game.incrementSeconds||0)}`;
+}
+function chessArchiveDate(value){
+  if(!value) return "";
+  const d=new Date(String(value).replace(" ","T")+(/Z|[+-]\d\d:?\d\d$/.test(String(value))?"":"Z"));
+  return Number.isNaN(d.getTime())?String(value):d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"});
+}
+function chessArchiveSnapshots(replay){
+  if(!replay?.state) return [];
+  const hist=Array.isArray(replay.history)?replay.history:[];
+  const snaps=hist.map(entry=>entry?.state).filter(Boolean);
+  snaps.push(replay.state);
+  return snaps;
+}
+function renderChessArchiveBoard(){
+  const panel=document.getElementById("chessArchiveReplay");
+  if(!panel || !chessArchiveReplay.game?.replay) return;
+  const replay=chessArchiveReplay.game.replay, snaps=chessArchiveSnapshots(replay);
+  const max=Math.max(0,snaps.length-1);
+  chessArchiveReplay.ply=Math.max(0,Math.min(max,chessArchiveReplay.ply));
+  const state=snaps[chessArchiveReplay.ply];
+  const board=state?.board||[];
+  const moves=Array.isArray(replay.history)?replay.history:[];
+  const lastSan=chessArchiveReplay.ply>0?moves[chessArchiveReplay.ply-1]?.san:"Position initiale";
+  panel.querySelector(".archive-board").innerHTML=Array.from({length:64},(_,i)=>{
+    const r=Math.floor(i/8),c=i%8,piece=board?.[r]?.[c]||"";
+    return `<div class="archive-square ${(r+c)%2?"dark":"light"}">${CHESS_ARCHIVE_PIECES[piece]||""}</div>`;
+  }).join("");
+  panel.querySelector("[data-archive-ply]").textContent=`${chessArchiveReplay.ply}/${max} — ${escapeHtml(lastSan||"")}`;
+  panel.querySelector('[data-step="start"]').disabled=chessArchiveReplay.ply===0;
+  panel.querySelector('[data-step="prev"]').disabled=chessArchiveReplay.ply===0;
+  panel.querySelector('[data-step="next"]').disabled=chessArchiveReplay.ply===max;
+  panel.querySelector('[data-step="end"]').disabled=chessArchiveReplay.ply===max;
+}
+function closeChessArchiveReplay(){
+  chessArchiveReplay={game:null,ply:0};
+  const panel=document.getElementById("chessArchiveReplay"); if(panel) panel.hidden=true;
+}
+async function openChessArchiveReplay(id){
+  const panel=document.getElementById("chessArchiveReplay"); if(!panel) return;
+  panel.hidden=false; panel.innerHTML="<p>Chargement de la partie…</p>";
+  try{
+    const game=await LudoOnline.chessGames.get(id);
+    if(!game.replay){
+      panel.innerHTML=`<div class="archive-replay-head"><h3>Relecture indisponible</h3><button class="btn small outline" id="closeChessArchive">Fermer</button></div><p>Cette partie a été jouée avant l’enregistrement de l’historique complet dans D1.</p>`;
+      document.getElementById("closeChessArchive")?.addEventListener("click",closeChessArchiveReplay); return;
+    }
+    chessArchiveReplay={game,ply:0};
+    panel.innerHTML=`<div class="archive-replay-head"><div><h3>${escapeHtml(game.whiteUsername)} — ${escapeHtml(game.blackUsername)}</h3><p>${escapeHtml(game.result)} · ${escapeHtml(chessArchiveReasonLabel(game.reason))} · ${escapeHtml(chessArchiveTimeLabel(game))}</p></div><button class="btn small outline" id="closeChessArchive">Fermer</button></div>
+      <div class="archive-board" aria-label="Échiquier de relecture"></div>
+      <div class="archive-replay-controls"><button class="btn small outline" data-step="start">⏮ Début</button><button class="btn small outline" data-step="prev">◀ Précédent</button><strong data-archive-ply></strong><button class="btn small outline" data-step="next">Suivant ▶</button><button class="btn small outline" data-step="end">Fin ⏭</button></div>`;
+    document.getElementById("closeChessArchive")?.addEventListener("click",closeChessArchiveReplay);
+    panel.querySelectorAll("[data-step]").forEach(btn=>btn.addEventListener("click",()=>{
+      const max=Math.max(0,chessArchiveSnapshots(chessArchiveReplay.game.replay).length-1);
+      if(btn.dataset.step==="start") chessArchiveReplay.ply=0;
+      if(btn.dataset.step==="prev") chessArchiveReplay.ply--;
+      if(btn.dataset.step==="next") chessArchiveReplay.ply++;
+      if(btn.dataset.step==="end") chessArchiveReplay.ply=max;
+      renderChessArchiveBoard();
+    }));
+    renderChessArchiveBoard();
+  }catch(err){ panel.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+}
+async function loadChessGamesPanel(){
+  const list=document.getElementById("chessGameArchiveList");
+  if(!list || !window.LudoOnline?.chessGames) return;
+  list.innerHTML="<p>Chargement des parties…</p>";
+  try{
+    const games=await LudoOnline.chessGames.list();
+    if(!games.length){ list.innerHTML="<p>Aucune partie en ligne terminée pour le moment.</p>"; return; }
+    list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.whiteUsername)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.blackUsername)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · ${escapeHtml(chessArchiveTimeLabel(g))} · ${escapeHtml(ELO_CATEGORY_LABELS[g.category]||g.category||"")} · ${g.rated?"Classée":"Amicale"} · ${escapeHtml(chessArchiveReasonLabel(g.reason))}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");
+    list.querySelectorAll("[data-replay-id]:not([disabled])").forEach(btn=>btn.addEventListener("click",()=>openChessArchiveReplay(btn.dataset.replayId)));
+  }catch(err){ list.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -958,6 +1043,14 @@ function renderAccountContent(user, newRecoveryKey = null) {
         </div>
         <div id="eloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
         <div class="note">Chaque catégorie possède son Elo propre. Une nouvelle catégorie commence à <strong>1200</strong>. Seules les parties marquées « classée Elo » modifient le classement.</div>
+      </section>
+
+      <section class="panel account-card chess-archive-card">
+        <h2>Mes parties d’Échecs</h2>
+        <p>Retrouvez vos parties multijoueurs terminées et rejouez-les coup par coup.</p>
+        <div id="chessGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div>
+        <div id="chessArchiveReplay" class="chess-archive-replay" hidden></div>
+        <div class="note">Les parties jouées avant la V6.6 peuvent apparaître sans relecture complète, car leurs coups n’étaient pas encore archivés dans D1.</div>
       </section>
 
       <form id="changePasswordForm" class="panel account-card">
@@ -1012,6 +1105,7 @@ function renderAccountContent(user, newRecoveryKey = null) {
 
     attachRecoveryCopy();
     loadChessRatingsPanel();
+    loadChessGamesPanel();
     return;
   }
 

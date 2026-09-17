@@ -1261,3 +1261,15 @@ main { min-height: calc(100vh - 160px); }
   .elo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .elo-row{grid-template-columns:2rem minmax(0,1fr) 3.6rem 3.8rem;font-size:.9rem}
 }
+
+
+/* V6.6 — Archive et relecture des parties d’Échecs */
+.chess-archive-card{grid-column:1/-1}
+.chess-game-archive{display:grid;gap:.45rem}
+.archive-game-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem .75rem;border:1px solid var(--border);border-radius:12px;background:var(--surface-soft)}
+.archive-game-row>div{display:grid;gap:.18rem;min-width:0}.archive-game-row small{color:var(--muted);line-height:1.35}.archive-result{font-variant-numeric:tabular-nums;color:var(--accent);padding:0 .25rem}
+.chess-archive-replay{margin-top:.7rem;padding:1rem;border:1px solid var(--border);border-radius:14px;background:var(--card)}.chess-archive-replay[hidden]{display:none!important}
+.archive-replay-head{display:flex;justify-content:space-between;gap:1rem;align-items:start;margin-bottom:.8rem}.archive-replay-head h3{margin:0}.archive-replay-head p{margin:.2rem 0 0;color:var(--muted)}
+.archive-board{width:min(100%,520px);aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);margin:0 auto;border:2px solid #303030}.archive-square{aspect-ratio:1;display:grid;place-items:center;font-size:clamp(1.25rem,5vw,3rem);line-height:1}.archive-square.light{background:#eee6d5}.archive-square.dark{background:#886d4f}
+.archive-replay-controls{display:flex;gap:.5rem;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:.8rem}.archive-replay-controls strong{min-width:130px;text-align:center;font-variant-numeric:tabular-nums}
+@media(max-width:680px){.archive-game-row{align-items:stretch;flex-direction:column}.archive-game-row .btn{width:100%}.archive-replay-head{flex-direction:column}.archive-replay-controls{display:grid;grid-template-columns:1fr 1fr}.archive-replay-controls strong{grid-column:1/-1;grid-row:1;text-align:center}}
