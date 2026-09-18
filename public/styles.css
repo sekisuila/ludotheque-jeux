@@ -2503,3 +2503,20 @@ main { min-height: calc(100vh - 160px); }
 .archive-yams-dice{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0}.archive-yams-die{display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:2rem}
 @media(max-width:1000px){.yams-layout{grid-template-columns:1fr}.yams-score-scroll{max-height:none}.yams-dice{grid-template-columns:repeat(5,1fr)}}
 @media(max-width:620px){.yams-online-grid{grid-template-columns:1fr}.yams-dice{gap:.25rem}.yams-die{padding:.2rem}.yams-die-face,.yams-die-empty{width:min(15vw,72px)}.yams-hold-label{font-size:.68rem}.yams-score-sheet{font-size:.82rem}.yams-score-sheet th,.yams-score-sheet td{padding:.38rem .3rem}}
+
+/* ============================================================
+   V6.28 — 421
+   ============================================================ */
+.game421-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:1.2rem;align-items:start}
+.game421-dice{grid-template-columns:repeat(3,minmax(100px,1fr));max-width:560px;margin-inline:auto}
+.game421-tokens{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin:1rem 0}
+.game421-tokens>div{padding:.75rem;border:1px solid var(--line);border-radius:14px;background:#f7f3ea;display:flex;flex-direction:column;gap:.12rem;min-width:0}
+.game421-tokens span{font-size:.75rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.game421-tokens strong{font-size:1.55rem;line-height:1;font-variant-numeric:tabular-nums}.game421-tokens small{color:var(--muted)}
+.game421-player.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 16%,transparent)}
+.game421-phase{background:#eef4ef!important}.game421-pot{background:#fff4df!important}
+.game421-combo{display:flex;justify-content:center;align-items:baseline;gap:.7rem;min-height:2.2rem;margin:.25rem 0 .8rem}.game421-combo strong{font-size:1.15rem}.game421-combo span{color:var(--muted)}
+.game421-actions{display:flex;justify-content:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem}
+.game421-rules-page .yams-rules-table td:first-child{font-weight:800;text-align:center}
+@media(max-width:920px){.game421-layout{grid-template-columns:1fr}.game421-tokens{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.game421-dice{grid-template-columns:repeat(3,1fr)}.game421-tokens{gap:.45rem}.game421-tokens>div{padding:.55rem}.game421-tokens strong{font-size:1.3rem}}

@@ -189,6 +189,27 @@ const GAMES = [
     art: "dice"
   },
   {
+    id: "421",
+    name: "421",
+    category: "Hasard & stratégie",
+    players: "2 joueurs",
+    duration: "10 à 25 min",
+    difficulty: "Accessible",
+    intro: "Trois dés, des relances tactiques et 21 jetons : faites les meilleures combinaisons pour charger puis décharger votre adversaire.",
+    goal: "Être le premier joueur à ne plus avoir de jetons pendant la phase de décharge.",
+    rules: [
+      "La partie utilise trois dés et 21 jetons.",
+      "Chaque joueur peut lancer jusqu’à trois fois et conserver les dés de son choix.",
+      "La partie commence par la charge : le perdant de chaque manche reçoit des jetons du pot.",
+      "Quand le pot est vide, la décharge commence : le gagnant d’une manche donne des jetons à son adversaire.",
+      "La combinaison 4-2-1 est la plus forte ; 2-2-1, appelée nénette, est la plus faible.",
+      "Le premier joueur qui revient à zéro jeton pendant la décharge gagne la partie."
+    ],
+    tips: "Gardez les As lorsqu’ils peuvent mener à une fiche, mais surveillez aussi les suites et les brelans : au 421, la valeur de la combinaison compte autant que sa force.",
+    demo: true,
+    art: "dice"
+  },
+  {
     id: "des",
     name: "Jeux de dés",
     category: "Hasard & probabilités",

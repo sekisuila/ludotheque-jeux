@@ -130,6 +130,7 @@ function renderGame(id) {
   if (id === "go") return renderGoGamePage(game);
   if (id === "abalone") return renderAbaloneGamePage(game);
   if (id === "yams") return renderYamsGamePage(game);
+  if (id === "421") return render421GamePage(game);
 
   app.innerHTML = `
     <div class="page">
@@ -1423,6 +1424,25 @@ async function loadYamsGamesPanel(){
   try{const games=await LudoOnline.yamsGames.list();if(!games.length){list.innerHTML="<p>Aucune partie de Yams en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · ${g.player0Score}–${g.player1Score} · ${g.rated?"Classée":"Amicale"}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-yams-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-yams-replay-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYamsArchiveReplay(b.dataset.yamsReplayId)));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
 }
 
+
+let game421ArchiveReplay={game:null,index:0};
+async function load421RatingsPanel(){
+  const mine=document.getElementById("my421Rating"),board=document.getElementById("game421EloLeaderboard");if(!mine||!board||!window.LudoOnline)return;
+  try{const [rating,data]=await Promise.all([LudoOnline.game421Ratings.mine(),LudoOnline.game421Ratings.leaderboard(30)]);mine.innerHTML=`<div><span>421</span><strong>${Number(rating.rating||1200)}</strong><small>${Number(rating.games||0)} partie${Number(rating.games||0)>1?"s":""}</small></div>`;board.innerHTML=data.players?.length?data.players.map((r,i)=>`<div class="elo-row"><span>${i+1}.</span><strong>${escapeHtml(r.username)}</strong><b>${Number(r.rating)}</b><small>${Number(r.games)} p.</small></div>`).join(""):'<p>Aucun classement 421 pour le moment.</p>';}catch(e){mine.innerHTML=`<p>${escapeHtml(e.message)}</p>`;board.innerHTML="";}
+}
+function render421ArchiveReplay(){
+  const panel=document.getElementById("game421ArchiveReplay"),game=game421ArchiveReplay.game;if(!panel||!game)return;const events=game.replay?.history||[],ev=events[game421ArchiveReplay.index];
+  const dice=(ev?.dice||ev?.results?.[ev?.winner]?.dice||[0,0,0]).map(v=>`<span class="archive-yams-die">${["—","⚀","⚁","⚂","⚃","⚄","⚅"][Number(v)||0]}</span>`).join("");
+  const txt=!ev?"Début de la partie":ev.type==="roll"?`Lancer ${ev.roll} du joueur ${Number(ev.side)+1}.`:ev.type==="stop"?`Le joueur ${Number(ev.side)+1} valide ${escapeHtml(ev.combo?.name||"")}.`:ev.tie?`Manche ${ev.round} : égalité.`:`Manche ${ev.round} : ${ev.transfer} jeton${ev.transfer>1?"s":""} transféré${ev.transfer>1?"s":""}.`;
+  panel.querySelector(".game421-replay-body").innerHTML=`<div class="archive-yams-dice">${dice}</div><p>${txt}</p>${ev?.tokens?`<p><strong>Jetons :</strong> ${ev.tokens[0]} – ${ev.tokens[1]} · Pot : ${ev.pot}</p>`:""}`;const c=panel.querySelector(".game421-replay-counter");if(c)c.textContent=events.length?`${game421ArchiveReplay.index+1} / ${events.length}`:"0 / 0";
+}
+async function open421ArchiveReplay(id){
+  const panel=document.getElementById("game421ArchiveReplay");if(!panel)return;try{const game=await LudoOnline.game421Games.get(id);game421ArchiveReplay={game,index:0};panel.hidden=false;panel.innerHTML=`<div class="archive-replay-head"><div><h3>${escapeHtml(game.player0Username)} — ${escapeHtml(game.player1Username)}</h3><p>${game.rated?"Classée":"Amicale"}</p></div><button class="btn small outline" id="close421Archive">Fermer</button></div><div class="game421-replay-body"></div><div class="archive-replay-controls"><button class="btn small outline" data-421-step="start">⏮ Début</button><button class="btn small outline" data-421-step="prev">◀ Précédent</button><strong class="game421-replay-counter"></strong><button class="btn small outline" data-421-step="next">Suivant ▶</button><button class="btn small outline" data-421-step="end">Fin ⏭</button></div>`;panel.querySelector("#close421Archive")?.addEventListener("click",()=>panel.hidden=true);panel.querySelectorAll("[data-421-step]").forEach(b=>b.addEventListener("click",()=>{const len=game.replay?.history?.length||0;if(!len)return;const a=b.getAttribute("data-421-step");if(a==="start")game421ArchiveReplay.index=0;else if(a==="prev")game421ArchiveReplay.index=Math.max(0,game421ArchiveReplay.index-1);else if(a==="next")game421ArchiveReplay.index=Math.min(len-1,game421ArchiveReplay.index+1);else game421ArchiveReplay.index=len-1;render421ArchiveReplay();}));render421ArchiveReplay();}catch(e){panel.hidden=false;panel.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+async function load421GamesPanel(){
+  const list=document.getElementById("game421ArchiveList");if(!list||!window.LudoOnline)return;try{const games=await LudoOnline.game421Games.list();if(!games.length){list.innerHTML="<p>Aucune partie de 421 en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · Jetons finaux ${g.player0Tokens}–${g.player1Tokens} · ${g.rated?"Classée":"Amicale"}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-421-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-421-replay-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>open421ArchiveReplay(b.getAttribute("data-421-replay-id"))));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -1512,6 +1532,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
         <div class="note">Le Yams possède un Elo unique. Les parties amicales ne modifient pas le classement.</div>
       </section>
       <section class="panel account-card chess-archive-card"><h2>Mes parties de Yams</h2><p>Retrouvez vos parties terminées et revoyez les lancers et choix de score.</p><div id="yamsGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="yamsArchiveReplay" class="chess-archive-replay yams-archive-replay" hidden></div></section>
+      <section class="panel account-card chess-ratings-card"><h2>Classement Elo — 421</h2><div id="my421Rating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="game421EloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div><div class="note">Le 421 possède un Elo unique. Les parties amicales ne modifient pas le classement.</div></section>
+      <section class="panel account-card chess-archive-card"><h2>Mes parties de 421</h2><p>Retrouvez vos parties terminées et revoyez les lancers et transferts de jetons.</p><div id="game421ArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="game421ArchiveReplay" class="chess-archive-replay" hidden></div></section>
 
       <form id="changePasswordForm" class="panel account-card">
         <h2>Changer le mot de passe</h2>
@@ -1576,6 +1598,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
     loadAbaloneGamesPanel();
     loadYamsRatingsPanel();
     loadYamsGamesPanel();
+    load421RatingsPanel();
+    load421GamesPanel();
     return;
   }
 
@@ -1675,6 +1699,7 @@ function renderPlay(id) {
   if (id === "abalone") return renderAbalonePlay();
   if (id === "awale") return renderAwalePlay();
   if (id === "yams") return renderYamsPlay();
+  if (id === "421") return render421Play();
 
   app.innerHTML = `
     <div class="page">
@@ -1686,6 +1711,7 @@ function renderPlay(id) {
         <article class="play-card"><div class="visual">${illustration("abalone", false)}</div><div><span class="tag">Nouveau</span><h2>Abalone</h2><p>Plateau hexagonal, déplacements en ligne ou latéraux, poussées Sumito, éjections et trois niveaux d’IA.</p><a class="btn" href="#/jouer/abalone">Jouer à Abalone</a></div></article>
         <article class="play-card"><div class="visual">${illustration("awale", false)}</div><div><span class="tag">Jouable</span><h2>Awélé</h2><p>Deux joueurs en local ou joueur contre IA, avec semailles, captures et règle de nourrissage.</p><a class="btn" href="#/jouer/awale">Jouer à l’Awélé</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>Yams</h2><p>Cinq dés, jusqu’à trois lancers, feuille de score complète, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div></article>
+        <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>421</h2><p>Trois dés, 21 jetons, charge et décharge, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/421">Jouer au 421</a></div></article>
       </div>
     </div>
   `;
@@ -2072,6 +2098,14 @@ function renderYamsPlay() {
       </div>
     </div>`;
   initYams();
+}
+
+
+function render421GamePage(game){
+  app.innerHTML=`<div class="page game421-rules-page"><div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/catalogue">Catalogue</a><span>›</span><span>421</span></div><section class="game-hero"><div class="game-hero-visual">${illustration("dice",true)}</div><div><div class="eyebrow">Jeu de dés</div><h1>421</h1><p>Notre variante à deux joueurs utilise trois dés et 21 jetons. La partie se joue en deux phases : charge puis décharge.</p><div class="stats"><div class="stat"><strong>3 dés</strong><span>Matériel</span></div><div class="stat"><strong>21 jetons</strong><span>Pot de départ</span></div><div class="stat"><strong>2 joueurs</strong><span>Version actuelle</span></div></div><div class="hero-actions"><a class="btn" href="#/jouer/421">Jouer au 421</a></div></div></section><div class="content-grid"><article class="panel"><h2>Déroulement</h2><ol class="rule-list"><li>Chaque joueur lance les trois dés et peut effectuer jusqu’à trois lancers, en conservant les dés de son choix.</li><li>Pendant la <strong>charge</strong>, le perdant de la manche reçoit des jetons du pot. Leur nombre dépend de la meilleure combinaison.</li><li>Quand le pot est vide, commence la <strong>décharge</strong>.</li><li>Pendant la décharge, le gagnant de la manche donne à son adversaire autant de jetons que vaut sa combinaison.</li><li>Le premier joueur qui ne possède plus aucun jeton pendant la décharge gagne.</li></ol><h2 style="margin-top:24px">Hiérarchie utilisée</h2><div class="yams-rules-table-wrap"><table class="yams-rules-table"><thead><tr><th>Ordre</th><th>Combinaison</th><th>Valeur</th></tr></thead><tbody><tr><td>1</td><td>4-2-1</td><td>10 jetons</td></tr><tr><td>2</td><td>1-1-1</td><td>7</td></tr><tr><td>3–12</td><td>Deux As + X, puis brelan de X (de 6 à 2)</td><td>6 à 2</td></tr><tr><td>13–16</td><td>Suites 6-5-4, 5-4-3, 4-3-2, 3-2-1</td><td>2</td></tr><tr><td>Ensuite</td><td>Autres combinaisons, classées de la plus forte à la plus faible</td><td>1</td></tr><tr><td>Dernière</td><td>2-2-1 « nénette »</td><td>2 jetons, mais combinaison la plus faible</td></tr></tbody></table></div><div class="note" style="margin-top:20px"><strong>Variante choisie :</strong> le 421 possède de nombreuses variantes locales. Cette version fixe une hiérarchie explicite pour que le jeu en ligne soit sans ambiguïté.</div></article><aside class="panel"><h3>Modes disponibles</h3><p><strong>Multijoueur :</strong> les dés sont générés par le serveur Cloudflare.</p><p><strong>Contre IA :</strong> l’ordinateur choisit quels dés conserver.</p><p><strong>Local :</strong> deux joueurs utilisent le même écran.</p><div class="note">Les parties en ligne peuvent être classées Elo ou amicales.</div></aside></div></div>`;
+}
+function render421Play(){
+  app.innerHTML=`<div class="page game421-page"><div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>421</span></div><div class="section-head"><div><div class="eyebrow">Jeu de dés</div><h1>421 interactif</h1><p class="section-lead">Conservez vos meilleurs dés, validez votre combinaison et débarrassez-vous de vos jetons.</p></div><a class="btn outline small" href="#/jeu/421">Voir les règles</a></div><div class="game421-layout"><section class="game-shell"><div class="yams-toolbar"><label><strong>Mode :</strong><select id="game421Mode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label><button id="new421" class="btn small" type="button">Nouvelle partie</button></div><div id="game421OnlineSettings" class="yams-online-settings"><div class="yams-online-grid"><label><span>Ordre à la création</span><select id="game421CreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Joueur 1 — commence</option><option value="1">Joueur 2</option></select></label><label class="form-check"><input id="game421Rated" type="checkbox" checked><span>Partie classée Elo</span></label></div><div class="yams-room-actions"><button id="create421Room" class="btn small" type="button">Créer un salon</button><input id="game421RoomCode" maxlength="6" placeholder="CODE" autocomplete="off"><button id="join421Room" class="btn outline small" type="button">Rejoindre</button></div><div id="game421OnlineStatus" class="form-status"></div><div id="game421RoomState" class="yams-room-state"></div></div><div id="game421Tokens" class="game421-tokens"></div><div id="game421Dice" class="yams-dice game421-dice"></div><div id="game421Combo" class="game421-combo"></div><div class="game421-actions"><button id="roll421" class="btn" type="button">Lancer les dés</button><button id="stop421" class="btn outline" type="button">Valider la combinaison</button></div><div id="game421Status" class="status"></div><div id="game421OnlineActions" class="chess-online-actions" hidden><button id="resign421" class="btn danger small" type="button">Abandonner</button><button id="draw421" class="btn outline small" type="button">Proposer nulle</button><button id="rematch421" class="btn small" type="button" hidden>Proposer une revanche</button></div><div id="game421Prompt" class="online-decision" hidden><strong>Proposition</strong><span></span><div><button id="accept421" class="btn small" type="button">Accepter</button><button id="decline421" class="btn outline small" type="button">Refuser</button></div></div><div id="game421RatingResult" class="rating-result" hidden></div></section><aside class="panel"><h2>Repères</h2><p><strong>Charge :</strong> évitez de récupérer les jetons du pot.</p><p><strong>Décharge :</strong> gagnez les manches pour donner vos jetons à l’adversaire.</p><p><strong>Nénette :</strong> 2-2-1 est la combinaison la plus faible.</p><div class="note"><strong>Astuce :</strong> un 4, un 2 ou un As conservé peut ouvrir la voie au 421, mais deux As donnent aussi accès à plusieurs combinaisons très fortes.</div></aside></div></div>`;init421();
 }
 
 function renderAbout() {
