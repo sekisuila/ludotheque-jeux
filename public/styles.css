@@ -2246,3 +2246,137 @@ main { min-height: calc(100vh - 160px); }
   .go-play-page .go-board-frame{width:100%}
   .archive-go-board{padding:7px;border-width:5px}
 }
+
+/* ============================================================
+   V6.22 — Go : pendules robustes + disposition PC à côté du goban
+   ============================================================ */
+.go-clock-panel{
+  display:grid;
+  gap:.75rem;
+  margin:0;
+  min-width:0;
+  overflow:visible!important;
+}
+.go-clock-panel[hidden]{display:none!important}
+.go-clock-readout{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:1rem;
+  min-width:0;
+}
+.go-clock-card{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:space-between;
+  gap:.7rem;
+  min-width:0;
+  min-height:132px;
+  padding:.9rem 1rem 1rem;
+  border:1px solid var(--line);
+  border-radius:15px;
+  box-shadow:0 4px 14px rgba(0,0,0,.06);
+  transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+.go-clock-card.black{background:linear-gradient(180deg,#202020,#111);color:#f7f7f3}
+.go-clock-card.white{background:linear-gradient(180deg,#fbfbf8,#f0f0ea);color:#171717}
+.go-clock-card.active{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 20%,transparent),0 10px 22px rgba(0,0,0,.08);
+  transform:translateY(-1px);
+}
+.go-clock-player{
+  display:grid;
+  grid-template-columns:20px minmax(0,1fr);
+  grid-template-areas:"dot name" "dot elo";
+  gap:.08rem .6rem;
+  align-items:center;
+  min-width:0;
+}
+.go-clock-player>span:not(.go-clock-dot){
+  grid-area:name;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-weight:850;
+}
+.go-clock-player small{grid-area:elo;opacity:.78;font-weight:700}
+.go-clock-dot{
+  grid-area:dot;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  align-self:center;
+}
+.go-clock-dot.black{background:#050505;border:2px solid #777;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.go-clock-dot.white{background:#fff;border:2px solid #b5b0a7;box-shadow:inset 0 0 0 1px rgba(0,0,0,.03)}
+.go-clock-card strong{
+  display:block;
+  width:100%;
+  padding-top:.65rem;
+  border-top:1px solid currentColor;
+  text-align:center;
+  font-size:clamp(1.85rem,3vw,2.55rem);
+  line-height:1;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.05em;
+}
+.go-clock-card.black strong{border-top-color:rgba(255,255,255,.2)}
+.go-clock-card.white strong{border-top-color:rgba(0,0,0,.13)}
+.go-clock-panel .chess-time-meta{
+  text-align:center;
+  line-height:1.3;
+  font-size:.84rem;
+}
+
+@media (min-width:980px){
+  .go-play-page .go-shell.go-online-clock-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 290px;
+    grid-template-areas:
+      "toolbar toolbar"
+      "board clock"
+      "board actions"
+      "board status"
+      "board onlineactions"
+      "board prompt";
+    column-gap:1.2rem;
+    row-gap:.75rem;
+    align-items:start;
+    overflow:visible;
+  }
+  .go-shell.go-online-clock-layout>.go-toolbar{grid-area:toolbar;margin-bottom:.3rem}
+  .go-shell.go-online-clock-layout>.go-board-frame{
+    grid-area:board;
+    width:min(100%,720px,calc(100vh - 235px));
+    max-width:720px;
+    margin:0 auto;
+    align-self:start;
+  }
+  .go-shell.go-online-clock-layout>.go-clock-panel{grid-area:clock;align-self:start}
+  .go-shell.go-online-clock-layout>.go-actions{grid-area:actions;margin-top:0}
+  .go-shell.go-online-clock-layout>#goStatus{grid-area:status;margin-top:0}
+  .go-shell.go-online-clock-layout>#goOnlineActions{grid-area:onlineactions;margin-top:0}
+  .go-shell.go-online-clock-layout>#goOnlinePrompt{grid-area:prompt;margin-top:0}
+}
+
+@media (min-width:980px) and (max-height:800px){
+  .go-shell.go-online-clock-layout>.go-board-frame{
+    width:min(100%,610px,calc(100vh - 205px));
+  }
+  .go-clock-card{min-height:112px;padding:.72rem .85rem .8rem;gap:.5rem}
+  .go-clock-card strong{font-size:1.8rem;padding-top:.5rem}
+  .go-clock-readout{gap:.7rem}
+}
+
+@media (max-width:979px){
+  .go-play-page .go-shell.go-online-clock-layout{display:block}
+  .go-shell.go-online-clock-layout>.go-clock-panel{margin:0 0 .9rem}
+  .go-clock-readout{grid-template-columns:1fr 1fr;gap:.7rem}
+}
+@media (max-width:620px){
+  .go-clock-readout{grid-template-columns:1fr}
+  .go-clock-card{min-height:112px}
+}

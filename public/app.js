@@ -468,12 +468,12 @@ function renderAbalonePlay() {
       <div class="abalone-play-layout">
         <section class="game-shell abalone-shell">
           <div class="go-toolbar abalone-toolbar">
-            <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
-            <div id="abaloneAiSettings" class="toolbar-group">
+            <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+            <div id="abaloneAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="abaloneAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label>
               <label><span>Votre couleur</span><select id="abaloneSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
             </div>
-            <div id="abaloneOnlineSettings" class="toolbar-group abalone-online-settings" hidden>
+            <div id="abaloneOnlineSettings" class="toolbar-group abalone-online-settings">
               <button id="createAbaloneRoom" class="btn small">Créer un salon</button>
               <label><span>Code du salon</span><input id="abaloneRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
               <button id="joinAbaloneRoom" class="btn outline small">Rejoindre</button>
@@ -1422,12 +1422,12 @@ function renderDraughtsPlay(variant) {
       <div class="draught-play-layout">
         <section class="game-shell draught-shell">
           <div class="chess-toolbar">
-            <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
-            <div id="draughtAiSettings" class="toolbar-group">
+            <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+            <div id="draughtAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="draughtAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre camp</span><select id="draughtSide">${cfg.sideNames.map((name, i) => `<option value="${i}" ${i === cfg.firstSide ? "selected" : ""}>${name}</option>`).join("")}</select></label>
             </div>
-            <div id="draughtOnlineSettings" class="toolbar-group draught-online-settings" hidden>
+            <div id="draughtOnlineSettings" class="toolbar-group draught-online-settings">
               <label><span>Camp si vous créez</span><select id="draughtCreatorSide"><option value="random" selected>Aléatoire</option>${cfg.sideNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("")}</select></label>
               <label><span>Cadence</span><select id="draughtTimePreset">
                 <option value="60,0">1+0 — Bullet</option>
@@ -1498,12 +1498,12 @@ function renderGoPlay() {
         <section class="game-shell go-shell">
           <div class="go-toolbar">
             <label><span>Goban</span><select id="goSize"><option value="19" selected>19 × 19</option><option value="13">13 × 13</option><option value="9">9 × 9</option></select></label>
-            <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
-            <div id="goAiSettings" class="toolbar-group">
+            <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+            <div id="goAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="goAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre couleur</span><select id="goSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
             </div>
-            <div id="goOnlineSettings" class="toolbar-group go-online-settings" hidden>
+            <div id="goOnlineSettings" class="toolbar-group go-online-settings">
               <label><span>Couleur si vous créez</span><select id="goCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noir</option><option value="white">Blanc</option></select></label>
               <label><span>Cadence</span><select id="goTimePreset"><option value="1+0">1+0</option><option value="3+2">3+2</option><option value="5+0">5+0</option><option value="10+5" selected>10+5</option><option value="15+10">15+10</option><option value="30+0">30+0</option><option value="custom">Personnalisée</option></select></label>
               <span id="goCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="goInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="goIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
@@ -1558,12 +1558,12 @@ function renderChessPlay() {
       <div class="chess-play-layout">
         <section class="game-shell chess-shell">
           <div class="chess-toolbar">
-            <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
-            <div id="chessAiSettings" class="toolbar-group">
+            <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+            <div id="chessAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="chessAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre couleur</span><select id="chessSide"><option value="w">Blancs</option><option value="b">Noirs</option></select></label>
             </div>
-            <div id="chessOnlineSettings" class="toolbar-group chess-online-settings" hidden>
+            <div id="chessOnlineSettings" class="toolbar-group chess-online-settings">
               <label><span>Couleur si vous créez</span><select id="chessCreatorColor"><option value="random" selected>Aléatoire</option><option value="white">Blancs</option><option value="black">Noirs</option></select></label>
               <label><span>Cadence</span><select id="chessTimePreset">
                 <option value="60,0">1+0 — Bullet</option>

@@ -452,13 +452,15 @@ function goChooseAiMove(game, level = "medium") {
 // ------------------------------------------------------------
 const GO_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
 function goEmptyOnlineState(){
-  return {ws:null,code:null,connected:false,side:null,players:{black:null,white:null},result:null,clock:null,settings:null,ratings:null,ratingUpdate:null,drawOffer:null,rematchOffer:null,pendingProposal:null,clockTimer:null};
+  return {ws:null,code:null,connected:false,side:null,players:{black:null,white:null},result:null,clock:null,settings:null,ratings:null,ratingUpdate:null,drawOffer:null,rematchOffer:null,pendingProposal:null,clockTimer:null,syncTimer:null,reconnectTimer:null};
 }
 function goOnlineHasTwoPlayers(){ return Boolean(goUi?.online?.players?.black&&goUi?.online?.players?.white); }
 function goDisconnectOnline(){
   if(!goUi?.online) return;
   try{goUi.online.ws?.close();}catch{}
   if(goUi.online.clockTimer) clearInterval(goUi.online.clockTimer);
+  if(goUi.online.syncTimer) clearInterval(goUi.online.syncTimer);
+  if(goUi.online.reconnectTimer) clearTimeout(goUi.online.reconnectTimer);
   goUi.online=goEmptyOnlineState();
   goHideOnlinePrompt();
   goUpdateClockDisplay();
@@ -692,9 +694,46 @@ async function goJoinOnlineRoom(){
   }catch(e){goSetRoomStatus(e.message,true);}
 }
 function goConnectOnline(code){
-  if(!window.LudoOnline)return;try{goUi.online.ws?.close();}catch{}
-  const ws=LudoOnline.rooms.connect(code,{open(){goUi.online.connected=true;goSetRoomStatus(`Connecté au salon ${code}.`);goUpdateOnlineControls();},message(data){goHandleOnlineMessage(data);},close(){goUi.online.connected=false;goSetRoomStatus("Connexion au salon fermée.",true);goUpdateOnlineControls();},error(){goSetRoomStatus("Erreur de connexion au salon.",true);}});
-  goUi.online.ws=ws;if(goUi.online.clockTimer)clearInterval(goUi.online.clockTimer);goUi.online.clockTimer=setInterval(goUpdateClockDisplay,250);
+  if(!window.LudoOnline||!goUi)return;
+  if(goUi.online.syncTimer) clearInterval(goUi.online.syncTimer);
+  if(goUi.online.reconnectTimer) clearTimeout(goUi.online.reconnectTimer);
+  try{goUi.online.ws?.close();}catch{}
+  goUi.online.code=code;
+  const ws=LudoOnline.rooms.connect(code,{
+    open(){
+      if(!goUi||goUi.mode!=="online"||goUi.online.code!==code||goUi.online.ws!==ws) return;
+      goUi.online.connected=true;
+      goSetRoomStatus(`Connecté au salon ${code}.`);
+      goUpdateOnlineControls();
+      goUpdateClockDisplay();
+      try{ws.send(JSON.stringify({type:"sync"}));}catch{}
+      if(goUi.online.syncTimer) clearInterval(goUi.online.syncTimer);
+      goUi.online.syncTimer=setInterval(()=>{
+        if(goUi?.mode==="online"&&goUi.online.code===code&&ws.readyState===WebSocket.OPEN){
+          try{ws.send(JSON.stringify({type:"sync"}));}catch{}
+        }
+      },5000);
+    },
+    message(data){if(goUi?.online?.ws===ws) goHandleOnlineMessage(data);},
+    close(){
+      if(!goUi||goUi.mode!=="online"||goUi.online.code!==code||goUi.online.ws!==ws) return;
+      goUi.online.connected=false;
+      if(goUi.online.syncTimer){clearInterval(goUi.online.syncTimer);goUi.online.syncTimer=null;}
+      goSetRoomStatus("Connexion momentanément interrompue. Reconnexion…",true);
+      goUpdateOnlineControls();
+      goUpdateClockDisplay();
+      if(goUi.online.reconnectTimer) clearTimeout(goUi.online.reconnectTimer);
+      goUi.online.reconnectTimer=setTimeout(()=>{
+        if(goUi?.mode==="online"&&goUi.online.code===code&&!goUi.online.connected) goConnectOnline(code);
+      },1500);
+    },
+    error(){
+      if(goUi?.mode==="online"&&goUi.online.code===code&&goUi.online.ws===ws) goSetRoomStatus("Connexion instable. Nouvelle tentative…",true);
+    }
+  });
+  goUi.online.ws=ws;
+  if(goUi.online.clockTimer)clearInterval(goUi.online.clockTimer);
+  goUi.online.clockTimer=setInterval(goUpdateClockDisplay,250);
 }
 function goApplyServerGame(serverGame){
   if(!serverGame)return;const g=new GoGame(Number(serverGame.size||19),{komi:Number(serverGame.komi??7.5),scoring:serverGame.scoring||"area"});
@@ -728,5 +767,28 @@ function goResignOnline(){if(!goUi?.online?.result?.over&&confirm("Voulez-vous v
 function goUpdateOnlineControls(){const box=document.getElementById("goOnlineActions");if(!box||!goUi)return;const online=goUi.mode==="online"&&goUi.online.connected;box.hidden=!online;for(const id of ["goSize","goKomi","goScoring"]){const el=document.getElementById(id);if(el)el.disabled=online;}if(!online)return;const over=Boolean(goUi.online.result?.over),two=goOnlineHasTwoPlayers();const draw=document.getElementById("offerDrawGo"),rematch=document.getElementById("offerRematchGo");if(draw)draw.disabled=!two||over||Boolean(goUi.online.drawOffer);if(rematch){rematch.hidden=!over;rematch.disabled=!two||Boolean(goUi.online.rematchOffer);}}
 function goOnlineClockValues(){const c=goUi?.online?.clock;if(!c)return null;let blackMs=Number(c.blackMs||0),whiteMs=Number(c.whiteMs||0);if(c.started&&c.runningSide&&!goUi.online.result?.over){const e=Math.max(0,Date.now()-Number(c.clientReceivedAt||Date.now()));if(Number(c.runningSide)===GO_BLACK)blackMs=Math.max(0,blackMs-e);else whiteMs=Math.max(0,whiteMs-e);}return{blackMs,whiteMs,runningSide:c.runningSide,started:c.started};}
 function goFormatClock(ms){let t=Math.max(0,Math.ceil(Number(ms||0)/1000)),m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;}
-function goUpdateClockDisplay(){const panel=document.getElementById("goClockPanel");if(!panel||!goUi)return;const online=goUi.mode==="online"?goUi.online:null;panel.hidden=!online?.connected;if(!online?.connected)return;const v=goOnlineClockValues()||{blackMs:0,whiteMs:0};const p=online.players||{},r=online.ratings||{};const readout=document.getElementById("goClockReadout");if(readout)readout.innerHTML=`<div class="go-clock-card black"><span>Noirs · ${p.black?.username||"En attente"}</span><small>Elo ${r.black?.rating??1200}</small><strong>${goFormatClock(v.blackMs)}</strong></div><div class="go-clock-card white"><span>Blancs · ${p.white?.username||"En attente"}</span><small>Elo ${r.white?.rating??1200}</small><strong>${goFormatClock(v.whiteMs)}</strong></div>`;const tc=online.settings?.timeControl,meta=document.getElementById("goTimeMeta");if(meta&&tc){meta.textContent=`${Number(tc.initialSeconds)/60}+${Number(tc.incrementSeconds||0)} · ${GO_RATING_LABELS[online.settings?.ratingCategory||"rapid"]} · ${online.settings?.rated?"classée Elo":"amicale"}`;}}
+function goUpdateClockDisplay(){
+  const panel=document.getElementById("goClockPanel");
+  if(!panel||!goUi)return;
+  const online=goUi.mode==="online"?goUi.online:null;
+  const hasClock=Boolean(online?.clock);
+  // En cas de micro-coupure WebSocket, on garde les dernières pendules visibles.
+  panel.hidden=!(online&&hasClock);
+  document.querySelector(".go-shell")?.classList.toggle("go-online-clock-layout",Boolean(online&&hasClock));
+  if(!online||!hasClock)return;
+  const v=goOnlineClockValues()||{blackMs:0,whiteMs:0,runningSide:null,started:false};
+  const p=online.players||{},r=online.ratings||{};
+  const readout=document.getElementById("goClockReadout");
+  if(readout)readout.innerHTML=`
+    <div class="go-clock-card black ${v.started&&Number(v.runningSide)===GO_BLACK&&!online.result?.over?"active":""}">
+      <div class="go-clock-player"><span class="go-clock-dot black" aria-hidden="true"></span><span>Noirs · ${p.black?.username||"En attente"}</span><small>Elo ${r.black?.rating??1200}</small></div>
+      <strong>${goFormatClock(v.blackMs)}</strong>
+    </div>
+    <div class="go-clock-card white ${v.started&&Number(v.runningSide)===GO_WHITE&&!online.result?.over?"active":""}">
+      <div class="go-clock-player"><span class="go-clock-dot white" aria-hidden="true"></span><span>Blancs · ${p.white?.username||"En attente"}</span><small>Elo ${r.white?.rating??1200}</small></div>
+      <strong>${goFormatClock(v.whiteMs)}</strong>
+    </div>`;
+  const tc=online.settings?.timeControl,meta=document.getElementById("goTimeMeta");
+  if(meta&&tc){meta.textContent=`${Number(tc.initialSeconds)/60}+${Number(tc.incrementSeconds||0)} · ${GO_RATING_LABELS[online.settings?.ratingCategory||"rapid"]} · ${online.settings?.rated?"classée Elo":"amicale"}`;}
+}
 function goUpdateRatingResult(){const box=document.getElementById("goRatingResult");if(!box)return;const u=goUi?.online?.ratingUpdate;if(goUi.mode!=="online"||!u?.rated){box.hidden=true;return;}const mine=Number(goUi.online.side)===GO_BLACK?u.black:u.white,other=Number(goUi.online.side)===GO_BLACK?u.white:u.black;box.hidden=false;box.innerHTML=`<strong>Elo ${GO_RATING_LABELS[u.category]||u.category}</strong><span>Vous : ${mine?.before} → ${mine?.after} (${Number(mine?.delta)>=0?"+":""}${mine?.delta})</span><span>${other?.username||"Adversaire"} : ${other?.before} → ${other?.after} (${Number(other?.delta)>=0?"+":""}${other?.delta})</span>`;}
