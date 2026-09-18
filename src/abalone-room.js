@@ -4,6 +4,7 @@ import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
 import { CHECKERS_VARIANTS, initialCheckersGameState, playServerCheckersMove } from "./checkers-engine.js";
 import { GO_BLACK, GO_WHITE, otherGoSide, initialGoGameState, playServerGoMove, playServerGoPass } from "./go-engine.js";
 import { initialAwaleGameState, playServerAwaleMove } from "./awale-engine.js";
+import { initialYamsGameState, playServerYamsRoll, playServerYamsHold, playServerYamsScore, yamsTotal } from "./yams-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
 const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
@@ -48,6 +49,7 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "checkers") return initialCheckersGameState(await this.getCheckersVariant());
     if(gameType === "go") return initialGoGameState(await this.getGoSettings());
     if(gameType === "awale") return initialAwaleGameState();
+    if(gameType === "yams") return initialYamsGameState();
     return initialGameState();
   }
   async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
@@ -78,6 +80,9 @@ export class AbaloneRoom extends DurableObject {
       timeControl:{initialSeconds:600,incrementSeconds:0},rated:true,ratingCategory:"rapid"
     };
   }
+  async getYamsSettings(){
+    return (await this.ctx.storage.get("yamsSettings")) || {rated:true};
+  }
   async getAbaloneSettings(){
     return (await this.ctx.storage.get("abaloneSettings")) || {
       timeControl:{initialSeconds:600,incrementSeconds:0},rated:true,ratingCategory:"rapid"
@@ -98,6 +103,7 @@ export class AbaloneRoom extends DurableObject {
     if(gameType==="checkers") return this.getCheckersSettings();
     if(gameType==="go") return this.getGoSettings();
     if(gameType==="awale") return this.getAwaleSettings();
+    if(gameType==="yams") return this.getYamsSettings();
     if(gameType==="abalone") return this.getAbaloneSettings();
     return null;
   }
@@ -106,6 +112,7 @@ export class AbaloneRoom extends DurableObject {
     if(gameType==="checkers") return this.checkersRoomRatings();
     if(gameType==="go") return this.goRoomRatings();
     if(gameType==="awale") return this.awaleRoomRatings();
+    if(gameType==="yams") return this.yamsRoomRatings();
     if(gameType==="abalone") return this.abaloneRoomRatings();
     return null;
   }
@@ -122,14 +129,14 @@ export class AbaloneRoom extends DurableObject {
       if(gameType === "chess") return "b";
       if(gameType === "checkers") return 0;
       if(gameType === "go") return GO_BLACK;
-      if(gameType === "awale") return 0;
+      if(gameType === "awale" || gameType === "yams") return 0;
       return AB_BLACK;
     }
     if(players.white?.id===userId){
       if(gameType === "chess") return "w";
       if(gameType === "checkers") return 1;
       if(gameType === "go") return GO_WHITE;
-      if(gameType === "awale") return 1;
+      if(gameType === "awale" || gameType === "yams") return 1;
       return AB_WHITE;
     }
     return null;
@@ -151,7 +158,7 @@ export class AbaloneRoom extends DurableObject {
       if(winner===GO_WHITE) return players.white?.id || null;
       return null;
     }
-    if(gameType === "awale"){
+    if(gameType === "awale" || gameType === "yams"){
       if(winner===0) return players.black?.id || null;
       if(winner===1) return players.white?.id || null;
       return null;
@@ -1004,6 +1011,57 @@ export class AbaloneRoom extends DurableObject {
   }
 
   // ----------------------------
+  // Classement Elo + archive du Yams.
+  // ----------------------------
+  async currentYamsRating(userId){
+    const row=await this.env.DB.prepare(`SELECT rating,games,wins,draws,losses FROM yams_ratings WHERE user_id=?`).bind(userId).first();
+    return row?{rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses)}:{rating:ELO_INITIAL,games:0,wins:0,draws:0,losses:0};
+  }
+  async yamsRoomRatings(){
+    if((await this.getGameType())!=="yams") return null;
+    const players=await this.getPlayers();
+    return {player0:players.black?await this.currentYamsRating(players.black.id):null,player1:players.white?await this.currentYamsRating(players.white.id):null};
+  }
+  async recordYamsResult(game,reason){
+    const settings=await this.getYamsSettings(); if(!settings.rated) return null;
+    const players=await this.getPlayers(); if(!players.black?.id||!players.white?.id) return null;
+    const code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber(); if(!code) return null;
+    const already=await this.env.DB.prepare("SELECT id FROM yams_results WHERE room_code=? AND game_number=?").bind(code,gameNumber).first();
+    if(already) return await this.getRatingUpdate();
+    await this.env.DB.batch([
+      this.env.DB.prepare("INSERT OR IGNORE INTO yams_ratings(user_id,rating) VALUES(?,?)").bind(players.black.id,ELO_INITIAL),
+      this.env.DB.prepare("INSERT OR IGNORE INTO yams_ratings(user_id,rating) VALUES(?,?)").bind(players.white.id,ELO_INITIAL)
+    ]);
+    const p0=await this.currentYamsRating(players.black.id),p1=await this.currentYamsRating(players.white.id);
+    const winner=game?.result?.winner,score0=winner===0?1:winner===1?0:0.5,expected0=this.eloExpected(p0.rating,p1.rating);
+    let delta0=Math.round(ELO_K*(score0-expected0)),delta1=-delta0;
+    const after0=Math.max(100,p0.rating+delta0),after1=Math.max(100,p1.rating+delta1); delta0=after0-p0.rating;delta1=after1-p1.rating;
+    const win0=score0===1?1:0,win1=score0===0?1:0,isDraw=score0===0.5?1:0,result=score0===1?"1-0":score0===0?"0-1":"1/2-1/2",id=crypto.randomUUID();
+    const totals=game?.result?.totals || [yamsTotal(game?.sheets?.[0]||{}),yamsTotal(game?.sheets?.[1]||{})];
+    await this.env.DB.batch([
+      this.env.DB.prepare(`UPDATE yams_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?`).bind(after0,win0,isDraw,win1,players.black.id),
+      this.env.DB.prepare(`UPDATE yams_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?`).bind(after1,win1,isDraw,win0,players.white.id),
+      this.env.DB.prepare(`INSERT INTO yams_results(id,room_code,game_number,player0_user_id,player1_user_id,rated,result,reason,player0_score,player1_score,player0_rating_before,player1_rating_before,player0_rating_after,player1_rating_after,player0_delta,player1_delta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,code,gameNumber,players.black.id,players.white.id,1,result,String(reason||"score"),Number(totals[0]||0),Number(totals[1]||0),p0.rating,p1.rating,after0,after1,delta0,delta1)
+    ]);
+    const update={rated:true,result,reason:String(reason||"score"),gameNumber,player0:{username:players.black.username,before:p0.rating,after:after0,delta:delta0},player1:{username:players.white.username,before:p1.rating,after:after1,delta:delta1}};
+    await this.ctx.storage.put("ratingUpdate",update); return update;
+  }
+  async archiveYamsGame(game,reason){
+    const players=await this.getPlayers(),code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!this.env.DB||!code||!players.black?.id||!players.white?.id) return;
+    const settings=await this.getYamsSettings(),winner=game?.result?.winner,result=winner===0?"1-0":winner===1?"0-1":"1/2-1/2";
+    const totals=game?.result?.totals || [yamsTotal(game?.sheets?.[0]||{}),yamsTotal(game?.sheets?.[1]||{})];
+    const existing=await this.env.DB.prepare("SELECT id FROM yams_results WHERE room_code=? AND game_number=?").bind(code,gameNumber).first();
+    if(existing){ await this.env.DB.prepare(`UPDATE yams_results SET game_json=?,reason=?,result=?,player0_score=?,player1_score=? WHERE id=?`).bind(JSON.stringify(game),String(reason||"score"),result,Number(totals[0]||0),Number(totals[1]||0),existing.id).run(); return; }
+    await this.env.DB.prepare(`INSERT INTO yams_results(id,room_code,game_number,player0_user_id,player1_user_id,rated,result,reason,player0_score,player1_score,game_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(),code,gameNumber,players.black.id,players.white.id,settings.rated?1:0,result,String(reason||"score"),Number(totals[0]||0),Number(totals[1]||0),JSON.stringify(game)).run();
+  }
+  async finishYamsGame(game,reason){
+    await this.ctx.storage.put("game",game); await this.ctx.storage.delete(["drawOffer","rematchOffer"]); await this.markFinished(game?.result?.winner ?? null);
+    const ratingUpdate=await this.recordYamsResult(game,reason); await this.archiveYamsGame(game,reason); return ratingUpdate;
+  }
+
+  // ----------------------------
   // Classement Elo et archive du Go.
   // ----------------------------
   async currentGoRating(userId,size,category){
@@ -1182,6 +1240,7 @@ export class AbaloneRoom extends DurableObject {
         if(body.game==="chess") gameType="chess";
         else if(body.game==="go") gameType="go";
         else if(body.game==="awale") gameType="awale";
+        else if(body.game==="yams") gameType="yams";
         else if(body.game==="checkers-international" || body.game==="checkers-english"){
           gameType="checkers";
           checkersVariant=body.game==="checkers-english"?"english":"international";
@@ -1191,6 +1250,7 @@ export class AbaloneRoom extends DurableObject {
         if(gameType==="checkers" && Number(body.creatorSide)===1) creatorSlot="white";
         if(gameType==="go" && Number(body.creatorSide)===GO_WHITE) creatorSlot="white";
         if(gameType==="awale" && Number(body.creatorSide)===1) creatorSlot="white";
+        if(gameType==="yams" && Number(body.creatorSide)===1) creatorSlot="white";
         if(gameType==="abalone" && Number(body.creatorSide)===AB_WHITE) creatorSlot="white";
         const players={black:null,white:null};
         players[creatorSlot]={id:body.userId,username:body.username};
@@ -1198,11 +1258,12 @@ export class AbaloneRoom extends DurableObject {
         if(gameType==="checkers") await this.ctx.storage.put("checkersVariant",checkersVariant||"international");
         await this.ctx.storage.put("players",players);
         const goOptions={size:Number(body.goSettings?.size||19),komi:Number(body.goSettings?.komi??7.5),scoring:body.goSettings?.scoring||"area"};
-        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):gameType==="awale"?initialAwaleGameState():initialGameState();
+        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():initialGameState();
         await this.ctx.storage.put("game",initialGame);
         await this.ctx.storage.put("code",body.code);
         await this.ctx.storage.put("gameNumber",1);
         await this.ctx.storage.delete(["drawOffer","rematchOffer","ratingUpdate"]);
+        if(gameType==="yams") await this.ctx.storage.put("yamsSettings",{rated:body.rated!==false});
         if(gameType==="chess" || gameType==="checkers" || gameType==="go" || gameType==="awale" || gameType==="abalone"){
           const initialSeconds=Math.min(10800,Math.max(30,Number(body.timeControl?.initialSeconds||600)));
           const incrementSeconds=Math.min(60,Math.max(0,Number(body.timeControl?.incrementSeconds||0)));
@@ -1291,6 +1352,44 @@ export class AbaloneRoom extends DurableObject {
 
     const session=ws.deserializeAttachment();
     const gameType=session?.gameType || await this.getGameType();
+
+    if(gameType==="yams" && data.type==="yams_roll"){
+      const players=await this.getPlayers();
+      if(!players.black||!players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+      const game=await this.getGame();
+      const result=playServerYamsRoll(game,Number(session.side),Array.isArray(data.held)?data.held:null);
+      if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
+      await this.ctx.storage.put("game",result.state);
+      await this.broadcast({type:"state",gameType:"yams",game:result.state,players,settings:await this.getYamsSettings(),ratings:await this.yamsRoomRatings()});
+      return;
+    }
+    if(gameType==="yams" && data.type==="yams_hold"){
+      const game=await this.getGame();
+      const result=playServerYamsHold(game,Number(session.side),data.index,data.held);
+      if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
+      await this.ctx.storage.put("game",result.state);
+      await this.broadcast({type:"state",gameType:"yams",game:result.state,players:await this.getPlayers(),settings:await this.getYamsSettings(),ratings:await this.yamsRoomRatings()});
+      return;
+    }
+    if(gameType==="yams" && data.type==="yams_score"){
+      const game=await this.getGame();
+      const result=playServerYamsScore(game,Number(session.side),data.category);
+      if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
+      let ratingUpdate=null;
+      if(result.state?.result?.over) ratingUpdate=await this.finishYamsGame(result.state,"score");
+      else await this.ctx.storage.put("game",result.state);
+      await this.broadcast({type:"state",gameType:"yams",game:result.state,players:await this.getPlayers(),settings:await this.getYamsSettings(),ratings:await this.yamsRoomRatings(),ratingUpdate});
+      return;
+    }
+    if(gameType==="yams" && data.type==="resign"){
+      const game=await this.getGame(); if(game?.result?.over) return;
+      const players=await this.getPlayers(),resigned=Number(session.side),winner=resigned===0?1:0;
+      const totals=[yamsTotal(game?.sheets?.[0]||{}),yamsTotal(game?.sheets?.[1]||{})];
+      game.result={over:true,type:"resign",winner,totals,text:`${(resigned===0?players.black:players.white)?.username||"Un joueur"} abandonne.`};
+      const ratingUpdate=await this.finishYamsGame(game,"resign");
+      await this.broadcast({type:"state",gameType:"yams",game,players,settings:await this.getYamsSettings(),ratings:await this.yamsRoomRatings(),ratingUpdate});
+      return;
+    }
 
     if(data.type==="move"){
       const game=await this.getGame();
@@ -1582,7 +1681,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_offer"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
@@ -1596,7 +1695,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_response"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams") return;
       const offer=await this.getRematchOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -1609,13 +1708,13 @@ export class AbaloneRoom extends DurableObject {
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
       const variant=gameType==="checkers"?await this.getCheckersVariant():null;
-      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):gameType==="go"?initialGoGameState(await this.getGoSettings()):gameType==="awale"?initialAwaleGameState():initialGameState();
+      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):gameType==="go"?initialGoGameState(await this.getGoSettings()):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():initialGameState();
       const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
       await this.ctx.storage.put("gameNumber",nextGameNumber);
       await this.ctx.storage.delete(["drawOffer","ratingUpdate"]);
-      if(gameType==="chess") await this.resetChessClock(); else if(gameType==="checkers") await this.resetCheckersClock(); else if(gameType==="go") await this.resetGoClock(); else if(gameType==="awale") await this.resetAwaleClock(); else await this.resetAbaloneClock();
+      if(gameType==="chess") await this.resetChessClock(); else if(gameType==="checkers") await this.resetCheckersClock(); else if(gameType==="go") await this.resetGoClock(); else if(gameType==="awale") await this.resetAwaleClock(); else if(gameType==="abalone") await this.resetAbaloneClock();
       await this.markPlaying(swapped);
 
       for(const socket of this.ctx.getWebSockets()){
