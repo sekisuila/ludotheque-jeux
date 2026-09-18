@@ -2380,3 +2380,50 @@ main { min-height: calc(100vh - 160px); }
   .go-clock-readout{grid-template-columns:1fr}
   .go-clock-card{min-height:112px}
 }
+
+/* ============================================================
+   V6.23 — Awélé multijoueur
+   ============================================================ */
+.awale-play-layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:22px;align-items:start}
+.awale-online-settings{margin:.7rem 0 1rem;padding:.85rem;border:1px solid var(--line);border-radius:14px;background:#f7f3ea}
+.awale-online-settings[hidden]{display:none!important}
+.awale-online-grid{display:grid;grid-template-columns:1fr 1fr auto;gap:.7rem;align-items:end}
+.awale-online-grid label,.awale-custom-time label{display:grid;gap:.25rem;font-size:.9rem}
+.awale-online-grid label>span,.awale-custom-time label>span{font-weight:700;color:var(--muted)}
+.awale-online-grid select,.awale-custom-time input,.awale-room-actions input{min-height:40px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:.45rem .6rem;color:var(--ink)}
+.awale-custom-time{display:flex;gap:.7rem;margin-top:.65rem}.awale-custom-time[hidden]{display:none!important}.awale-custom-time label{max-width:150px}
+.awale-room-actions{display:flex;gap:.55rem;align-items:center;flex-wrap:wrap;margin-top:.75rem}.awale-room-actions input{width:110px;text-transform:uppercase;font-weight:900;letter-spacing:.12em;text-align:center}
+.awale-stage{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:start}
+.awale-board-column{min-width:0}
+.awale-player-caption{text-align:center;font-weight:800;color:var(--muted);min-height:1.6em;margin:.25rem 0}
+.awale-clock-panel{display:grid;gap:.7rem;position:sticky;top:92px;min-width:0}.awale-clock-panel[hidden]{display:none!important}
+.awale-clock-readout{display:grid;gap:1.15rem}
+.awale-clock-card{display:grid;gap:.55rem;min-height:132px;padding:.9rem 1rem;border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 18px rgba(33,31,26,.06)}
+.awale-clock-card.side0{background:linear-gradient(180deg,#fffdf8,#f1ece2);color:#171713}
+.awale-clock-card.side1{background:linear-gradient(180deg,#2b2925,#181714);color:#fff}
+.awale-clock-card.active{outline:3px solid color-mix(in srgb,var(--accent) 65%,transparent);outline-offset:1px}
+.awale-clock-card>div{display:grid;gap:.08rem}.awale-clock-card span{font-size:.78rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:.8}.awale-clock-card strong{font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.awale-clock-card small{opacity:.75}
+.awale-clock-card b{display:block;border-top:1px solid currentColor;padding-top:.55rem;text-align:center;font-size:clamp(1.75rem,3vw,2.6rem);font-variant-numeric:tabular-nums;letter-spacing:.04em;line-height:1}
+.awale-clock-card.side1 b{border-top-color:rgba(255,255,255,.28)}.awale-clock-card.side0 b{border-top-color:rgba(0,0,0,.15)}
+.awale-clock-panel .chess-online-actions{display:flex;gap:.45rem;flex-wrap:wrap}.awale-clock-panel .chess-online-actions[hidden]{display:none!important}
+.awale-archive-replay:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
+.awale-archive-replay .archive-replay-head{grid-column:2;grid-row:1;margin:0}.awale-archive-replay .archive-awale-board{grid-column:1;grid-row:1 / span 2}.awale-archive-replay .archive-replay-controls{grid-column:2;grid-row:2;display:grid;grid-template-columns:1fr 1fr;gap:.55rem;align-self:start}.awale-archive-replay .archive-replay-controls strong{grid-column:1/-1;text-align:center}
+.archive-awale-board{display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(2,minmax(72px,1fr));gap:10px;padding:16px;border-radius:40px;background:linear-gradient(#b77b3f,#8d582a);border:6px solid #70421f;max-width:min(720px,calc(100vw - 420px));aspect-ratio:3/1.15}
+.archive-awale-pit{display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 50% 45%,#714522 0 34%,#553217 65%,#3b2211 100%);box-shadow:inset 0 9px 12px rgba(0,0,0,.35);color:#fff4dd;font-size:1.25rem;font-weight:900}
+
+@media (min-width: 980px){
+  .awale-page .page{padding-top:24px}
+  .awale-stage .awale-board{max-height:calc(100vh - 310px)}
+}
+@media (max-width: 980px){
+  .awale-play-layout{grid-template-columns:1fr}
+  .awale-stage{grid-template-columns:1fr}
+  .awale-clock-panel{position:static;grid-row:auto}
+  .awale-online-grid{grid-template-columns:1fr 1fr}
+  .awale-online-grid .form-check{grid-column:1/-1}
+  .awale-archive-replay:not([hidden]){display:block}.awale-archive-replay .archive-replay-head{margin-bottom:.8rem}.awale-archive-replay .archive-replay-controls{display:flex;flex-wrap:wrap;margin-top:.8rem}.archive-awale-board{max-width:100%;aspect-ratio:3/1.25}
+}
+@media (max-width: 620px){
+  .awale-online-grid{grid-template-columns:1fr}.awale-online-grid .form-check{grid-column:auto}.awale-custom-time{display:grid;grid-template-columns:1fr 1fr}.awale-room-actions{display:grid;grid-template-columns:1fr 1fr}.awale-room-actions input{width:100%}.awale-room-actions #createAwaleRoom{grid-column:1/-1}
+  .awale-clock-card{min-height:118px}.archive-awale-board{gap:5px;padding:9px;border-width:4px;border-radius:24px;grid-template-rows:repeat(2,minmax(50px,1fr))}
+}
