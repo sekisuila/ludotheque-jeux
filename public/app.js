@@ -530,7 +530,7 @@ function renderAbalonePlay() {
             </div>
             <h3>Historique et évaluations</h3><div id="abaloneHistory" class="abalone-history"></div>
           </section>
-          <section class="panel"><h3>Règles gérées</h3><p>✓ 1 à 3 billes par mouvement</p><p>✓ Déplacement en ligne</p><p>✓ Déplacement latéral</p><p>✓ Sumito 2–1, 3–1 et 3–2</p><p>✓ Blocage des forces égales</p><p>✓ Éjection et victoire à 6</p><div class="note"><strong>Astuce :</strong> les cases vertes montrent les destinations possibles. Les billes adverses bordées de rouge sont celles qu’un Sumito sélectionné peut pousser.</div></section>
+          <section class="panel"><h3>Multijoueur en ligne</h3><p>Créez un salon privé ou rejoignez un code. La taille du goban, le komi, le score et la cadence sont fixés par le créateur.</p><p>La pendule, les captures, le suicide et le ko sont validés côté serveur.</p><div class="note"><strong>Elo :</strong> classements séparés pour 9×9, 13×13 et 19×19, eux-mêmes séparés par cadence.</div></section><section class="panel"><h3>Règles gérées</h3><p>✓ 1 à 3 billes par mouvement</p><p>✓ Déplacement en ligne</p><p>✓ Déplacement latéral</p><p>✓ Sumito 2–1, 3–1 et 3–2</p><p>✓ Blocage des forces égales</p><p>✓ Éjection et victoire à 6</p><div class="note"><strong>Astuce :</strong> les cases vertes montrent les destinations possibles. Les billes adverses bordées de rouge sont celles qu’un Sumito sélectionné peut pousser.</div></section>
           <section class="panel"><h3>Les quatre IA</h3><p><strong>Facile :</strong> choisit un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> valorise le centre, la cohésion et les poussées.</p><p><strong>Difficile :</strong> examine aussi les meilleures réponses immédiates de l’adversaire.</p><p><strong>Expert :</strong> utilise un barème stratégique non linéaire (billes éjectées, centre, cohésion, mobilité, isolement, danger au bord et menaces de Sumito) puis une recherche Minimax avec élagage alpha-bêta sur plusieurs demi-coups.</p><div class="note">Le niveau Expert privilégie fortement la 5e bille éjectée : il comprend ainsi qu’une position à 5–0 est beaucoup plus proche de la victoire qu’une simple progression linéaire ne le laisserait penser.</div></section>
         </aside>
       </div>
@@ -1112,6 +1112,44 @@ async function loadCheckersGamesPanel(){
   }catch(err){ list.innerHTML=`<p class="form-status">${escapeHtml(err.message)}</p>`; }
 }
 
+const GO_SIZE_LABELS={9:"9×9",13:"13×13",19:"19×19"};
+async function loadGoRatingsPanel(){
+  const mine=document.getElementById("myGoRatings"),board=document.getElementById("goEloLeaderboard"),size=document.getElementById("goEloSize"),category=document.getElementById("goEloCategory");
+  if(!mine||!board||!size||!category||!window.LudoOnline?.goRatings)return;
+  const refresh=async()=>{
+    try{
+      const ratings=await LudoOnline.goRatings.mine(Number(size.value));
+      mine.innerHTML=["bullet","blitz","rapid","classical"].map(k=>`<div><span>${escapeHtml(ELO_CATEGORY_LABELS[k]||k)}</span><strong>${ratings[k]?.rating??1200}</strong><small>${ratings[k]?.games??0} partie${Number(ratings[k]?.games||0)>1?"s":""}</small></div>`).join("");
+      const data=await LudoOnline.goRatings.leaderboard(Number(size.value),category.value,30);
+      board.innerHTML=data.players?.length?data.players.map((r,i)=>`<div class="elo-row"><span>${i+1}.</span><strong>${escapeHtml(r.username)}</strong><b>${r.rating}</b><small>${r.games} p.</small></div>`).join(""):"<p>Aucun classement pour cette catégorie.</p>";
+    }catch(e){mine.innerHTML=board.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+  };
+  size.addEventListener("change",refresh);category.addEventListener("change",refresh);refresh();
+}
+let goArchiveReplay={game:null,ply:0};
+function goArchiveSnapshots(replay){
+  if(!replay)return[];const out=(replay.history||[]).map(h=>h.state?.board).filter(Boolean).map(b=>b.slice());out.push((replay.board||[]).slice());return out;
+}
+function renderGoArchiveReplay(){
+  const panel=document.getElementById("goArchiveReplay");if(!panel||!goArchiveReplay.game?.replay)return;
+  const replay=goArchiveReplay.game.replay,snaps=goArchiveSnapshots(replay),max=Math.max(0,snaps.length-1);goArchiveReplay.ply=Math.max(0,Math.min(max,goArchiveReplay.ply));
+  const board=snaps[goArchiveReplay.ply]||[],size=Number(goArchiveReplay.game.size||replay.size||19),last=goArchiveReplay.ply>0?(replay.moves||[])[goArchiveReplay.ply-1]:null;
+  const el=panel.querySelector(".archive-go-board");el.style.setProperty("--archive-go-size",size);
+  let html="";for(let r=0;r<size;r++)for(let c=0;c<size;c++){const v=board[r*size+c];html+=`<div class="archive-go-point">${v?`<span class="archive-go-stone ${v===1?"black":"white"}"></span>`:""}</div>`;}el.innerHTML=html;
+  panel.querySelector("[data-go-archive-ply]").textContent=`${goArchiveReplay.ply}/${max} — ${escapeHtml(last?.label||"Position initiale")}`;
+  panel.querySelector('[data-go-step="start"]').disabled=goArchiveReplay.ply===0;panel.querySelector('[data-go-step="prev"]').disabled=goArchiveReplay.ply===0;panel.querySelector('[data-go-step="next"]').disabled=goArchiveReplay.ply===max;panel.querySelector('[data-go-step="end"]').disabled=goArchiveReplay.ply===max;
+}
+function closeGoArchiveReplay(){goArchiveReplay={game:null,ply:0};const p=document.getElementById("goArchiveReplay");if(p)p.hidden=true;}
+async function openGoArchiveReplay(id){
+  const panel=document.getElementById("goArchiveReplay");if(!panel)return;
+  try{const game=await LudoOnline.goGames.get(id);goArchiveReplay={game,ply:0};panel.innerHTML=`<div class="archive-replay-head"><div><h3>${escapeHtml(game.blackUsername)} — ${escapeHtml(game.whiteUsername)}</h3><p>Go ${GO_SIZE_LABELS[game.size]||game.size} · ${escapeHtml(game.result)} · komi ${game.komi} · ${escapeHtml(chessArchiveTimeLabel(game))}</p><small>Noir : ${escapeHtml(game.blackUsername)} · Blanc : ${escapeHtml(game.whiteUsername)}</small></div><button class="btn small outline" id="closeGoArchive">Fermer</button></div><div class="archive-go-board"></div><div class="archive-replay-controls"><button class="btn small outline" data-go-step="start">⏮ Début</button><button class="btn small outline" data-go-step="prev">◀ Précédent</button><strong data-go-archive-ply></strong><button class="btn small outline" data-go-step="next">Suivant ▶</button><button class="btn small outline" data-go-step="end">Fin ⏭</button></div>`;panel.hidden=false;panel.querySelector("#closeGoArchive").addEventListener("click",closeGoArchiveReplay);panel.querySelectorAll("[data-go-step]").forEach(btn=>btn.addEventListener("click",()=>{const max=Math.max(0,goArchiveSnapshots(goArchiveReplay.game.replay).length-1);if(btn.dataset.goStep==="start")goArchiveReplay.ply=0;if(btn.dataset.goStep==="prev")goArchiveReplay.ply--;if(btn.dataset.goStep==="next")goArchiveReplay.ply++;if(btn.dataset.goStep==="end")goArchiveReplay.ply=max;renderGoArchiveReplay();}));renderGoArchiveReplay();panel.scrollIntoView({block:"start",behavior:"smooth"});}catch(e){panel.hidden=false;panel.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+async function loadGoGamesPanel(){
+  const list=document.getElementById("goGameArchiveList");if(!list||!window.LudoOnline?.goGames)return;
+  try{const games=await LudoOnline.goGames.list();if(!games.length){list.innerHTML="<p>Aucune partie de Go en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.blackUsername)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.whiteUsername)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · Go ${GO_SIZE_LABELS[g.size]||g.size} · ${escapeHtml(chessArchiveTimeLabel(g))} · ${escapeHtml(ELO_CATEGORY_LABELS[g.category]||g.category||"")} · ${g.rated?"Classée":"Amicale"} · komi ${g.komi}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-go-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-go-replay-id]:not([disabled])").forEach(btn=>btn.addEventListener("click",()=>openGoArchiveReplay(btn.dataset.goReplayId)));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -1172,6 +1210,14 @@ function renderAccountContent(user, newRecoveryKey = null) {
         <div id="checkersArchiveReplay" class="chess-archive-replay" hidden></div>
       </section>
 
+      <section class="panel account-card chess-ratings-card">
+        <h2>Classement Elo — Go</h2>
+        <div class="elo-leaderboard-head"><label><span>Goban</span><select id="goEloSize"><option value="9">9×9</option><option value="13">13×13</option><option value="19" selected>19×19</option></select></label><label><span>Cadence</span><select id="goEloCategory"><option value="bullet">Bullet</option><option value="blitz">Blitz</option><option value="rapid" selected>Rapide</option><option value="classical">Classique</option></select></label></div>
+        <div id="myGoRatings" class="elo-grid"><p>Chargement des classements…</p></div><h3>Classement des joueurs</h3><div id="goEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
+        <div class="note">Chaque taille de goban et chaque cadence possèdent leur propre Elo.</div>
+      </section>
+      <section class="panel account-card chess-archive-card"><h2>Mes parties de Go</h2><p>Retrouvez vos parties terminées et rejouez-les coup par coup.</p><div id="goGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="goArchiveReplay" class="chess-archive-replay go-archive-replay" hidden></div></section>
+
       <form id="changePasswordForm" class="panel account-card">
         <h2>Changer le mot de passe</h2>
         <label><span>Mot de passe actuel</span><input name="currentPassword" type="password" required minlength="10" autocomplete="current-password"></label>
@@ -1227,6 +1273,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
     loadChessGamesPanel();
     loadCheckersRatingsPanel();
     loadCheckersGamesPanel();
+    loadGoRatingsPanel();
+    loadGoGamesPanel();
     return;
   }
 
@@ -1450,26 +1498,37 @@ function renderGoPlay() {
         <section class="game-shell go-shell">
           <div class="go-toolbar">
             <label><span>Goban</span><select id="goSize"><option value="19" selected>19 × 19</option><option value="13">13 × 13</option><option value="9">9 × 9</option></select></label>
-            <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online">Multijoueur en ligne</option></select></label>
             <div id="goAiSettings" class="toolbar-group">
               <label><span>Niveau IA</span><select id="goAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
               <label><span>Votre couleur</span><select id="goSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
+            </div>
+            <div id="goOnlineSettings" class="toolbar-group go-online-settings" hidden>
+              <label><span>Couleur si vous créez</span><select id="goCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noir</option><option value="white">Blanc</option></select></label>
+              <label><span>Cadence</span><select id="goTimePreset"><option value="1+0">1+0</option><option value="3+2">3+2</option><option value="5+0">5+0</option><option value="10+5" selected>10+5</option><option value="15+10">15+10</option><option value="30+0">30+0</option><option value="custom">Personnalisée</option></select></label>
+              <span id="goCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="goInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="goIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
+              <label class="inline-check"><input id="goRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+              <button id="createGoRoom" class="btn small" type="button">Créer un salon</button>
+              <label><span>Code du salon</span><input id="goRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+              <button id="joinGoRoom" class="btn outline small" type="button">Rejoindre</button>
+              <span id="goRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
             <label><span>Komi</span><select id="goKomi"><option value="7.5" selected>7,5</option><option value="6.5">6,5</option><option value="0">0</option></select></label>
             <label><span>Score</span><select id="goScoring"><option value="area" selected>Aire</option><option value="territory">Territoire</option></select></label>
             <div class="toolbar-actions"><button id="newGo" class="btn small">Nouvelle partie</button><button id="undoGo" class="btn outline small">Annuler</button></div>
           </div>
 
-          <div class="go-board-frame">
-            <div id="goBoard" class="go-board" aria-label="Goban interactif"></div>
-          </div>
+          <div id="goClockPanel" class="go-clock-panel" hidden><div id="goClockReadout" class="go-clock-readout"></div><div id="goTimeMeta" class="chess-time-meta"></div></div>
+          <div class="go-board-frame"><div id="goBoard" class="go-board" aria-label="Goban interactif"></div></div>
           <div class="go-actions"><button id="passGo" class="btn outline">Passer</button><button id="resignGo" class="btn danger">Abandonner</button></div>
           <div id="goStatus" class="status go-status"></div>
+          <div id="goOnlineActions" class="chess-online-actions" hidden><button id="offerDrawGo" class="btn outline small">Proposer nulle</button><button id="offerRematchGo" class="btn small" hidden>Proposer revanche</button></div>
+          <div id="goOnlinePrompt" class="online-decision" hidden><strong id="goOnlinePromptTitle"></strong><span id="goOnlinePromptText"></span><div><button id="acceptGoProposal" class="btn small">Accepter</button><button id="declineGoProposal" class="btn outline small">Refuser</button></div></div>
         </section>
 
         <aside class="go-side-column">
           <section class="panel">
-            <div class="turn-box"><span>Trait</span><strong id="goTurn">Noir</strong></div>
+            <div class="turn-box"><span>Trait</span><strong id="goTurn">Noir</strong></div><div id="goRatingResult" class="rating-result" hidden></div>
             <div class="go-score-grid">
               <div><span>Noir — prises</span><strong id="goCaptBlack">0</strong></div>
               <div><span>Blanc — prises</span><strong id="goCaptWhite">0</strong></div>

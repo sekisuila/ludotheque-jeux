@@ -450,44 +450,54 @@ function goChooseAiMove(game, level = "medium") {
 // ------------------------------------------------------------
 // Interface utilisateur
 // ------------------------------------------------------------
+const GO_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
+function goEmptyOnlineState(){
+  return {ws:null,code:null,connected:false,side:null,players:{black:null,white:null},result:null,clock:null,settings:null,ratings:null,ratingUpdate:null,drawOffer:null,rematchOffer:null,pendingProposal:null,clockTimer:null};
+}
+function goOnlineHasTwoPlayers(){ return Boolean(goUi?.online?.players?.black&&goUi?.online?.players?.white); }
+function goDisconnectOnline(){
+  if(!goUi?.online) return;
+  try{goUi.online.ws?.close();}catch{}
+  if(goUi.online.clockTimer) clearInterval(goUi.online.clockTimer);
+  goUi.online=goEmptyOnlineState();
+  goHideOnlinePrompt();
+  goUpdateClockDisplay();
+}
 let goUi = null;
 
 function initGo() {
-  const sizeEl = document.getElementById("goSize");
-  if (!sizeEl) return;
-
-  goUi = {
-    game: null,
-    mode: document.getElementById("goMode").value,
-    aiLevel: document.getElementById("goAiLevel").value,
-    humanSide: Number(document.getElementById("goSide").value),
-    thinking: false
-  };
-
-  document.getElementById("goMode").addEventListener("change", e => {
-    goUi.mode = e.target.value;
-    document.getElementById("goAiSettings").hidden = goUi.mode !== "ai";
+  const sizeEl=document.getElementById("goSize"); if(!sizeEl) return;
+  goUi={game:null,mode:document.getElementById("goMode").value,aiLevel:document.getElementById("goAiLevel").value,humanSide:Number(document.getElementById("goSide").value),thinking:false,online:goEmptyOnlineState()};
+  document.getElementById("goMode").addEventListener("change",e=>{
+    if(goUi.mode==="online") goDisconnectOnline();
+    goUi.mode=e.target.value;
+    document.getElementById("goAiSettings").hidden=goUi.mode!=="ai";
+    document.getElementById("goOnlineSettings").hidden=goUi.mode!=="online";
+    if(goUi.mode==="online") goRefreshOnlineLoginStatus();
     newGoGame();
   });
-  document.getElementById("goAiLevel").addEventListener("change", e => { goUi.aiLevel = e.target.value; });
-  document.getElementById("goSide").addEventListener("change", e => { goUi.humanSide = Number(e.target.value); newGoGame(); });
-  document.getElementById("goSize").addEventListener("change", newGoGame);
-  document.getElementById("goKomi").addEventListener("change", () => {
-    if (goUi.game) { goUi.game.setOptions({ komi: Number(document.getElementById("goKomi").value) }); renderGoBoard(); }
+  document.getElementById("goAiLevel").addEventListener("change",e=>{goUi.aiLevel=e.target.value;});
+  document.getElementById("goSide").addEventListener("change",e=>{goUi.humanSide=Number(e.target.value); if(goUi.mode!=="online") newGoGame();});
+  document.getElementById("goSize").addEventListener("change",()=>{if(goUi.mode!=="online")newGoGame();});
+  document.getElementById("goKomi").addEventListener("change",()=>{if(goUi.game&&goUi.mode!=="online"){goUi.game.setOptions({komi:Number(document.getElementById("goKomi").value)});renderGoBoard();}});
+  document.getElementById("goScoring").addEventListener("change",()=>{if(goUi.game&&goUi.mode!=="online"){goUi.game.setOptions({scoring:document.getElementById("goScoring").value});renderGoBoard();}});
+  document.getElementById("newGo").addEventListener("click",newGoGame);
+  document.getElementById("undoGo").addEventListener("click",undoGoMove);
+  document.getElementById("passGo").addEventListener("click",()=>playGoPass(false));
+  document.getElementById("resignGo").addEventListener("click",()=>{
+    if(!goUi||goUi.thinking) return;
+    if(goUi.mode==="online"){goResignOnline();return;}
+    if(goUi.game.over) return;
+    if(goUi.mode==="ai"&&goUi.game.turn!==goUi.humanSide) return;
+    goUi.game.resign();renderGoBoard();
   });
-  document.getElementById("goScoring").addEventListener("change", () => {
-    if (goUi.game) { goUi.game.setOptions({ scoring: document.getElementById("goScoring").value }); renderGoBoard(); }
-  });
-  document.getElementById("newGo").addEventListener("click", newGoGame);
-  document.getElementById("undoGo").addEventListener("click", undoGoMove);
-  document.getElementById("passGo").addEventListener("click", () => playGoPass(false));
-  document.getElementById("resignGo").addEventListener("click", () => {
-    if (!goUi || goUi.thinking || goUi.game.over) return;
-    if (goUi.mode === "ai" && goUi.game.turn !== goUi.humanSide) return;
-    goUi.game.resign();
-    renderGoBoard();
-  });
-
+  document.getElementById("goTimePreset")?.addEventListener("change",e=>{document.getElementById("goCustomTime").hidden=e.target.value!=="custom";});
+  document.getElementById("createGoRoom")?.addEventListener("click",goCreateOnlineRoom);
+  document.getElementById("joinGoRoom")?.addEventListener("click",goJoinOnlineRoom);
+  document.getElementById("offerDrawGo")?.addEventListener("click",()=>goSendOnlineAction("draw_offer"));
+  document.getElementById("offerRematchGo")?.addEventListener("click",()=>goSendOnlineAction("rematch_offer"));
+  document.getElementById("acceptGoProposal")?.addEventListener("click",()=>goRespondToOnlineProposal(true));
+  document.getElementById("declineGoProposal")?.addEventListener("click",()=>goRespondToOnlineProposal(false));
   newGoGame();
 }
 
@@ -514,7 +524,7 @@ function renderGoBoard() {
   boardEl.style.setProperty("--go-size", game.size);
   boardEl.setAttribute("aria-label", `Goban ${game.size} par ${game.size}`);
 
-  const humanCanPlay = !game.over && !goUi.thinking && (goUi.mode === "local" || game.turn === goUi.humanSide);
+  const humanCanPlay = !game.over && !goUi.thinking && (goUi.mode === "local" || (goUi.mode === "ai" && game.turn === goUi.humanSide) || (goUi.mode === "online" && goUi.online.connected && goOnlineHasTwoPlayers() && Number(game.turn)===Number(goUi.online.side)));
   const html = [];
   for (let r = 0; r < game.size; r++) {
     for (let c = 0; c < game.size; c++) {
@@ -549,10 +559,14 @@ function renderGoInfo() {
   document.getElementById("goScoreBlack").textContent = live.black.toFixed(1).replace(".0", "");
   document.getElementById("goScoreWhite").textContent = live.white.toFixed(1).replace(".0", "");
 
-  if (goUi.thinking) {
+  if (goUi.mode === "online" && goUi.online.connected && !goOnlineHasTwoPlayers()) {
+    statusEl.textContent = "Salon créé. En attente du deuxième joueur…";
+  } else if (goUi.thinking) {
     statusEl.textContent = "L’IA réfléchit…";
   } else if (game.over) {
-    if (game.result?.type === "resign") {
+    if (game.result?.text) {
+      statusEl.textContent = game.result.text;
+    } else if (game.result?.type === "resign") {
       statusEl.textContent = `${game.result.winner === GO_BLACK ? "Noir" : "Blanc"} gagne par abandon.`;
     } else {
       const result = game.result || game.score();
@@ -575,10 +589,12 @@ function renderGoInfo() {
   historyEl.innerHTML = rows.length ? rows.join("") : `<div class="history-empty">Les coups apparaîtront ici.</div>`;
   historyEl.scrollTop = historyEl.scrollHeight;
 
-  const disabled = game.over || goUi.thinking || (goUi.mode === "ai" && game.turn !== goUi.humanSide);
+  const disabled = game.over || goUi.thinking || (goUi.mode === "ai" && game.turn !== goUi.humanSide) || (goUi.mode === "online" && (!goUi.online.connected || !goOnlineHasTwoPlayers() || Number(game.turn)!==Number(goUi.online.side)));
   document.getElementById("passGo").disabled = disabled;
-  document.getElementById("resignGo").disabled = disabled;
-  document.getElementById("undoGo").disabled = goUi.thinking || !game.history.length;
+  document.getElementById("resignGo").disabled = game.over || (goUi.mode === "online" && !goOnlineHasTwoPlayers());
+  document.getElementById("undoGo").disabled = goUi.mode === "online" || goUi.thinking || !game.history.length;
+  document.getElementById("newGo").disabled = goUi.mode === "online";
+  goUpdateClockDisplay();goUpdateOnlineControls();goUpdateRatingResult();
 }
 
 function onGoPointClick(event) {
@@ -586,6 +602,11 @@ function onGoPointClick(event) {
   if (goUi.mode === "ai" && goUi.game.turn !== goUi.humanSide) return;
   const r = Number(event.currentTarget.dataset.r);
   const c = Number(event.currentTarget.dataset.c);
+  if(goUi.mode==="online"){
+    if(!goUi.online.ws||goUi.online.ws.readyState!==WebSocket.OPEN||Number(goUi.game.turn)!==Number(goUi.online.side)) return;
+    goUi.online.ws.send(JSON.stringify({type:"move",move:{r,c}}));
+    return;
+  }
   const result = goUi.game.play(r, c);
   if (!result.legal) {
     document.getElementById("goStatus").textContent = result.reason;
@@ -598,13 +619,17 @@ function onGoPointClick(event) {
 function playGoPass(fromAi = false) {
   if (!goUi || goUi.thinking && !fromAi || goUi.game.over) return;
   if (!fromAi && goUi.mode === "ai" && goUi.game.turn !== goUi.humanSide) return;
+  if(!fromAi && goUi.mode==="online"){
+    if(!goUi.online.ws||goUi.online.ws.readyState!==WebSocket.OPEN||Number(goUi.game.turn)!==Number(goUi.online.side)) return;
+    goUi.online.ws.send(JSON.stringify({type:"pass"})); return;
+  }
   goUi.game.pass();
   renderGoBoard();
   if (!goUi.game.over) maybeGoAiTurn();
 }
 
 function undoGoMove() {
-  if (!goUi || goUi.thinking) return;
+  if (!goUi || goUi.thinking || goUi.mode==="online") return;
   const game = goUi.game;
   if (!game.history.length) return;
 
@@ -631,3 +656,77 @@ function maybeGoAiTurn() {
     // Deux passes terminent la partie ; aucun enchaînement supplémentaire n'est nécessaire.
   }, 120);
 }
+
+// ------------------------------------------------------------
+// GO multijoueur en ligne
+// ------------------------------------------------------------
+function goTimeControlFromUi(){
+  const preset=document.getElementById("goTimePreset")?.value||"10+5";
+  if(preset!=="custom"){
+    const [m,s]=preset.split("+").map(Number); return {initialSeconds:m*60,incrementSeconds:s||0};
+  }
+  const m=Math.min(180,Math.max(1,Number(document.getElementById("goInitialMinutes")?.value||10)));
+  const inc=Math.min(60,Math.max(0,Number(document.getElementById("goIncrementSeconds")?.value||5)));
+  return {initialSeconds:Math.round(m*60),incrementSeconds:Math.round(inc)};
+}
+function goSetRoomStatus(text,error=false){ const el=document.getElementById("goRoomStatus"); if(el){el.textContent=text;el.classList.toggle("error",Boolean(error));} }
+async function goRefreshOnlineLoginStatus(){
+  if(!window.LudoOnline){goSetRoomStatus("Service en ligne indisponible.",true);return null;}
+  try{const user=await LudoOnline.me(true);if(!user){goSetRoomStatus("Connectez-vous dans Compte pour jouer en ligne.",true);return null;} if(!goUi.online.connected)goSetRoomStatus(`Connecté : ${user.username}. Créez ou rejoignez un salon.`);return user;}catch(e){goSetRoomStatus(e.message,true);return null;}
+}
+async function goCreateOnlineRoom(){
+  const user=await goRefreshOnlineLoginStatus();if(!user)return;
+  try{
+    const tc=goTimeControlFromUi(),creatorColor=document.getElementById("goCreatorColor")?.value||"random";
+    const data=await LudoOnline.rooms.create("go",{creatorColor,initialSeconds:tc.initialSeconds,incrementSeconds:tc.incrementSeconds,rated:document.getElementById("goRated")?.checked!==false,goSize:Number(document.getElementById("goSize")?.value||19),goKomi:Number(document.getElementById("goKomi")?.value||7.5),goScoring:document.getElementById("goScoring")?.value||"area"});
+    goUi.online.code=data.code;goUi.online.side=Number(data.side);document.getElementById("goRoomCode").value=data.code;goConnectOnline(data.code);
+  }catch(e){goSetRoomStatus(e.message,true);}
+}
+async function goJoinOnlineRoom(){
+  const user=await goRefreshOnlineLoginStatus();if(!user)return;
+  const code=(document.getElementById("goRoomCode")?.value||"").trim().toUpperCase();
+  if(!code){goSetRoomStatus("Saisissez le code du salon.",true);return;}
+  try{
+    const info=await LudoOnline.rooms.info(code);if(info.room?.game!=="go")throw new Error("Ce salon n’est pas une partie de Go.");
+    const data=await LudoOnline.rooms.join(code);goUi.online.code=data.code;goUi.online.side=Number(data.side);goConnectOnline(data.code);
+  }catch(e){goSetRoomStatus(e.message,true);}
+}
+function goConnectOnline(code){
+  if(!window.LudoOnline)return;try{goUi.online.ws?.close();}catch{}
+  const ws=LudoOnline.rooms.connect(code,{open(){goUi.online.connected=true;goSetRoomStatus(`Connecté au salon ${code}.`);goUpdateOnlineControls();},message(data){goHandleOnlineMessage(data);},close(){goUi.online.connected=false;goSetRoomStatus("Connexion au salon fermée.",true);goUpdateOnlineControls();},error(){goSetRoomStatus("Erreur de connexion au salon.",true);}});
+  goUi.online.ws=ws;if(goUi.online.clockTimer)clearInterval(goUi.online.clockTimer);goUi.online.clockTimer=setInterval(goUpdateClockDisplay,250);
+}
+function goApplyServerGame(serverGame){
+  if(!serverGame)return;const g=new GoGame(Number(serverGame.size||19),{komi:Number(serverGame.komi??7.5),scoring:serverGame.scoring||"area"});
+  Object.assign(g,serverGame);g.board=(serverGame.board||[]).slice();g.captures={...serverGame.captures};g.moves=[...(serverGame.moves||[])];g.history=[...(serverGame.history||[])];g.boardHashes=[...(serverGame.boardHashes||[])];g.over=Boolean(serverGame.result?.over);goUi.game=g;goUi.online.result=serverGame.result||null;
+  document.getElementById("goSize").value=String(g.size);document.getElementById("goKomi").value=String(g.komi);document.getElementById("goScoring").value=g.scoring;renderGoBoard();goUpdateOnlineControls();goUpdateRatingResult();
+}
+function goSetOnlineClock(clock){goUi.online.clock=clock?{...clock,clientReceivedAt:Date.now()}:null;}
+function goHandleOnlineMessage(data){
+  if(!goUi||goUi.mode!=="online")return;
+  if(data.type==="welcome"){
+    goUi.online.connected=true;goUi.online.side=Number(data.side);goUi.online.players=data.players||{black:null,white:null};goUi.online.settings=data.settings||null;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=data.ratingUpdate||null;goUi.online.drawOffer=data.drawOffer||null;goUi.online.rematchOffer=data.rematchOffer||null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game);goSetRoomStatus(`Salon ${goUi.online.code||""} connecté.`);goMaybeShowIncomingProposal();return;
+  }
+  if(data.type==="state"){
+    if(data.players)goUi.online.players=data.players;if(data.settings)goUi.online.settings=data.settings;if(data.ratings)goUi.online.ratings=data.ratings;if(data.ratingUpdate!==undefined)goUi.online.ratingUpdate=data.ratingUpdate;if(data.clock)goSetOnlineClock(data.clock);goApplyServerGame(data.game);return;
+  }
+  if(data.type==="players"){goUi.online.players=data.players||goUi.online.players;if(data.clock)goSetOnlineClock(data.clock);if(data.settings)goUi.online.settings=data.settings;if(data.ratings)goUi.online.ratings=data.ratings;renderGoBoard();return;}
+  if(data.type==="clock"){goSetOnlineClock(data.clock||null);goUpdateClockDisplay();return;}
+  if(data.type==="draw_offer"){goUi.online.drawOffer=data.offer||null;if(Number(data.offer?.side)!==Number(goUi.online.side))goShowOnlinePrompt("draw",`${data.offer?.username||"Votre adversaire"} propose la partie nulle.`);return;}
+  if(data.type==="draw_declined"){goUi.online.drawOffer=null;goHideOnlinePrompt();goSetRoomStatus("La proposition de nulle a été refusée.");return;}
+  if(data.type==="rematch_offer"){goUi.online.rematchOffer=data.offer||null;if(Number(data.offer?.side)!==Number(goUi.online.side))goShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des couleurs.`);return;}
+  if(data.type==="rematch_declined"){goUi.online.rematchOffer=null;goHideOnlinePrompt();goSetRoomStatus("La revanche a été refusée.");return;}
+  if(data.type==="rematch_started"){goUi.online.side=Number(data.side);goUi.online.players=data.players||goUi.online.players;goUi.online.settings=data.settings||goUi.online.settings;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=null;goUi.online.drawOffer=null;goUi.online.rematchOffer=null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game);goHideOnlinePrompt();goSetRoomStatus("Revanche commencée : couleurs inversées.");return;}
+  if(data.type==="error"){goSetRoomStatus(data.message||"Erreur de partie.",true);}
+}
+function goMaybeShowIncomingProposal(){const d=goUi.online.drawOffer,r=goUi.online.rematchOffer;if(d&&Number(d.side)!==Number(goUi.online.side))goShowOnlinePrompt("draw",`${d.username||"Votre adversaire"} propose la partie nulle.`);else if(r&&Number(r.side)!==Number(goUi.online.side))goShowOnlinePrompt("rematch",`${r.username||"Votre adversaire"} propose une revanche.`);}
+function goShowOnlinePrompt(type,text){const box=document.getElementById("goOnlinePrompt");if(!box)return;goUi.online.pendingProposal=type;document.getElementById("goOnlinePromptTitle").textContent=type==="draw"?"Proposition de nulle":"Proposition de revanche";document.getElementById("goOnlinePromptText").textContent=text;box.hidden=false;}
+function goHideOnlinePrompt(){if(goUi?.online)goUi.online.pendingProposal=null;const box=document.getElementById("goOnlinePrompt");if(box)box.hidden=true;}
+function goRespondToOnlineProposal(accept){const type=goUi?.online?.pendingProposal;if(!type||!goUi.online.ws||goUi.online.ws.readyState!==WebSocket.OPEN)return;goUi.online.ws.send(JSON.stringify({type:type==="draw"?"draw_response":"rematch_response",accept:Boolean(accept)}));goHideOnlinePrompt();}
+function goSendOnlineAction(type){if(goUi?.online?.ws?.readyState===WebSocket.OPEN)goUi.online.ws.send(JSON.stringify({type}));}
+function goResignOnline(){if(!goUi?.online?.result?.over&&confirm("Voulez-vous vraiment abandonner cette partie ?"))goSendOnlineAction("resign");}
+function goUpdateOnlineControls(){const box=document.getElementById("goOnlineActions");if(!box||!goUi)return;const online=goUi.mode==="online"&&goUi.online.connected;box.hidden=!online;for(const id of ["goSize","goKomi","goScoring"]){const el=document.getElementById(id);if(el)el.disabled=online;}if(!online)return;const over=Boolean(goUi.online.result?.over),two=goOnlineHasTwoPlayers();const draw=document.getElementById("offerDrawGo"),rematch=document.getElementById("offerRematchGo");if(draw)draw.disabled=!two||over||Boolean(goUi.online.drawOffer);if(rematch){rematch.hidden=!over;rematch.disabled=!two||Boolean(goUi.online.rematchOffer);}}
+function goOnlineClockValues(){const c=goUi?.online?.clock;if(!c)return null;let blackMs=Number(c.blackMs||0),whiteMs=Number(c.whiteMs||0);if(c.started&&c.runningSide&&!goUi.online.result?.over){const e=Math.max(0,Date.now()-Number(c.clientReceivedAt||Date.now()));if(Number(c.runningSide)===GO_BLACK)blackMs=Math.max(0,blackMs-e);else whiteMs=Math.max(0,whiteMs-e);}return{blackMs,whiteMs,runningSide:c.runningSide,started:c.started};}
+function goFormatClock(ms){let t=Math.max(0,Math.ceil(Number(ms||0)/1000)),m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;}
+function goUpdateClockDisplay(){const panel=document.getElementById("goClockPanel");if(!panel||!goUi)return;const online=goUi.mode==="online"?goUi.online:null;panel.hidden=!online?.connected;if(!online?.connected)return;const v=goOnlineClockValues()||{blackMs:0,whiteMs:0};const p=online.players||{},r=online.ratings||{};const readout=document.getElementById("goClockReadout");if(readout)readout.innerHTML=`<div class="go-clock-card black"><span>Noirs · ${p.black?.username||"En attente"}</span><small>Elo ${r.black?.rating??1200}</small><strong>${goFormatClock(v.blackMs)}</strong></div><div class="go-clock-card white"><span>Blancs · ${p.white?.username||"En attente"}</span><small>Elo ${r.white?.rating??1200}</small><strong>${goFormatClock(v.whiteMs)}</strong></div>`;const tc=online.settings?.timeControl,meta=document.getElementById("goTimeMeta");if(meta&&tc){meta.textContent=`${Number(tc.initialSeconds)/60}+${Number(tc.incrementSeconds||0)} · ${GO_RATING_LABELS[online.settings?.ratingCategory||"rapid"]} · ${online.settings?.rated?"classée Elo":"amicale"}`;}}
+function goUpdateRatingResult(){const box=document.getElementById("goRatingResult");if(!box)return;const u=goUi?.online?.ratingUpdate;if(goUi.mode!=="online"||!u?.rated){box.hidden=true;return;}const mine=Number(goUi.online.side)===GO_BLACK?u.black:u.white,other=Number(goUi.online.side)===GO_BLACK?u.white:u.black;box.hidden=false;box.innerHTML=`<strong>Elo ${GO_RATING_LABELS[u.category]||u.category}</strong><span>Vous : ${mine?.before} → ${mine?.after} (${Number(mine?.delta)>=0?"+":""}${mine?.delta})</span><span>${other?.username||"Adversaire"} : ${other?.before} → ${other?.after} (${Number(other?.delta)>=0?"+":""}${other?.delta})</span>`;}
