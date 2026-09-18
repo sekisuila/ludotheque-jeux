@@ -121,6 +121,17 @@
     get: async id => (await request(`/api/abalone/games/${encodeURIComponent(id)}`)).game
   };
 
+
+  const yamsRatings = {
+    mine: async () => (await request("/api/ratings/yams/me")).rating,
+    leaderboard: async (limit = 30) => request(`/api/ratings/yams?limit=${encodeURIComponent(limit)}`)
+  };
+
+  const yamsGames = {
+    list: async () => (await request("/api/yams/games")).games,
+    get: async id => (await request(`/api/yams/games/${encodeURIComponent(id)}`)).game
+  };
+
   const rooms = {
     create: async (game = "abalone", options = {}) => request("/api/rooms", { method: "POST", body: { game, ...options } }),
     join: async code => request("/api/rooms/join", { method: "POST", body: { code } }),
@@ -142,7 +153,7 @@
   window.LudoOnline = {
     state, request, me, register, login, logout,
     changePassword, generateRecoveryKey, resetWithRecovery,
-    saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, rooms, updateNav
+    saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, rooms, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));
 })();

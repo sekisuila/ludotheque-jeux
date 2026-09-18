@@ -74,7 +74,7 @@ function renderHome() {
         </div>
         <div class="feature-list">
           <article class="feature"><div class="ico">📖</div><h3>Règles illustrées</h3><p>Chaque fiche combine explications, étapes numérotées et schémas visuels sans dépendre d'images externes.</p></article>
-          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go et Abalone jouables, avec plusieurs niveaux d’IA.</p></article>
+          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go, Abalone et le Yams, avec jeu local, IA et modes en ligne selon les jeux.</p></article>
           <article class="feature"><div class="ico">🌐</div><h3>Multijoueur extensible</h3><p>La structure est prête à recevoir plus tard un serveur WebSocket pour jouer à distance entre utilisateurs.</p></article>
         </div>
       </section>
@@ -129,6 +129,7 @@ function renderGame(id) {
   if (id === "dames") return renderDraughtsGamePage(game);
   if (id === "go") return renderGoGamePage(game);
   if (id === "abalone") return renderAbaloneGamePage(game);
+  if (id === "yams") return renderYamsGamePage(game);
 
   app.innerHTML = `
     <div class="page">
@@ -1384,6 +1385,44 @@ async function loadAbaloneGamesPanel(){
   }catch(e){ list.innerHTML=`<p>${escapeHtml(e.message)}</p>`; }
 }
 
+
+let yamsArchiveReplay={game:null,index:0};
+const YAMS_ACCOUNT_LABELS={ones:"As",twos:"Deux",threes:"Trois",fours:"Quatre",fives:"Cinq",sixes:"Six",threeKind:"Brelan",fourKind:"Carré",fullHouse:"Full",smallStraight:"Petite suite",largeStraight:"Grande suite",yams:"Yams",chance:"Chance"};
+async function loadYamsRatingsPanel(){
+  const mine=document.getElementById("myYamsRating"),board=document.getElementById("yamsEloLeaderboard"); if(!mine||!board||!window.LudoOnline)return;
+  try{
+    const [rating,data]=await Promise.all([LudoOnline.yamsRatings.mine(),LudoOnline.yamsRatings.leaderboard(30)]);
+    mine.innerHTML=`<div><span>Yams</span><strong>${Number(rating.rating||1200)}</strong><small>${Number(rating.games||0)} partie${Number(rating.games||0)>1?"s":""}</small></div>`;
+    board.innerHTML=data.players?.length?data.players.map((r,i)=>`<div class="elo-row"><span>${i+1}.</span><strong>${escapeHtml(r.username)}</strong><b>${Number(r.rating)}</b><small>${Number(r.games)} p.</small></div>`).join(""):'<p>Aucun classement Yams pour le moment.</p>';
+  }catch(e){mine.innerHTML=`<p>${escapeHtml(e.message)}</p>`;board.innerHTML="";}
+}
+function yamsReplayState(game,index){
+  const events=game?.replay?.history||[]; const scores=[{},{}]; let dice=[0,0,0,0,0],side=0,roll=0;
+  for(let i=0;i<=index&&i<events.length;i++){
+    const ev=events[i]; if(ev.type==="roll"){dice=ev.dice||dice;side=Number(ev.side||0);roll=Number(ev.roll||0);} if(ev.type==="score"){scores[Number(ev.side||0)][ev.category]=ev.score;dice=ev.dice||dice;side=Number(ev.side||0);roll=3;}
+  }
+  return {events,scores,dice,side,roll};
+}
+function renderYamsArchiveReplay(){
+  const panel=document.getElementById("yamsArchiveReplay"),game=yamsArchiveReplay.game;if(!panel||!game)return;
+  const st=yamsReplayState(game,yamsArchiveReplay.index),ev=st.events[yamsArchiveReplay.index];
+  const dice=st.dice.map(v=>`<span class="archive-yams-die">${["—","⚀","⚁","⚂","⚃","⚄","⚅"][Number(v)||0]}</span>`).join("");
+  const scores=Object.entries(YAMS_ACCOUNT_LABELS).map(([k,l])=>`<tr><th>${l}</th><td>${st.scores[0][k]??"—"}</td><td>${st.scores[1][k]??"—"}</td></tr>`).join("");
+  panel.querySelector(".yams-replay-body").innerHTML=`<div class="archive-yams-dice">${dice}</div><p>${ev?ev.type==="score"?`${game[Number(ev.side)===0?"player0Username":"player1Username"]} inscrit ${ev.score} en ${YAMS_ACCOUNT_LABELS[ev.category]||ev.category}.`:`Lancer ${ev.roll} de ${game[Number(ev.side)===0?"player0Username":"player1Username"]}.`:"Début de la partie"}</p><div class="yams-score-scroll"><table class="yams-score-sheet"><thead><tr><th>Catégorie</th><th>${escapeHtml(game.player0Username)}</th><th>${escapeHtml(game.player1Username)}</th></tr></thead><tbody>${scores}</tbody></table></div>`;
+  const label=panel.querySelector(".yams-replay-counter");if(label)label.textContent=st.events.length?`${yamsArchiveReplay.index+1} / ${st.events.length}`:"0 / 0";
+}
+async function openYamsArchiveReplay(id){
+  const panel=document.getElementById("yamsArchiveReplay"); if(!panel)return;
+  try{const game=await LudoOnline.yamsGames.get(id);yamsArchiveReplay={game,index:0};panel.hidden=false;panel.innerHTML=`<div class="archive-replay-head"><div><h3>${escapeHtml(game.player0Username)} — ${escapeHtml(game.player1Username)}</h3><p>${game.player0Score} à ${game.player1Score} · ${game.rated?"Classée":"Amicale"}</p></div><button class="btn small outline" id="closeYamsArchive">Fermer</button></div><div class="yams-replay-body"></div><div class="archive-replay-controls"><button class="btn small outline" data-yams-step="start">⏮ Début</button><button class="btn small outline" data-yams-step="prev">◀ Précédent</button><strong class="yams-replay-counter"></strong><button class="btn small outline" data-yams-step="next">Suivant ▶</button><button class="btn small outline" data-yams-step="end">Fin ⏭</button></div>`;
+    panel.querySelector("#closeYamsArchive")?.addEventListener("click",()=>panel.hidden=true);
+    panel.querySelectorAll("[data-yams-step]").forEach(b=>b.addEventListener("click",()=>{const len=game.replay?.history?.length||0;if(!len)return;const a=b.dataset.yamsStep;if(a==="start")yamsArchiveReplay.index=0;else if(a==="prev")yamsArchiveReplay.index=Math.max(0,yamsArchiveReplay.index-1);else if(a==="next")yamsArchiveReplay.index=Math.min(len-1,yamsArchiveReplay.index+1);else yamsArchiveReplay.index=len-1;renderYamsArchiveReplay();}));renderYamsArchiveReplay();panel.scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(e){panel.hidden=false;panel.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+async function loadYamsGamesPanel(){
+  const list=document.getElementById("yamsGameArchiveList");if(!list||!window.LudoOnline)return;
+  try{const games=await LudoOnline.yamsGames.list();if(!games.length){list.innerHTML="<p>Aucune partie de Yams en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · ${g.player0Score}–${g.player1Score} · ${g.rated?"Classée":"Amicale"}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-yams-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-yams-replay-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>openYamsArchiveReplay(b.dataset.yamsReplayId)));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -1467,6 +1506,13 @@ function renderAccountContent(user, newRecoveryKey = null) {
       </section>
       <section class="panel account-card chess-archive-card"><h2>Mes parties d’Abalone</h2><p>Retrouvez vos parties terminées et rejouez-les coup par coup.</p><div id="abaloneGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="abaloneArchiveReplay" class="chess-archive-replay abalone-archive-replay" hidden></div></section>
 
+      <section class="panel account-card chess-ratings-card">
+        <h2>Classement Elo — Yams</h2>
+        <div id="myYamsRating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="yamsEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
+        <div class="note">Le Yams possède un Elo unique. Les parties amicales ne modifient pas le classement.</div>
+      </section>
+      <section class="panel account-card chess-archive-card"><h2>Mes parties de Yams</h2><p>Retrouvez vos parties terminées et revoyez les lancers et choix de score.</p><div id="yamsGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="yamsArchiveReplay" class="chess-archive-replay yams-archive-replay" hidden></div></section>
+
       <form id="changePasswordForm" class="panel account-card">
         <h2>Changer le mot de passe</h2>
         <label><span>Mot de passe actuel</span><input name="currentPassword" type="password" required minlength="10" autocomplete="current-password"></label>
@@ -1528,6 +1574,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
     loadAwaleGamesPanel();
     loadAbaloneRatingsPanel();
     loadAbaloneGamesPanel();
+    loadYamsRatingsPanel();
+    loadYamsGamesPanel();
     return;
   }
 
@@ -1626,6 +1674,7 @@ function renderPlay(id) {
   if (id === "go") return renderGoPlay();
   if (id === "abalone") return renderAbalonePlay();
   if (id === "awale") return renderAwalePlay();
+  if (id === "yams") return renderYamsPlay();
 
   app.innerHTML = `
     <div class="page">
@@ -1636,6 +1685,7 @@ function renderPlay(id) {
         <article class="play-card"><div class="visual">${illustration("go", false)}</div><div><span class="tag">Jouable</span><h2>Go</h2><p>Goban 9 × 9, 13 × 13 ou 19 × 19, captures, libertés, ko, passes, score et trois niveaux d’IA.</p><a class="btn" href="#/jouer/go">Jouer au Go</a></div></article>
         <article class="play-card"><div class="visual">${illustration("abalone", false)}</div><div><span class="tag">Nouveau</span><h2>Abalone</h2><p>Plateau hexagonal, déplacements en ligne ou latéraux, poussées Sumito, éjections et trois niveaux d’IA.</p><a class="btn" href="#/jouer/abalone">Jouer à Abalone</a></div></article>
         <article class="play-card"><div class="visual">${illustration("awale", false)}</div><div><span class="tag">Jouable</span><h2>Awélé</h2><p>Deux joueurs en local ou joueur contre IA, avec semailles, captures et règle de nourrissage.</p><a class="btn" href="#/jouer/awale">Jouer à l’Awélé</a></div></article>
+        <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>Yams</h2><p>Cinq dés, jusqu’à trois lancers, feuille de score complète, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div></article>
       </div>
     </div>
   `;
@@ -1941,6 +1991,87 @@ function renderAwalePlay() {
       </div>
     </div>`;
   initAwale();
+}
+
+
+function renderYamsGamePage(game) {
+  app.innerHTML = `
+    <div class="page yams-rules-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/catalogue">Catalogue</a><span>›</span><span>Yams</span></div>
+      <section class="game-hero">
+        <div class="game-hero-visual">${illustration("dice", true)}</div>
+        <div>
+          <div class="eyebrow">Jeu de dés</div><h1>Yams</h1>
+          <p>Cette version utilise une feuille de score de type Yahtzee/Yams classique : cinq dés, treize catégories et jusqu’à trois lancers par tour.</p>
+          <div class="stats"><div class="stat"><strong>5 dés</strong><span>Matériel</span></div><div class="stat"><strong>13 tours</strong><span>Par joueur</span></div><div class="stat"><strong>1–2 joueurs</strong><span>Version actuelle</span></div></div>
+          <div class="hero-actions"><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div>
+        </div>
+      </section>
+      <div class="content-grid">
+        <article class="panel">
+          <h2>Déroulement d’un tour</h2>
+          <ol class="rule-list">
+            <li>Lancez les cinq dés.</li>
+            <li>Après le premier lancer, gardez autant de dés que vous le souhaitez et relancez les autres.</li>
+            <li>Vous pouvez faire au maximum trois lancers pendant votre tour. Vous pouvez aussi vous arrêter plus tôt.</li>
+            <li>Choisissez ensuite une catégorie encore libre sur votre feuille de score.</li>
+            <li>Une catégorie peut être inscrite à zéro si votre lancer ne permet pas de marquer.</li>
+          </ol>
+          <h2 style="margin-top:24px">Feuille de score</h2>
+          <div class="yams-rules-table-wrap"><table class="yams-rules-table"><thead><tr><th>Catégorie</th><th>Calcul</th></tr></thead><tbody>
+            <tr><td>As à Six</td><td>Somme des dés de la valeur choisie.</td></tr>
+            <tr><td>Bonus supérieur</td><td>+35 points si le total As à Six atteint au moins 63.</td></tr>
+            <tr><td>Brelan</td><td>Au moins 3 dés identiques : somme des 5 dés.</td></tr>
+            <tr><td>Carré</td><td>Au moins 4 dés identiques : somme des 5 dés.</td></tr>
+            <tr><td>Full</td><td>3 dés identiques + 2 dés identiques : 25 points.</td></tr>
+            <tr><td>Petite suite</td><td>4 valeurs consécutives : 30 points.</td></tr>
+            <tr><td>Grande suite</td><td>5 valeurs consécutives : 40 points.</td></tr>
+            <tr><td>Yams</td><td>5 dés identiques : 50 points.</td></tr>
+            <tr><td>Chance</td><td>Somme des 5 dés, sans autre condition.</td></tr>
+          </tbody></table></div>
+          <div class="note" style="margin-top:20px"><strong>Variante choisie :</strong> cette table est volontairement explicite. D’autres variantes françaises du Yams existent ; nous pourrons les ajouter ensuite comme règles alternatives.</div>
+        </article>
+        <aside class="panel">
+          <h3>Modes disponibles</h3>
+          <p><strong>Multijoueur :</strong> les valeurs des dés sont générées côté serveur Cloudflare.</p>
+          <p><strong>Contre IA :</strong> l’ordinateur choisit quels dés conserver puis sélectionne sa case de score.</p>
+          <p><strong>Local :</strong> deux joueurs utilisent le même écran.</p>
+          <div class="note"><strong>Classement :</strong> les parties en ligne peuvent être classées Elo ou amicales.</div>
+        </aside>
+      </div>
+    </div>`;
+}
+
+function renderYamsPlay() {
+  app.innerHTML = `
+    <div class="page yams-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>Yams</span></div>
+      <div class="section-head"><div><div class="eyebrow">Jeu de dés</div><h1>Yams interactif</h1><p class="section-lead">Conservez les dés utiles, relancez les autres et choisissez la meilleure case de votre feuille de score.</p></div><a class="btn outline small" href="#/jeu/yams">Voir les règles</a></div>
+      <div class="yams-layout">
+        <section class="game-shell yams-shell">
+          <div class="yams-toolbar">
+            <label><strong>Mode :</strong><select id="yamsMode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <button id="newYams" class="btn small" type="button">Nouvelle partie</button>
+          </div>
+          <div id="yamsOnlineSettings" class="yams-online-settings">
+            <div class="yams-online-grid">
+              <label><span>Ordre à la création</span><select id="yamsCreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Joueur 1 — commence</option><option value="1">Joueur 2</option></select></label>
+              <label class="form-check"><input id="yamsRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+            </div>
+            <div class="yams-room-actions"><button id="createYamsRoom" class="btn small" type="button">Créer un salon</button><input id="yamsRoomCode" maxlength="6" placeholder="CODE" autocomplete="off"><button id="joinYamsRoom" class="btn outline small" type="button">Rejoindre</button></div>
+            <div id="yamsOnlineStatus" class="form-status"></div><div id="yamsRoomState" class="yams-room-state"></div>
+          </div>
+          <div id="yamsDice" class="yams-dice" aria-label="Les cinq dés"></div>
+          <div class="yams-roll-row"><button id="rollYams" class="btn yams-roll-button" type="button">Lancer les dés</button></div>
+          <div id="yamsStatus" class="status"></div>
+          <div id="yamsOnlineActions" class="chess-online-actions" hidden><button id="resignYams" class="btn danger small" type="button">Abandonner</button><button id="offerRematchYams" class="btn small" type="button" hidden>Proposer une revanche</button></div>
+          <div id="yamsOnlinePrompt" class="online-decision" hidden><strong>Proposition</strong><span></span><div><button id="acceptYamsProposal" class="btn small" type="button">Accepter</button><button id="declineYamsProposal" class="btn outline small" type="button">Refuser</button></div></div>
+          <div id="yamsRatingResult" class="rating-result" hidden></div>
+        </section>
+        <aside class="panel yams-score-panel"><h2>Feuille de score</h2><p class="section-lead">Après au moins un lancer, les cases encore libres affichent le score que vous obtiendriez.</p><div class="yams-score-scroll"><table id="yamsScoreSheet" class="yams-score-sheet"></table></div></aside>
+      </div>
+    </div>`;
+  initYams();
 }
 
 function renderAbout() {

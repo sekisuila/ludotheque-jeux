@@ -168,6 +168,27 @@ const GAMES = [
     art: "cards"
   },
   {
+    id: "yams",
+    name: "Yams",
+    category: "Hasard & probabilités",
+    players: "1 à 2 joueurs",
+    duration: "20 à 45 min",
+    difficulty: "Accessible",
+    intro: "Lancez cinq dés, conservez ceux qui vous intéressent et remplissez intelligemment votre feuille de score en treize tours.",
+    goal: "Obtenir le meilleur total après avoir rempli les treize catégories de la feuille de score.",
+    rules: [
+      "Chaque joueur dispose de cinq dés et peut effectuer jusqu’à trois lancers pendant son tour.",
+      "Après le premier et le deuxième lancer, il peut conserver certains dés et relancer les autres.",
+      "À la fin du tour, il doit inscrire le résultat dans une catégorie encore libre, même si celle-ci rapporte zéro point.",
+      "La partie supérieure additionne les As, Deux, Trois, Quatre, Cinq et Six. Un bonus de 35 points est accordé à partir de 63 points.",
+      "La partie inférieure comprend Brelan, Carré, Full, Petite suite, Grande suite, Yams et Chance.",
+      "Lorsque les treize catégories ont été remplies par tous les joueurs, le total le plus élevé gagne."
+    ],
+    tips: "Ne cherchez pas toujours le Yams : protéger le bonus supérieur et savoir sacrifier une mauvaise case est souvent plus rentable.",
+    demo: true,
+    art: "dice"
+  },
+  {
     id: "des",
     name: "Jeux de dés",
     category: "Hasard & probabilités",

@@ -2471,3 +2471,35 @@ main { min-height: calc(100vh - 160px); }
   .abalone-clock-readout{grid-template-columns:1fr}
   .abalone-clock-card{min-height:108px}
 }
+
+/* ============================================================
+   V6.26 — Yams
+   ============================================================ */
+.yams-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,440px);gap:1.25rem;align-items:start}
+.yams-shell{min-width:0}
+.yams-toolbar,.yams-room-actions,.yams-roll-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+.yams-toolbar label{display:flex;align-items:center;gap:.55rem}
+.yams-online-settings{margin:.9rem 0;padding:.9rem;border:1px solid var(--line);border-radius:14px;background:#f7f3ea}
+.yams-online-settings[hidden]{display:none!important}
+.yams-online-grid{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr);gap:.8rem;align-items:end}
+.yams-online-grid label:not(.form-check){display:grid;gap:.3rem}
+.yams-online-grid select,.yams-room-actions input{min-height:42px;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff}
+.yams-room-actions{margin-top:.8rem;justify-content:flex-start}.yams-room-actions input{width:110px;text-transform:uppercase;font-weight:800;letter-spacing:.12em;text-align:center}
+.yams-room-state{display:grid;gap:.1rem;margin-top:.5rem;color:var(--muted)}.yams-room-state strong{color:var(--ink)}
+.yams-dice{display:grid;grid-template-columns:repeat(5,minmax(86px,1fr));gap:clamp(.55rem,1.6vw,1rem);margin:1.2rem 0}
+.yams-die{display:grid;place-items:center;gap:.45rem;min-width:0;padding:.55rem;border:2px solid transparent;border-radius:18px;background:transparent;color:var(--ink);transition:transform .15s,border-color .15s,background .15s}
+.yams-die:not(:disabled):hover{background:#f2ede3;transform:translateY(-2px)}
+.yams-die.held{border-color:var(--accent);background:#fff4df;transform:translateY(-8px);box-shadow:0 8px 16px rgba(0,0,0,.08)}
+.yams-die:disabled{cursor:default;opacity:1}
+.yams-die-face{position:relative;display:block;width:clamp(68px,8vw,100px);aspect-ratio:1;border-radius:18%;background:linear-gradient(145deg,#fff,#eeeae1);border:2px solid #cfc8ba;box-shadow:inset 0 -5px 10px rgba(0,0,0,.06),0 5px 12px rgba(0,0,0,.08)}
+.yams-die-face .pip{position:absolute;width:14%;aspect-ratio:1;border-radius:50%;background:#202020;transform:translate(-50%,-50%)}
+.yams-die-face .p1{left:24%;top:24%}.yams-die-face .p2{left:50%;top:24%}.yams-die-face .p3{left:76%;top:24%}.yams-die-face .p4{left:24%;top:50%}.yams-die-face .p5{left:50%;top:50%}.yams-die-face .p6{left:76%;top:50%}.yams-die-face .p7{left:24%;top:76%}.yams-die-face .p8{left:50%;top:76%}.yams-die-face .p9{left:76%;top:76%}
+.yams-die-empty{display:grid;place-items:center;width:clamp(68px,8vw,100px);aspect-ratio:1;border:2px dashed var(--line);border-radius:18%;font-size:2.2rem;color:var(--muted);background:#faf8f2}
+.yams-hold-label{font-size:.78rem;font-weight:800;color:var(--muted)}.yams-die.held .yams-hold-label{color:#7a4b10}
+.yams-roll-row{justify-content:center;margin:.5rem 0 1rem}.yams-roll-button{min-width:190px;font-size:1.05rem}
+.yams-score-panel{min-width:0}.yams-score-scroll{overflow:auto;max-height:calc(100vh - 180px)}
+.yams-score-sheet,.yams-rules-table{width:100%;border-collapse:collapse;font-size:.93rem}.yams-score-sheet th,.yams-score-sheet td,.yams-rules-table th,.yams-rules-table td{border-bottom:1px solid var(--line);padding:.48rem .55rem;text-align:center}.yams-score-sheet th:first-child,.yams-rules-table th:first-child,.yams-rules-table td:first-child{text-align:left}.yams-score-sheet thead th{position:sticky;top:0;background:var(--paper);z-index:1}.yams-score-sheet .active-player{background:#eef4ef;color:var(--primary-2);border-radius:8px}.yams-score-sheet .score-choice{padding:.2rem}.yams-score-sheet .score-choice button{width:100%;min-height:34px;border:1px dashed var(--accent);border-radius:8px;background:#fff8e9;color:#7a4b10;font-weight:900}.yams-score-sheet .score-choice button:hover{background:#ffedc6}.yams-section-row th{background:#f1ece2;text-transform:uppercase;letter-spacing:.05em;font-size:.76rem}.yams-summary{background:#faf8f2}.yams-total{background:#eef4ef;font-size:1.05rem}.yams-total td{font-weight:900}
+.yams-rules-table-wrap{overflow:auto}.yams-rules-table th{background:#f1ece2}.yams-rules-table td:nth-child(2){text-align:left}
+.archive-yams-dice{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0}.archive-yams-die{display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:2rem}
+@media(max-width:1000px){.yams-layout{grid-template-columns:1fr}.yams-score-scroll{max-height:none}.yams-dice{grid-template-columns:repeat(5,1fr)}}
+@media(max-width:620px){.yams-online-grid{grid-template-columns:1fr}.yams-dice{gap:.25rem}.yams-die{padding:.2rem}.yams-die-face,.yams-die-empty{width:min(15vw,72px)}.yams-hold-label{font-size:.68rem}.yams-score-sheet{font-size:.82rem}.yams-score-sheet th,.yams-score-sheet td{padding:.38rem .3rem}}
