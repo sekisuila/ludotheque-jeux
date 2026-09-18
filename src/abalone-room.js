@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-engine.js";
 import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
 import { CHECKERS_VARIANTS, initialCheckersGameState, playServerCheckersMove } from "./checkers-engine.js";
+import { GO_BLACK, GO_WHITE, otherGoSide, initialGoGameState, playServerGoMove, playServerGoPass } from "./go-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
 const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
@@ -9,7 +10,7 @@ const ELO_INITIAL = 1200;
 const ELO_K = 32;
 const CHECKERS_VARIANTS_SET = new Set(["international","english"]);
 
-function isTimedGameType(gameType){ return gameType === "chess" || gameType === "checkers"; }
+function isTimedGameType(gameType){ return gameType === "chess" || gameType === "checkers" || gameType === "go"; }
 
 function formatChessDuration(ms){
   let total=Math.max(0,Math.ceil(Number(ms||0)/1000));
@@ -44,6 +45,7 @@ export class AbaloneRoom extends DurableObject {
     const gameType=await this.getGameType();
     if(gameType === "chess") return initialChessGameState();
     if(gameType === "checkers") return initialCheckersGameState(await this.getCheckersVariant());
+    if(gameType === "go") return initialGoGameState(await this.getGoSettings());
     return initialGameState();
   }
   async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
@@ -62,37 +64,50 @@ export class AbaloneRoom extends DurableObject {
       ratingCategory:"rapid"
     };
   }
+  async getGoSettings(){
+    return (await this.ctx.storage.get("goSettings")) || {
+      size:19,komi:7.5,scoring:"area",
+      timeControl:{initialSeconds:600,incrementSeconds:0},
+      rated:true,ratingCategory:"rapid"
+    };
+  }
   async getGameNumber(){ return Number((await this.ctx.storage.get("gameNumber")) || 1); }
   async getRatingUpdate(){ return (await this.ctx.storage.get("ratingUpdate")) || null; }
   async clockForGameType(gameType){
     if(gameType==="chess") return this.clockSnapshot();
     if(gameType==="checkers") return this.checkersClockSnapshot();
+    if(gameType==="go") return this.goClockSnapshot();
     return null;
   }
   async settingsForGameType(gameType){
     if(gameType==="chess") return this.getChessSettings();
     if(gameType==="checkers") return this.getCheckersSettings();
+    if(gameType==="go") return this.getGoSettings();
     return null;
   }
   async ratingsForGameType(gameType){
     if(gameType==="chess") return this.roomRatings();
     if(gameType==="checkers") return this.checkersRoomRatings();
+    if(gameType==="go") return this.goRoomRatings();
     return null;
   }
   async maybeStartClockForGame(gameType){
     if(gameType==="chess") return this.maybeStartChessClock();
     if(gameType==="checkers") return this.maybeStartCheckersClock();
+    if(gameType==="go") return this.maybeStartGoClock();
   }
 
   sideForUser(gameType, players, userId){
     if(players.black?.id===userId){
       if(gameType === "chess") return "b";
       if(gameType === "checkers") return 0;
+      if(gameType === "go") return GO_BLACK;
       return AB_BLACK;
     }
     if(players.white?.id===userId){
       if(gameType === "chess") return "w";
       if(gameType === "checkers") return 1;
+      if(gameType === "go") return GO_WHITE;
       return AB_WHITE;
     }
     return null;
@@ -107,6 +122,11 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "checkers"){
       if(winner===0) return players.black?.id || null;
       if(winner===1) return players.white?.id || null;
+      return null;
+    }
+    if(gameType === "go"){
+      if(winner===GO_BLACK) return players.black?.id || null;
+      if(winner===GO_WHITE) return players.white?.id || null;
       return null;
     }
     if(winner === AB_BLACK) return players.black?.id || null;
@@ -326,6 +346,87 @@ export class AbaloneRoom extends DurableObject {
   async resetCheckersClock(){
     const clock=await this.initialCheckersClock();
     await this.ctx.storage.put("checkersClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  // ----------------------------
+  // Pendule serveur du Go.
+  // ----------------------------
+  async initialGoClock(){
+    const settings=await this.getGoSettings();
+    const initialMs=Math.max(30000,Number(settings.timeControl?.initialSeconds||600)*1000);
+    return {blackMs:initialMs,whiteMs:initialMs,runningSide:null,lastStartedAt:null,started:false};
+  }
+
+  async getGoClock(){
+    let clock=await this.ctx.storage.get("goClock");
+    if(!clock){ clock=await this.initialGoClock(); await this.ctx.storage.put("goClock",clock); }
+    return clock;
+  }
+
+  goClockKey(side){ return Number(side)===GO_BLACK?"blackMs":"whiteMs"; }
+
+  async goClockSnapshot(now=Date.now()){
+    if((await this.getGameType())!=="go") return null;
+    const clock={...(await this.getGoClock())};
+    if(clock.started && clock.runningSide!==null && clock.runningSide!==undefined && clock.lastStartedAt){
+      const key=this.goClockKey(clock.runningSide);
+      clock[key]=Math.max(0,Number(clock[key]||0)-Math.max(0,now-Number(clock.lastStartedAt)));
+    }
+    return {...clock,serverNow:now};
+  }
+
+  async settleGoClock(now=Date.now()){
+    const clock=await this.getGoClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined || !clock.lastStartedAt) return {clock,flagged:null};
+    const side=Number(clock.runningSide),key=this.goClockKey(side);
+    const elapsed=Math.max(0,now-Number(clock.lastStartedAt));
+    clock[key]=Math.max(0,Number(clock[key]||0)-elapsed);
+    clock.lastStartedAt=now;
+    const flagged=clock[key]<=0?side:null;
+    if(flagged!==null){ clock[key]=0; clock.started=false; clock.runningSide=null; clock.lastStartedAt=null; }
+    await this.ctx.storage.put("goClock",clock);
+    return {clock,flagged};
+  }
+
+  async scheduleGoClockAlarm(clock=null){
+    if((await this.getGameType())!=="go") return;
+    clock=clock||await this.getGoClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined){
+      try{ await this.ctx.storage.deleteAlarm(); }catch{}
+      return;
+    }
+    const key=this.goClockKey(clock.runningSide);
+    await this.ctx.storage.setAlarm(Date.now()+Math.max(1,Number(clock[key]||0))+25);
+  }
+
+  async stopGoClock(){
+    if((await this.getGameType())!=="go") return null;
+    const {clock}=await this.settleGoClock(Date.now());
+    clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+    await this.ctx.storage.put("goClock",clock);
+    try{ await this.ctx.storage.deleteAlarm(); }catch{}
+    return clock;
+  }
+
+  async maybeStartGoClock(){
+    if((await this.getGameType())!=="go") return;
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const players=await this.getPlayers();
+    if(!this.bothPlayersConnected(players)) return;
+    const clock=await this.getGoClock();
+    if(clock.started) return;
+    clock.started=true; clock.runningSide=Number(game?.turn||GO_BLACK); clock.lastStartedAt=Date.now();
+    await this.ctx.storage.put("goClock",clock);
+    await this.scheduleGoClockAlarm(clock);
+    await this.broadcast({type:"clock",gameType:"go",clock:await this.goClockSnapshot()});
+  }
+
+  async resetGoClock(){
+    const clock=await this.initialGoClock();
+    await this.ctx.storage.put("goClock",clock);
     try{ await this.ctx.storage.deleteAlarm(); }catch{}
     return clock;
   }
@@ -621,6 +722,139 @@ export class AbaloneRoom extends DurableObject {
     });
   }
 
+  // ----------------------------
+  // Classement Elo et archive du Go.
+  // ----------------------------
+  async currentGoRating(userId,size,category){
+    const row=await this.env.DB.prepare(`SELECT rating,games,wins,draws,losses FROM go_ratings
+      WHERE user_id=? AND board_size=? AND category=?`).bind(userId,size,category).first();
+    return row?{rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses)}
+      :{rating:ELO_INITIAL,games:0,wins:0,draws:0,losses:0};
+  }
+
+  async goRoomRatings(){
+    if((await this.getGameType())!=="go") return null;
+    const settings=await this.getGoSettings();
+    const size=[9,13,19].includes(Number(settings.size))?Number(settings.size):19;
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    const players=await this.getPlayers();
+    return {
+      size,category,
+      black:players.black?await this.currentGoRating(players.black.id,size,category):null,
+      white:players.white?await this.currentGoRating(players.white.id,size,category):null
+    };
+  }
+
+  async recordGoResult(game,reason){
+    const settings=await this.getGoSettings();
+    if(!settings.rated) return null;
+    const players=await this.getPlayers();
+    if(!players.black?.id||!players.white?.id) return null;
+    const code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!code) return null;
+    const already=await this.env.DB.prepare("SELECT id FROM go_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(already) return await this.getRatingUpdate();
+
+    const size=[9,13,19].includes(Number(settings.size))?Number(settings.size):19;
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    await this.env.DB.batch([
+      this.env.DB.prepare("INSERT OR IGNORE INTO go_ratings(user_id,board_size,category,rating) VALUES(?,?,?,?)")
+        .bind(players.black.id,size,category,ELO_INITIAL),
+      this.env.DB.prepare("INSERT OR IGNORE INTO go_ratings(user_id,board_size,category,rating) VALUES(?,?,?,?)")
+        .bind(players.white.id,size,category,ELO_INITIAL)
+    ]);
+    const black=await this.currentGoRating(players.black.id,size,category);
+    const white=await this.currentGoRating(players.white.id,size,category);
+    const winner=game?.result?.winner;
+    const scoreBlack=winner===GO_BLACK?1:winner===GO_WHITE?0:0.5;
+    const expectedBlack=this.eloExpected(black.rating,white.rating);
+    let blackDelta=Math.round(ELO_K*(scoreBlack-expectedBlack)),whiteDelta=-blackDelta;
+    const blackAfter=Math.max(100,black.rating+blackDelta),whiteAfter=Math.max(100,white.rating+whiteDelta);
+    blackDelta=blackAfter-black.rating; whiteDelta=whiteAfter-white.rating;
+    const blackWin=scoreBlack===1?1:0,whiteWin=scoreBlack===0?1:0,isDraw=scoreBlack===0.5?1:0;
+    const result=scoreBlack===1?"1-0":scoreBlack===0?"0-1":"1/2-1/2";
+    const resultId=crypto.randomUUID();
+    await this.env.DB.batch([
+      this.env.DB.prepare(`UPDATE go_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND board_size=? AND category=?`)
+        .bind(blackAfter,blackWin,isDraw,whiteWin,players.black.id,size,category),
+      this.env.DB.prepare(`UPDATE go_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND board_size=? AND category=?`)
+        .bind(whiteAfter,whiteWin,isDraw,blackWin,players.white.id,size,category),
+      this.env.DB.prepare(`INSERT INTO go_results(
+        id,room_code,game_number,board_size,black_user_id,white_user_id,category,rated,result,reason,
+        black_rating_before,white_rating_before,black_rating_after,white_rating_after,black_delta,white_delta,komi,scoring
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(resultId,code,gameNumber,size,players.black.id,players.white.id,category,1,result,String(reason||"game"),
+          black.rating,white.rating,blackAfter,whiteAfter,blackDelta,whiteDelta,Number(settings.komi||0),settings.scoring||"area")
+    ]);
+    const update={
+      rated:true,size,category,result,reason:String(reason||"game"),gameNumber,
+      black:{username:players.black.username,before:black.rating,after:blackAfter,delta:blackDelta},
+      white:{username:players.white.username,before:white.rating,after:whiteAfter,delta:whiteDelta}
+    };
+    await this.ctx.storage.put("ratingUpdate",update);
+    return update;
+  }
+
+  async archiveGoGame(game,reason){
+    const players=await this.getPlayers(),code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!this.env.DB||!code||!players.black?.id||!players.white?.id) return;
+    const settings=await this.getGoSettings();
+    const size=[9,13,19].includes(Number(settings.size))?Number(settings.size):19;
+    const winner=game?.result?.winner;
+    const result=winner===GO_BLACK?"1-0":winner===GO_WHITE?"0-1":"1/2-1/2";
+    const initialSeconds=Math.max(0,Number(settings.timeControl?.initialSeconds||0));
+    const incrementSeconds=Math.max(0,Number(settings.timeControl?.incrementSeconds||0));
+    const existing=await this.env.DB.prepare("SELECT id FROM go_results WHERE room_code=? AND game_number=?")
+      .bind(code,gameNumber).first();
+    if(existing){
+      await this.env.DB.prepare(`UPDATE go_results SET game_json=?,time_initial_seconds=?,time_increment_seconds=?,reason=?,result=?,komi=?,scoring=? WHERE id=?`)
+        .bind(JSON.stringify(game),initialSeconds,incrementSeconds,String(reason||"game"),result,Number(settings.komi||0),settings.scoring||"area",existing.id).run();
+      return;
+    }
+    await this.env.DB.prepare(`INSERT INTO go_results(
+      id,room_code,game_number,board_size,black_user_id,white_user_id,category,rated,result,reason,
+      game_json,time_initial_seconds,time_increment_seconds,komi,scoring
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(),code,gameNumber,size,players.black.id,players.white.id,
+        CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid",settings.rated?1:0,result,String(reason||"game"),
+        JSON.stringify(game),initialSeconds,incrementSeconds,Number(settings.komi||0),settings.scoring||"area").run();
+  }
+
+  async finishGoGame(game,reason){
+    await this.stopGoClock();
+    await this.ctx.storage.put("game",game);
+    await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
+    await this.markFinished(game?.result?.winner ?? null);
+    const ratingUpdate=await this.recordGoResult(game,reason);
+    await this.archiveGoGame(game,reason);
+    return ratingUpdate;
+  }
+
+  async finishGoOnTime(flaggedSide){
+    const game=await this.getGame();
+    if(game?.result?.over) return;
+    const clock=await this.goClockSnapshot();
+    const players=await this.getPlayers();
+    const winner=Number(flaggedSide)===GO_BLACK?GO_WHITE:GO_BLACK;
+    const winnerPlayer=winner===GO_BLACK?players.black:players.white;
+    const loserPlayer=Number(flaggedSide)===GO_BLACK?players.black:players.white;
+    const winnerName=winnerPlayer?.username||(winner===GO_BLACK?"Noir":"Blanc");
+    const loserName=loserPlayer?.username||(Number(flaggedSide)===GO_BLACK?"Noir":"Blanc");
+    const winnerRemainingMs=winner===GO_BLACK?Number(clock?.blackMs||0):Number(clock?.whiteMs||0);
+    game.result={
+      over:true,type:"timeout",winner,
+      winnerUsername:winnerPlayer?.username||null,loserUsername:loserPlayer?.username||null,winnerRemainingMs,
+      text:`La partie se termine par la victoire de ${winnerName} par manque de temps de ${loserName}. Il reste ${formatChessDuration(winnerRemainingMs)} à ${winnerName}.`
+    };
+    const ratingUpdate=await this.finishGoGame(game,"timeout");
+    await this.broadcast({
+      type:"state",gameType:"go",game,clock:await this.goClockSnapshot(),settings:await this.getGoSettings(),ratings:await this.goRoomRatings(),ratingUpdate
+    });
+  }
+
   async alarm(){
     const gameType=await this.getGameType();
     const game=await this.getGame();
@@ -635,6 +869,12 @@ export class AbaloneRoom extends DurableObject {
       const {clock,flagged}=await this.settleCheckersClock(Date.now());
       if(flagged!==null){ await this.finishCheckersOnTime(flagged); return; }
       await this.scheduleCheckersClockAlarm(clock);
+      return;
+    }
+    if(gameType==="go"){
+      const {clock,flagged}=await this.settleGoClock(Date.now());
+      if(flagged!==null){ await this.finishGoOnTime(flagged); return; }
+      await this.scheduleGoClockAlarm(clock);
     }
   }
 
@@ -647,6 +887,7 @@ export class AbaloneRoom extends DurableObject {
       if(!existing){
         let gameType="abalone",checkersVariant=null;
         if(body.game==="chess") gameType="chess";
+        else if(body.game==="go") gameType="go";
         else if(body.game==="checkers-international" || body.game==="checkers-english"){
           gameType="checkers";
           checkersVariant=body.game==="checkers-english"?"english":"international";
@@ -654,17 +895,19 @@ export class AbaloneRoom extends DurableObject {
         let creatorSlot="black";
         if(gameType==="chess" && body.creatorSide==="w") creatorSlot="white";
         if(gameType==="checkers" && Number(body.creatorSide)===1) creatorSlot="white";
+        if(gameType==="go" && Number(body.creatorSide)===GO_WHITE) creatorSlot="white";
         const players={black:null,white:null};
         players[creatorSlot]={id:body.userId,username:body.username};
         await this.ctx.storage.put("gameType",gameType);
         if(gameType==="checkers") await this.ctx.storage.put("checkersVariant",checkersVariant||"international");
         await this.ctx.storage.put("players",players);
-        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):initialGameState();
+        const goOptions={size:Number(body.goSettings?.size||19),komi:Number(body.goSettings?.komi??7.5),scoring:body.goSettings?.scoring||"area"};
+        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):initialGameState();
         await this.ctx.storage.put("game",initialGame);
         await this.ctx.storage.put("code",body.code);
         await this.ctx.storage.put("gameNumber",1);
         await this.ctx.storage.delete(["drawOffer","rematchOffer","ratingUpdate"]);
-        if(gameType==="chess" || gameType==="checkers"){
+        if(gameType==="chess" || gameType==="checkers" || gameType==="go"){
           const initialSeconds=Math.min(10800,Math.max(30,Number(body.timeControl?.initialSeconds||600)));
           const incrementSeconds=Math.min(60,Math.max(0,Number(body.timeControl?.incrementSeconds||0)));
           const category=CHESS_CATEGORIES.has(body.ratingCategory)?body.ratingCategory:"rapid";
@@ -672,9 +915,13 @@ export class AbaloneRoom extends DurableObject {
           if(gameType==="chess"){
             await this.ctx.storage.put("chessSettings",settings);
             await this.resetChessClock();
-          }else{
+          }else if(gameType==="checkers"){
             await this.ctx.storage.put("checkersSettings",settings);
             await this.resetCheckersClock();
+          }else{
+            const goSettings={...settings,size:goOptions.size,komi:goOptions.komi,scoring:goOptions.scoring};
+            await this.ctx.storage.put("goSettings",goSettings);
+            await this.resetGoClock();
           }
         }
       }
@@ -803,6 +1050,27 @@ export class AbaloneRoom extends DurableObject {
           await this.ctx.storage.put("checkersClock",clock);
           await this.scheduleCheckersClockAlarm(clock);
         }
+      }else if(gameType === "go"){
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+        await this.maybeStartGoClock();
+        const now=Date.now();
+        const settled=await this.settleGoClock(now);
+        if(settled.flagged!==null){ await this.finishGoOnTime(settled.flagged); return; }
+        result=playServerGoMove(game,Number(session.side),data.move||{});
+        if(!result.ok){
+          await this.scheduleGoClockAlarm(settled.clock);
+          ws.send(JSON.stringify({type:"error",message:result.error}));
+          return;
+        }
+        const settings=await this.getGoSettings();
+        const clock=settled.clock,moverKey=this.goClockKey(session.side);
+        clock[moverKey]=Number(clock[moverKey]||0)+Number(settings.timeControl?.incrementSeconds||0)*1000;
+        clock.started=true;
+        clock.runningSide=Number(result.state?.turn||otherGoSide(Number(session.side)));
+        clock.lastStartedAt=now;
+        await this.ctx.storage.put("goClock",clock);
+        await this.scheduleGoClockAlarm(clock);
       }else{
         result=playServerMove(game,session.side,Array.isArray(data.group)?data.group:[],Number(data.dir));
       }
@@ -810,7 +1078,7 @@ export class AbaloneRoom extends DurableObject {
       if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
       await this.ctx.storage.put("game",result.state);
 
-      if(gameType === "chess" || gameType === "checkers"){
+      if(gameType === "chess" || gameType === "checkers" || gameType === "go"){
         const offer=await this.getDrawOffer();
         if(offer && offer.userId!==session.userId){
           await this.ctx.storage.delete("drawOffer");
@@ -818,7 +1086,7 @@ export class AbaloneRoom extends DurableObject {
         }
       }
 
-      const structuredResult = gameType === "chess" || gameType === "checkers";
+      const structuredResult = gameType === "chess" || gameType === "checkers" || gameType === "go";
       const finished = structuredResult ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
       const winner = structuredResult ? result.state?.result?.winner : result.state?.winner;
       let ratingUpdate=null;
@@ -826,6 +1094,7 @@ export class AbaloneRoom extends DurableObject {
         await this.ctx.storage.delete(["drawOffer","rematchOffer"]);
         if(gameType==="chess") ratingUpdate=await this.finishChessGame(result.state,result.state?.result?.type||"game");
         else if(gameType==="checkers") ratingUpdate=await this.finishCheckersGame(result.state,result.state?.result?.type||"game");
+        else if(gameType==="go") ratingUpdate=await this.finishGoGame(result.state,result.state?.result?.type||"game");
         else await this.markFinished(winner ?? null);
       }
 
@@ -833,6 +1102,37 @@ export class AbaloneRoom extends DurableObject {
         type:"state",gameType,game:result.state,lastMove:result.move,
         clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
         ratings:await this.ratingsForGameType(gameType),ratingUpdate
+      });
+      return;
+    }
+
+    if(data.type==="pass"){
+      if(gameType!=="go"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est disponible que pour le Go."})); return; }
+      const players=await this.getPlayers();
+      if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+      const game=await this.getGame();
+      await this.maybeStartGoClock();
+      const now=Date.now(),settled=await this.settleGoClock(now);
+      if(settled.flagged!==null){ await this.finishGoOnTime(settled.flagged); return; }
+      const result=playServerGoPass(game,Number(session.side));
+      if(!result.ok){ await this.scheduleGoClockAlarm(settled.clock); ws.send(JSON.stringify({type:"error",message:result.error})); return; }
+      const settings=await this.getGoSettings(),clock=settled.clock,moverKey=this.goClockKey(session.side);
+      clock[moverKey]=Number(clock[moverKey]||0)+Number(settings.timeControl?.incrementSeconds||0)*1000;
+      let ratingUpdate=null;
+      if(result.state?.result?.over){
+        clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+        await this.ctx.storage.put("goClock",clock); try{ await this.ctx.storage.deleteAlarm(); }catch{}
+        ratingUpdate=await this.finishGoGame(result.state,result.state?.result?.type||"score");
+      }else{
+        clock.started=true; clock.runningSide=Number(result.state?.turn||otherGoSide(Number(session.side))); clock.lastStartedAt=now;
+        await this.ctx.storage.put("goClock",clock); await this.scheduleGoClockAlarm(clock);
+        await this.ctx.storage.put("game",result.state);
+      }
+      const offer=await this.getDrawOffer();
+      if(offer && offer.userId!==session.userId){ await this.ctx.storage.delete("drawOffer"); await this.broadcast({type:"draw_declined",bySide:session.side,implicit:true}); }
+      await this.broadcast({
+        type:"state",gameType:"go",game:result.state,lastMove:result.move,
+        clock:await this.goClockSnapshot(),settings:await this.getGoSettings(),ratings:await this.goRoomRatings(),ratingUpdate
       });
       return;
     }
@@ -872,6 +1172,18 @@ export class AbaloneRoom extends DurableObject {
         return;
       }
 
+      if(gameType === "go"){
+        if(game?.result?.over) return;
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"La partie n’a pas encore commencé."})); return; }
+        const resigned=Number(session.side),winner=otherGoSide(resigned);
+        const loserName=resigned===GO_BLACK?"Noir":"Blanc",winnerName=winner===GO_BLACK?"Noir":"Blanc";
+        game.result={over:true,type:"resign",winner,text:`${loserName} abandonne : ${winnerName} gagne.`};
+        const ratingUpdate=await this.finishGoGame(game,"resign");
+        await this.broadcast({type:"state",gameType,game,resigned,clock:await this.goClockSnapshot(),settings:await this.getGoSettings(),ratings:await this.goRoomRatings(),ratingUpdate});
+        return;
+      }
+
       if(game.over) return;
       game.over=true;
       game.winner=session.side===AB_BLACK?AB_WHITE:AB_BLACK;
@@ -882,7 +1194,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_offer"){
-      if(gameType!=="chess" && gameType!=="checkers"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie est terminée."})); return; }
@@ -896,7 +1208,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_response"){
-      if(gameType!=="chess" && gameType!=="checkers") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go") return;
       const offer=await this.getDrawOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de nulle à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -910,7 +1222,9 @@ export class AbaloneRoom extends DurableObject {
       game.result={over:true,type:"draw-agreement",winner:null,text:"Partie nulle d’un commun accord."};
       const ratingUpdate=gameType==="chess"
         ? await this.finishChessGame(game,"draw-agreement")
-        : await this.finishCheckersGame(game,"draw-agreement");
+        : gameType==="checkers"
+          ? await this.finishCheckersGame(game,"draw-agreement")
+          : await this.finishGoGame(game,"draw-agreement");
       await this.broadcast({
         type:"state",gameType,game,drawAccepted:true,clock:await this.clockForGameType(gameType),
         settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType),ratingUpdate
@@ -919,7 +1233,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_offer"){
-      if(gameType!=="chess" && gameType!=="checkers"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
@@ -933,7 +1247,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_response"){
-      if(gameType!=="chess" && gameType!=="checkers") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go") return;
       const offer=await this.getRematchOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -946,13 +1260,13 @@ export class AbaloneRoom extends DurableObject {
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
       const variant=gameType==="checkers"?await this.getCheckersVariant():null;
-      const newGame=gameType==="chess"?initialChessGameState():initialCheckersGameState(variant||"international");
+      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):initialGoGameState(await this.getGoSettings());
       const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
       await this.ctx.storage.put("gameNumber",nextGameNumber);
       await this.ctx.storage.delete(["drawOffer","ratingUpdate"]);
-      if(gameType==="chess") await this.resetChessClock(); else await this.resetCheckersClock();
+      if(gameType==="chess") await this.resetChessClock(); else if(gameType==="checkers") await this.resetCheckersClock(); else await this.resetGoClock();
       await this.markPlaying(swapped);
 
       for(const socket of this.ctx.getWebSockets()){

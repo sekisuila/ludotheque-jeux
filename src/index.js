@@ -153,14 +153,15 @@ async function saveById(request,env,user,id){
 const ROOM_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function roomCode(){ let s=''; const a=new Uint8Array(6); crypto.getRandomValues(a); for(const b of a) s+=ROOM_ALPHABET[b%ROOM_ALPHABET.length]; return s; }
 function validRoomGame(game){
-  return game === "chess" || game === "abalone" || game === "checkers-international" || game === "checkers-english";
+  return game === "chess" || game === "abalone" || game === "go" || game === "checkers-international" || game === "checkers-english";
 }
 function isCheckersRoomGame(game){ return game === "checkers-international" || game === "checkers-english"; }
 function checkersVariantFromRoomGame(game){ return game === "checkers-english" ? "english" : "international"; }
-function isTimedRoomGame(game){ return game === "chess" || isCheckersRoomGame(game); }
+function isTimedRoomGame(game){ return game === "chess" || game === "go" || isCheckersRoomGame(game); }
 function publicSideForRoomGame(game,slot){
   if(game==="chess") return slot==="black"?"b":"w";
   if(isCheckersRoomGame(game)) return slot==="black"?0:1;
+  if(game==="go") return slot==="black"?1:2;
   return slot==="black"?1:2;
 }
 
@@ -184,12 +185,13 @@ async function createRoom(request,env,user){
   const body=await readJson(request);
   const game=validRoomGame(body?.game)?body.game:"abalone";
   const checkers=isCheckersRoomGame(game);
+  const go=game==="go";
 
   // Les colonnes historiques black/white de rooms servent maintenant de
   // "slot 0 / slot 1" pour les Dames. Les libellés visibles dépendent de la variante.
   let creatorSlot="black";
   let creatorColor="black";
-  if(game==="chess"){
+  if(game==="chess" || go){
     creatorColor=String(body?.creatorColor||"random").toLowerCase();
     if(creatorColor!=="white" && creatorColor!=="black"){
       const random=new Uint8Array(1); crypto.getRandomValues(random);
@@ -211,6 +213,9 @@ async function createRoom(request,env,user){
   const incrementSeconds=timed?clampInt(body?.incrementSeconds,0,60,0):0;
   const rated=timed ? body?.rated!==false : false;
   const ratingCategory=timed?chessRatingCategory(initialSeconds,incrementSeconds):null;
+  const goSize=go?[9,13,19].includes(Number(body?.goSize))?Number(body.goSize):19:null;
+  const goKomi=go&&Number.isFinite(Number(body?.goKomi))?Number(body.goKomi):go?7.5:null;
+  const goScoring=go&&body?.goScoring==="territory"?"territory":go?"area":null;
 
   const blackId=creatorSlot==="black"?user.id:null;
   const whiteId=creatorSlot==="white"?user.id:null;
@@ -221,9 +226,9 @@ async function createRoom(request,env,user){
     try{
       await env.DB.prepare(`INSERT INTO rooms(
         code,game,black_user_id,white_user_id,status,
-        time_initial_seconds,time_increment_seconds,rated,rating_category
-      ) VALUES(?,?,?,?, 'waiting',?,?,?,?)`)
-        .bind(candidate,game,blackId,whiteId,initialSeconds,incrementSeconds,rated?1:0,ratingCategory).run();
+        time_initial_seconds,time_increment_seconds,rated,rating_category,go_size,go_komi,go_scoring
+      ) VALUES(?,?,?,?, 'waiting',?,?,?,?,?,?,?)`)
+        .bind(candidate,game,blackId,whiteId,initialSeconds,incrementSeconds,rated?1:0,ratingCategory,goSize,goKomi,goScoring).run();
       code=candidate;
       break;
     }catch(error){ console.error("Création salon:",error?.message||error); }
@@ -231,22 +236,24 @@ async function createRoom(request,env,user){
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
   const stub=env.ABALONE_ROOMS.getByName(code);
-  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):null;
+  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):null;
   await stub.fetch("https://room/init",{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({
       code,game,userId:user.id,username:user.username,
       creatorSide:creatorSideForRoom,
-      timeControl:{initialSeconds,incrementSeconds},rated,ratingCategory
+      timeControl:{initialSeconds,incrementSeconds},rated,ratingCategory,
+      goSettings:go?{size:goSize,komi:goKomi,scoring:goScoring}:null
     })
   });
 
   return json({
     code,game,
-    side:game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):1,
+    side:game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):1,
     creatorColor,
     creatorSide:checkers?Number(creatorColor):null,
     variant:checkers?checkersVariantFromRoomGame(game):null,
+    goSettings:go?{size:goSize,komi:goKomi,scoring:goScoring}:null,
     timeControl:timed?{initialSeconds,incrementSeconds}:null,
     rated,ratingCategory,ratingLabel:ratingCategory?CHESS_RATING_LABELS[ratingCategory]:null
   },201);
@@ -262,6 +269,7 @@ async function joinRoom(request,env,user){
   const payloadForSlot=slot=>({
     code,game:room.game,side:publicSideForRoomGame(room.game,slot),
     variant:isCheckersRoomGame(room.game)?checkersVariantFromRoomGame(room.game):null,
+    goSettings:room.game==="go"?{size:Number(room.go_size||19),komi:Number(room.go_komi??7.5),scoring:room.go_scoring||"area"}:null,
     timeControl:timed?{initialSeconds:Number(room.time_initial_seconds||600),incrementSeconds:Number(room.time_increment_seconds||0)}:null,
     rated:timed?Boolean(room.rated):false,ratingCategory:room.rating_category||null
   });
@@ -300,7 +308,7 @@ async function joinRoom(request,env,user){
 
 async function roomInfo(env,user,code){
   const room=await env.DB.prepare(`SELECT r.code,r.game,r.status,r.created_at,r.updated_at,
-    r.time_initial_seconds,r.time_increment_seconds,r.rated,r.rating_category,
+    r.time_initial_seconds,r.time_increment_seconds,r.rated,r.rating_category,r.go_size,r.go_komi,r.go_scoring,
     ub.username AS black_username,uw.username AS white_username,
     r.black_user_id,r.white_user_id FROM rooms r
     LEFT JOIN users ub ON ub.id=r.black_user_id LEFT JOIN users uw ON uw.id=r.white_user_id WHERE r.code=?`).bind(code).first();
@@ -314,6 +322,7 @@ async function roomInfo(env,user,code){
     blackUsername:room.black_username,whiteUsername:room.white_username,
     createdAt:room.created_at,
     variant:isCheckersRoomGame(room.game)?checkersVariantFromRoomGame(room.game):null,
+    goSettings:room.game==="go"?{size:Number(room.go_size||19),komi:Number(room.go_komi??7.5),scoring:room.go_scoring||"area"}:null,
     timeControl:timed?{
       initialSeconds:Number(room.time_initial_seconds||600),
       incrementSeconds:Number(room.time_increment_seconds||0)
@@ -462,6 +471,37 @@ async function checkersGameById(env,user,id){
   }});
 }
 
+async function goRatingsForUser(env,userId,size){
+  size=[9,13,19].includes(Number(size))?Number(size):19;
+  const {results=[]}=await env.DB.prepare(`SELECT category,rating,games,wins,draws,losses,updated_at FROM go_ratings WHERE user_id=? AND board_size=?`).bind(userId,size).all();
+  const ratings={};
+  for(const category of ["bullet","blitz","rapid","classical"]){
+    const row=results.find(r=>r.category===category);
+    ratings[category]=row?{rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses),updatedAt:row.updated_at}
+      :{rating:1200,games:0,wins:0,draws:0,losses:0,updatedAt:null};
+  }
+  return ratings;
+}
+async function myGoRatings(request,env,user){ const u=new URL(request.url),size=[9,13,19].includes(Number(u.searchParams.get("size")))?Number(u.searchParams.get("size")):19; return json({size,ratings:await goRatingsForUser(env,user.id,size)}); }
+async function goLeaderboard(request,env){
+  const u=new URL(request.url),size=[9,13,19].includes(Number(u.searchParams.get("size")))?Number(u.searchParams.get("size")):19;
+  const category=["bullet","blitz","rapid","classical"].includes(u.searchParams.get("category"))?u.searchParams.get("category"):"rapid";
+  const limit=clampInt(u.searchParams.get("limit"),1,100,30);
+  const {results=[]}=await env.DB.prepare(`SELECT u.username,r.rating,r.games,r.wins,r.draws,r.losses FROM go_ratings r JOIN users u ON u.id=r.user_id WHERE r.board_size=? AND r.category=? AND r.games>0 ORDER BY r.rating DESC,r.games DESC,u.username COLLATE NOCASE ASC LIMIT ?`).bind(size,category,limit).all();
+  return json({size,category,label:CHESS_RATING_LABELS[category],players:results});
+}
+async function listGoGames(request,env,user){
+  const u=new URL(request.url),requested=Number(u.searchParams.get("size")),size=[9,13,19].includes(requested)?requested:null;
+  const sql=`SELECT r.id,r.room_code,r.game_number,r.board_size,r.category,r.rated,r.result,r.reason,r.black_rating_before,r.white_rating_before,r.black_rating_after,r.white_rating_after,r.black_delta,r.white_delta,r.time_initial_seconds,r.time_increment_seconds,r.komi,r.scoring,r.created_at,ub.username AS black_username,uw.username AS white_username,CASE WHEN r.game_json IS NULL THEN 0 ELSE 1 END AS replay_available FROM go_results r JOIN users ub ON ub.id=r.black_user_id JOIN users uw ON uw.id=r.white_user_id WHERE (r.black_user_id=? OR r.white_user_id=?) ${size?"AND r.board_size=?":""} ORDER BY r.created_at DESC LIMIT 200`;
+  const stmt=env.DB.prepare(sql); const {results=[]}=size?await stmt.bind(user.id,user.id,size).all():await stmt.bind(user.id,user.id).all();
+  return json({games:results.map(r=>({id:r.id,roomCode:r.room_code,gameNumber:Number(r.game_number),size:Number(r.board_size),category:r.category,rated:Boolean(r.rated),result:r.result,reason:r.reason,createdAt:r.created_at,blackUsername:r.black_username,whiteUsername:r.white_username,blackRatingBefore:r.black_rating_before,whiteRatingBefore:r.white_rating_before,blackRatingAfter:r.black_rating_after,whiteRatingAfter:r.white_rating_after,blackDelta:r.black_delta,whiteDelta:r.white_delta,initialSeconds:r.time_initial_seconds,incrementSeconds:r.time_increment_seconds,komi:Number(r.komi),scoring:r.scoring,replayAvailable:Boolean(r.replay_available)}))});
+}
+async function goGameById(env,user,id){
+  const r=await env.DB.prepare(`SELECT r.*,ub.username AS black_username,uw.username AS white_username FROM go_results r JOIN users ub ON ub.id=r.black_user_id JOIN users uw ON uw.id=r.white_user_id WHERE r.id=? AND (r.black_user_id=? OR r.white_user_id=?)`).bind(id,user.id,user.id).first();
+  if(!r) return json({error:"Partie introuvable."},404);
+  return json({game:{id:r.id,roomCode:r.room_code,gameNumber:Number(r.game_number),size:Number(r.board_size),category:r.category,rated:Boolean(r.rated),result:r.result,reason:r.reason,createdAt:r.created_at,blackUsername:r.black_username,whiteUsername:r.white_username,initialSeconds:r.time_initial_seconds,incrementSeconds:r.time_increment_seconds,komi:Number(r.komi),scoring:r.scoring,blackRatingBefore:r.black_rating_before,whiteRatingBefore:r.white_rating_before,blackRatingAfter:r.black_rating_after,whiteRatingAfter:r.white_rating_after,blackDelta:r.black_delta,whiteDelta:r.white_delta,replay:r.game_json?JSON.parse(r.game_json):null}});
+}
+
 async function roomWebSocket(request,env,user,code){
   const room=await env.DB.prepare("SELECT game,black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
   if(!room || (room.black_user_id!==user.id && room.white_user_id!==user.id)) return new Response("Accès refusé",{status:403});
@@ -490,10 +530,14 @@ async function api(request,env){
   if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
   if(p==="/api/ratings/checkers/me"&&request.method==="GET") return myCheckersRatings(request,env,user);
   if(p==="/api/ratings/checkers"&&request.method==="GET") return checkersLeaderboard(request,env);
+  if(p==="/api/ratings/go/me"&&request.method==="GET") return myGoRatings(request,env,user);
+  if(p==="/api/ratings/go"&&request.method==="GET") return goLeaderboard(request,env);
   if(p==="/api/chess/games"&&request.method==="GET") return listChessGames(env,user);
   const chessGameMatch=p.match(/^\/api\/chess\/games\/([0-9a-f-]{36})$/i); if(chessGameMatch&&request.method==="GET") return chessGameById(env,user,chessGameMatch[1]);
   if(p==="/api/checkers/games"&&request.method==="GET") return listCheckersGames(request,env,user);
   const checkersGameMatch=p.match(/^\/api\/checkers\/games\/([0-9a-f-]{36})$/i); if(checkersGameMatch&&request.method==="GET") return checkersGameById(env,user,checkersGameMatch[1]);
+  if(p==="/api/go/games"&&request.method==="GET") return listGoGames(request,env,user);
+  const goGameMatch=p.match(/^\/api\/go\/games\/([0-9a-f-]{36})$/i); if(goGameMatch&&request.method==="GET") return goGameById(env,user,goGameMatch[1]);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
