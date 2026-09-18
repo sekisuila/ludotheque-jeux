@@ -3,6 +3,7 @@ import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-
 import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
 import { CHECKERS_VARIANTS, initialCheckersGameState, playServerCheckersMove } from "./checkers-engine.js";
 import { GO_BLACK, GO_WHITE, otherGoSide, initialGoGameState, playServerGoMove, playServerGoPass } from "./go-engine.js";
+import { initialAwaleGameState, playServerAwaleMove } from "./awale-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
 const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
@@ -10,7 +11,7 @@ const ELO_INITIAL = 1200;
 const ELO_K = 32;
 const CHECKERS_VARIANTS_SET = new Set(["international","english"]);
 
-function isTimedGameType(gameType){ return gameType === "chess" || gameType === "checkers" || gameType === "go"; }
+function isTimedGameType(gameType){ return gameType === "chess" || gameType === "checkers" || gameType === "go" || gameType === "awale"; }
 
 function formatChessDuration(ms){
   let total=Math.max(0,Math.ceil(Number(ms||0)/1000));
@@ -46,6 +47,7 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "chess") return initialChessGameState();
     if(gameType === "checkers") return initialCheckersGameState(await this.getCheckersVariant());
     if(gameType === "go") return initialGoGameState(await this.getGoSettings());
+    if(gameType === "awale") return initialAwaleGameState();
     return initialGameState();
   }
   async getDrawOffer(){ return (await this.ctx.storage.get("drawOffer")) || null; }
@@ -71,30 +73,39 @@ export class AbaloneRoom extends DurableObject {
       rated:true,ratingCategory:"rapid"
     };
   }
+  async getAwaleSettings(){
+    return (await this.ctx.storage.get("awaleSettings")) || {
+      timeControl:{initialSeconds:600,incrementSeconds:0},rated:true,ratingCategory:"rapid"
+    };
+  }
   async getGameNumber(){ return Number((await this.ctx.storage.get("gameNumber")) || 1); }
   async getRatingUpdate(){ return (await this.ctx.storage.get("ratingUpdate")) || null; }
   async clockForGameType(gameType){
     if(gameType==="chess") return this.clockSnapshot();
     if(gameType==="checkers") return this.checkersClockSnapshot();
     if(gameType==="go") return this.goClockSnapshot();
+    if(gameType==="awale") return this.awaleClockSnapshot();
     return null;
   }
   async settingsForGameType(gameType){
     if(gameType==="chess") return this.getChessSettings();
     if(gameType==="checkers") return this.getCheckersSettings();
     if(gameType==="go") return this.getGoSettings();
+    if(gameType==="awale") return this.getAwaleSettings();
     return null;
   }
   async ratingsForGameType(gameType){
     if(gameType==="chess") return this.roomRatings();
     if(gameType==="checkers") return this.checkersRoomRatings();
     if(gameType==="go") return this.goRoomRatings();
+    if(gameType==="awale") return this.awaleRoomRatings();
     return null;
   }
   async maybeStartClockForGame(gameType){
     if(gameType==="chess") return this.maybeStartChessClock();
     if(gameType==="checkers") return this.maybeStartCheckersClock();
     if(gameType==="go") return this.maybeStartGoClock();
+    if(gameType==="awale") return this.maybeStartAwaleClock();
   }
 
   sideForUser(gameType, players, userId){
@@ -102,12 +113,14 @@ export class AbaloneRoom extends DurableObject {
       if(gameType === "chess") return "b";
       if(gameType === "checkers") return 0;
       if(gameType === "go") return GO_BLACK;
+      if(gameType === "awale") return 0;
       return AB_BLACK;
     }
     if(players.white?.id===userId){
       if(gameType === "chess") return "w";
       if(gameType === "checkers") return 1;
       if(gameType === "go") return GO_WHITE;
+      if(gameType === "awale") return 1;
       return AB_WHITE;
     }
     return null;
@@ -127,6 +140,11 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "go"){
       if(winner===GO_BLACK) return players.black?.id || null;
       if(winner===GO_WHITE) return players.white?.id || null;
+      return null;
+    }
+    if(gameType === "awale"){
+      if(winner===0) return players.black?.id || null;
+      if(winner===1) return players.white?.id || null;
       return null;
     }
     if(winner === AB_BLACK) return players.black?.id || null;
@@ -348,6 +366,68 @@ export class AbaloneRoom extends DurableObject {
     await this.ctx.storage.put("checkersClock",clock);
     try{ await this.ctx.storage.deleteAlarm(); }catch{}
     return clock;
+  }
+
+  // ----------------------------
+  // Pendule serveur de l'Awélé.
+  // side 0 = camp Sud, side 1 = camp Nord.
+  // ----------------------------
+  async initialAwaleClock(){
+    const settings=await this.getAwaleSettings();
+    const initialMs=Math.max(30000,Number(settings.timeControl?.initialSeconds||600)*1000);
+    return {side0Ms:initialMs,side1Ms:initialMs,runningSide:null,lastStartedAt:null,started:false};
+  }
+  async getAwaleClock(){
+    let clock=await this.ctx.storage.get("awaleClock");
+    if(!clock){ clock=await this.initialAwaleClock(); await this.ctx.storage.put("awaleClock",clock); }
+    return clock;
+  }
+  awaleClockKey(side){ return Number(side)===0?"side0Ms":"side1Ms"; }
+  async awaleClockSnapshot(now=Date.now()){
+    if((await this.getGameType())!=="awale") return null;
+    const clock={...(await this.getAwaleClock())};
+    if(clock.started && clock.runningSide!==null && clock.runningSide!==undefined && clock.lastStartedAt){
+      const key=this.awaleClockKey(clock.runningSide);
+      clock[key]=Math.max(0,Number(clock[key]||0)-Math.max(0,now-Number(clock.lastStartedAt)));
+    }
+    return {...clock,serverNow:now};
+  }
+  async settleAwaleClock(now=Date.now()){
+    const clock=await this.getAwaleClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined || !clock.lastStartedAt) return {clock,flagged:null};
+    const side=Number(clock.runningSide),key=this.awaleClockKey(side);
+    const elapsed=Math.max(0,now-Number(clock.lastStartedAt));
+    clock[key]=Math.max(0,Number(clock[key]||0)-elapsed); clock.lastStartedAt=now;
+    const flagged=clock[key]<=0?side:null;
+    if(flagged!==null){ clock[key]=0; clock.started=false; clock.runningSide=null; clock.lastStartedAt=null; }
+    await this.ctx.storage.put("awaleClock",clock);
+    return {clock,flagged};
+  }
+  async scheduleAwaleClockAlarm(clock=null){
+    if((await this.getGameType())!=="awale") return;
+    clock=clock||await this.getAwaleClock();
+    if(!clock.started || clock.runningSide===null || clock.runningSide===undefined){ try{await this.ctx.storage.deleteAlarm();}catch{} return; }
+    const key=this.awaleClockKey(clock.runningSide);
+    await this.ctx.storage.setAlarm(Date.now()+Math.max(1,Number(clock[key]||0))+25);
+  }
+  async stopAwaleClock(){
+    if((await this.getGameType())!=="awale") return null;
+    const {clock}=await this.settleAwaleClock(Date.now());
+    clock.started=false; clock.runningSide=null; clock.lastStartedAt=null;
+    await this.ctx.storage.put("awaleClock",clock); try{await this.ctx.storage.deleteAlarm();}catch{}
+    return clock;
+  }
+  async maybeStartAwaleClock(){
+    if((await this.getGameType())!=="awale") return;
+    const game=await this.getGame(); if(game?.result?.over) return;
+    const players=await this.getPlayers(); if(!this.bothPlayersConnected(players)) return;
+    const clock=await this.getAwaleClock(); if(clock.started) return;
+    clock.started=true; clock.runningSide=Number(game?.state?.player||0); clock.lastStartedAt=Date.now();
+    await this.ctx.storage.put("awaleClock",clock); await this.scheduleAwaleClockAlarm(clock);
+    await this.broadcast({type:"clock",gameType:"awale",clock:await this.awaleClockSnapshot()});
+  }
+  async resetAwaleClock(){
+    const clock=await this.initialAwaleClock(); await this.ctx.storage.put("awaleClock",clock); try{await this.ctx.storage.deleteAlarm();}catch{} return clock;
   }
 
   // ----------------------------
@@ -723,6 +803,69 @@ export class AbaloneRoom extends DurableObject {
   }
 
   // ----------------------------
+  // Classement Elo + archive de l'Awélé.
+  // ----------------------------
+  async currentAwaleRating(userId,category){
+    const row=await this.env.DB.prepare(`SELECT rating,games,wins,draws,losses FROM awale_ratings WHERE user_id=? AND category=?`).bind(userId,category).first();
+    return row?{rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses)}:{rating:ELO_INITIAL,games:0,wins:0,draws:0,losses:0};
+  }
+  async awaleRoomRatings(){
+    if((await this.getGameType())!=="awale") return null;
+    const settings=await this.getAwaleSettings(),category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid",players=await this.getPlayers();
+    return {category,side0:players.black?await this.currentAwaleRating(players.black.id,category):null,side1:players.white?await this.currentAwaleRating(players.white.id,category):null};
+  }
+  async recordAwaleResult(game,reason){
+    const settings=await this.getAwaleSettings(); if(!settings.rated) return null;
+    const players=await this.getPlayers(); if(!players.black?.id||!players.white?.id) return null;
+    const code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber(); if(!code) return null;
+    const already=await this.env.DB.prepare("SELECT id FROM awale_results WHERE room_code=? AND game_number=?").bind(code,gameNumber).first();
+    if(already) return await this.getRatingUpdate();
+    const category=CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid";
+    await this.env.DB.batch([
+      this.env.DB.prepare("INSERT OR IGNORE INTO awale_ratings(user_id,category,rating) VALUES(?,?,?)").bind(players.black.id,category,ELO_INITIAL),
+      this.env.DB.prepare("INSERT OR IGNORE INTO awale_ratings(user_id,category,rating) VALUES(?,?,?)").bind(players.white.id,category,ELO_INITIAL)
+    ]);
+    const side0=await this.currentAwaleRating(players.black.id,category),side1=await this.currentAwaleRating(players.white.id,category);
+    const winner=game?.result?.winner,score0=winner===0?1:winner===1?0:0.5,expected0=this.eloExpected(side0.rating,side1.rating);
+    let delta0=Math.round(ELO_K*(score0-expected0)),delta1=-delta0;
+    const after0=Math.max(100,side0.rating+delta0),after1=Math.max(100,side1.rating+delta1); delta0=after0-side0.rating;delta1=after1-side1.rating;
+    const win0=score0===1?1:0,win1=score0===0?1:0,isDraw=score0===0.5?1:0,result=score0===1?"1-0":score0===0?"0-1":"1/2-1/2",resultId=crypto.randomUUID();
+    await this.env.DB.batch([
+      this.env.DB.prepare(`UPDATE awale_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND category=?`).bind(after0,win0,isDraw,win1,players.black.id,category),
+      this.env.DB.prepare(`UPDATE awale_ratings SET rating=?,games=games+1,wins=wins+?,draws=draws+?,losses=losses+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND category=?`).bind(after1,win1,isDraw,win0,players.white.id,category),
+      this.env.DB.prepare(`INSERT INTO awale_results(id,room_code,game_number,side0_user_id,side1_user_id,category,rated,result,reason,side0_rating_before,side1_rating_before,side0_rating_after,side1_rating_after,side0_delta,side1_delta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(resultId,code,gameNumber,players.black.id,players.white.id,category,1,result,String(reason||"game"),side0.rating,side1.rating,after0,after1,delta0,delta1)
+    ]);
+    const update={rated:true,category,result,reason:String(reason||"game"),gameNumber,side0:{username:players.black.username,before:side0.rating,after:after0,delta:delta0},side1:{username:players.white.username,before:side1.rating,after:after1,delta:delta1}};
+    await this.ctx.storage.put("ratingUpdate",update); return update;
+  }
+  async archiveAwaleGame(game,reason){
+    const players=await this.getPlayers(),code=await this.ctx.storage.get("code"),gameNumber=await this.getGameNumber();
+    if(!this.env.DB||!code||!players.black?.id||!players.white?.id) return;
+    const settings=await this.getAwaleSettings(),winner=game?.result?.winner,result=winner===0?"1-0":winner===1?"0-1":"1/2-1/2";
+    const initialSeconds=Math.max(0,Number(settings.timeControl?.initialSeconds||0)),incrementSeconds=Math.max(0,Number(settings.timeControl?.incrementSeconds||0));
+    const existing=await this.env.DB.prepare("SELECT id FROM awale_results WHERE room_code=? AND game_number=?").bind(code,gameNumber).first();
+    if(existing){ await this.env.DB.prepare(`UPDATE awale_results SET game_json=?,time_initial_seconds=?,time_increment_seconds=?,reason=?,result=? WHERE id=?`).bind(JSON.stringify(game),initialSeconds,incrementSeconds,String(reason||"game"),result,existing.id).run(); return; }
+    await this.env.DB.prepare(`INSERT INTO awale_results(id,room_code,game_number,side0_user_id,side1_user_id,category,rated,result,reason,game_json,time_initial_seconds,time_increment_seconds) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(),code,gameNumber,players.black.id,players.white.id,CHESS_CATEGORIES.has(settings.ratingCategory)?settings.ratingCategory:"rapid",settings.rated?1:0,result,String(reason||"game"),JSON.stringify(game),initialSeconds,incrementSeconds).run();
+  }
+  async finishAwaleGame(game,reason){
+    await this.stopAwaleClock(); await this.ctx.storage.put("game",game); await this.ctx.storage.delete(["drawOffer","rematchOffer"]); await this.markFinished(game?.result?.winner ?? null);
+    const ratingUpdate=await this.recordAwaleResult(game,reason); await this.archiveAwaleGame(game,reason); return ratingUpdate;
+  }
+  async finishAwaleOnTime(flaggedSide){
+    const game=await this.getGame(); if(game?.result?.over) return;
+    const clock=await this.awaleClockSnapshot(),players=await this.getPlayers(),winner=Number(flaggedSide)===0?1:0;
+    const winnerPlayer=winner===0?players.black:players.white,loserPlayer=Number(flaggedSide)===0?players.black:players.white;
+    const winnerName=winnerPlayer?.username||`Joueur ${winner+1}`,loserName=loserPlayer?.username||`Joueur ${Number(flaggedSide)+1}`;
+    const winnerRemainingMs=winner===0?Number(clock?.side0Ms||0):Number(clock?.side1Ms||0);
+    game.result={over:true,type:"timeout",winner,winnerUsername:winnerPlayer?.username||null,loserUsername:loserPlayer?.username||null,winnerRemainingMs,
+      text:`La partie se termine par la victoire de ${winnerName} par manque de temps de ${loserName}. Il reste ${formatChessDuration(winnerRemainingMs)} à ${winnerName}.`};
+    game.state.over=true;
+    const ratingUpdate=await this.finishAwaleGame(game,"timeout");
+    await this.broadcast({type:"state",gameType:"awale",game,clock:await this.awaleClockSnapshot(),settings:await this.getAwaleSettings(),ratings:await this.awaleRoomRatings(),ratingUpdate});
+  }
+
+  // ----------------------------
   // Classement Elo et archive du Go.
   // ----------------------------
   async currentGoRating(userId,size,category){
@@ -875,6 +1018,12 @@ export class AbaloneRoom extends DurableObject {
       const {clock,flagged}=await this.settleGoClock(Date.now());
       if(flagged!==null){ await this.finishGoOnTime(flagged); return; }
       await this.scheduleGoClockAlarm(clock);
+      return;
+    }
+    if(gameType==="awale"){
+      const {clock,flagged}=await this.settleAwaleClock(Date.now());
+      if(flagged!==null){ await this.finishAwaleOnTime(flagged); return; }
+      await this.scheduleAwaleClockAlarm(clock);
     }
   }
 
@@ -888,6 +1037,7 @@ export class AbaloneRoom extends DurableObject {
         let gameType="abalone",checkersVariant=null;
         if(body.game==="chess") gameType="chess";
         else if(body.game==="go") gameType="go";
+        else if(body.game==="awale") gameType="awale";
         else if(body.game==="checkers-international" || body.game==="checkers-english"){
           gameType="checkers";
           checkersVariant=body.game==="checkers-english"?"english":"international";
@@ -896,18 +1046,19 @@ export class AbaloneRoom extends DurableObject {
         if(gameType==="chess" && body.creatorSide==="w") creatorSlot="white";
         if(gameType==="checkers" && Number(body.creatorSide)===1) creatorSlot="white";
         if(gameType==="go" && Number(body.creatorSide)===GO_WHITE) creatorSlot="white";
+        if(gameType==="awale" && Number(body.creatorSide)===1) creatorSlot="white";
         const players={black:null,white:null};
         players[creatorSlot]={id:body.userId,username:body.username};
         await this.ctx.storage.put("gameType",gameType);
         if(gameType==="checkers") await this.ctx.storage.put("checkersVariant",checkersVariant||"international");
         await this.ctx.storage.put("players",players);
         const goOptions={size:Number(body.goSettings?.size||19),komi:Number(body.goSettings?.komi??7.5),scoring:body.goSettings?.scoring||"area"};
-        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):initialGameState();
+        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):gameType==="awale"?initialAwaleGameState():initialGameState();
         await this.ctx.storage.put("game",initialGame);
         await this.ctx.storage.put("code",body.code);
         await this.ctx.storage.put("gameNumber",1);
         await this.ctx.storage.delete(["drawOffer","rematchOffer","ratingUpdate"]);
-        if(gameType==="chess" || gameType==="checkers" || gameType==="go"){
+        if(gameType==="chess" || gameType==="checkers" || gameType==="go" || gameType==="awale"){
           const initialSeconds=Math.min(10800,Math.max(30,Number(body.timeControl?.initialSeconds||600)));
           const incrementSeconds=Math.min(60,Math.max(0,Number(body.timeControl?.incrementSeconds||0)));
           const category=CHESS_CATEGORIES.has(body.ratingCategory)?body.ratingCategory:"rapid";
@@ -918,10 +1069,13 @@ export class AbaloneRoom extends DurableObject {
           }else if(gameType==="checkers"){
             await this.ctx.storage.put("checkersSettings",settings);
             await this.resetCheckersClock();
-          }else{
+          }else if(gameType==="go"){
             const goSettings={...settings,size:goOptions.size,komi:goOptions.komi,scoring:goOptions.scoring};
             await this.ctx.storage.put("goSettings",goSettings);
             await this.resetGoClock();
+          }else{
+            await this.ctx.storage.put("awaleSettings",settings);
+            await this.resetAwaleClock();
           }
         }
       }
@@ -1071,6 +1225,18 @@ export class AbaloneRoom extends DurableObject {
         clock.lastStartedAt=now;
         await this.ctx.storage.put("goClock",clock);
         await this.scheduleGoClockAlarm(clock);
+      }else if(gameType === "awale"){
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."})); return; }
+        await this.maybeStartAwaleClock();
+        const now=Date.now(),settled=await this.settleAwaleClock(now);
+        if(settled.flagged!==null){ await this.finishAwaleOnTime(settled.flagged); return; }
+        result=playServerAwaleMove(game,Number(session.side),Number(data.move?.index));
+        if(!result.ok){ await this.scheduleAwaleClockAlarm(settled.clock); ws.send(JSON.stringify({type:"error",message:result.error})); return; }
+        const settings=await this.getAwaleSettings(),clock=settled.clock,moverKey=this.awaleClockKey(session.side);
+        clock[moverKey]=Number(clock[moverKey]||0)+Number(settings.timeControl?.incrementSeconds||0)*1000;
+        if(result.state?.result?.over){ clock.started=false;clock.runningSide=null;clock.lastStartedAt=null;await this.ctx.storage.put("awaleClock",clock);try{await this.ctx.storage.deleteAlarm();}catch{} }
+        else{ clock.started=true;clock.runningSide=Number(result.state?.state?.player);clock.lastStartedAt=now;await this.ctx.storage.put("awaleClock",clock);await this.scheduleAwaleClockAlarm(clock); }
       }else{
         result=playServerMove(game,session.side,Array.isArray(data.group)?data.group:[],Number(data.dir));
       }
@@ -1078,7 +1244,7 @@ export class AbaloneRoom extends DurableObject {
       if(!result.ok){ ws.send(JSON.stringify({type:"error",message:result.error})); return; }
       await this.ctx.storage.put("game",result.state);
 
-      if(gameType === "chess" || gameType === "checkers" || gameType === "go"){
+      if(gameType === "chess" || gameType === "checkers" || gameType === "go" || gameType === "awale"){
         const offer=await this.getDrawOffer();
         if(offer && offer.userId!==session.userId){
           await this.ctx.storage.delete("drawOffer");
@@ -1086,7 +1252,7 @@ export class AbaloneRoom extends DurableObject {
         }
       }
 
-      const structuredResult = gameType === "chess" || gameType === "checkers" || gameType === "go";
+      const structuredResult = gameType === "chess" || gameType === "checkers" || gameType === "go" || gameType === "awale";
       const finished = structuredResult ? Boolean(result.state?.result?.over) : Boolean(result.state?.over);
       const winner = structuredResult ? result.state?.result?.winner : result.state?.winner;
       let ratingUpdate=null;
@@ -1095,6 +1261,7 @@ export class AbaloneRoom extends DurableObject {
         if(gameType==="chess") ratingUpdate=await this.finishChessGame(result.state,result.state?.result?.type||"game");
         else if(gameType==="checkers") ratingUpdate=await this.finishCheckersGame(result.state,result.state?.result?.type||"game");
         else if(gameType==="go") ratingUpdate=await this.finishGoGame(result.state,result.state?.result?.type||"game");
+        else if(gameType==="awale") ratingUpdate=await this.finishAwaleGame(result.state,result.state?.result?.type||"game");
         else await this.markFinished(winner ?? null);
       }
 
@@ -1184,6 +1351,19 @@ export class AbaloneRoom extends DurableObject {
         return;
       }
 
+      if(gameType === "awale"){
+        if(game?.result?.over) return;
+        const players=await this.getPlayers();
+        if(!players.black || !players.white){ ws.send(JSON.stringify({type:"error",message:"La partie n’a pas encore commencé."})); return; }
+        const resigned=Number(session.side),winner=resigned===0?1:0;
+        const loserName=(resigned===0?players.black:players.white)?.username||`Joueur ${resigned+1}`;
+        const winnerName=(winner===0?players.black:players.white)?.username||`Joueur ${winner+1}`;
+        game.state.over=true; game.result={over:true,type:"resign",winner,text:`${loserName} abandonne : ${winnerName} gagne.`};
+        const ratingUpdate=await this.finishAwaleGame(game,"resign");
+        await this.broadcast({type:"state",gameType,game,resigned,clock:await this.awaleClockSnapshot(),settings:await this.getAwaleSettings(),ratings:await this.awaleRoomRatings(),ratingUpdate});
+        return;
+      }
+
       if(game.over) return;
       game.over=true;
       game.winner=session.side===AB_BLACK?AB_WHITE:AB_BLACK;
@@ -1194,7 +1374,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_offer"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie est terminée."})); return; }
@@ -1208,7 +1388,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="draw_response"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale") return;
       const offer=await this.getDrawOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de nulle à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -1220,11 +1400,12 @@ export class AbaloneRoom extends DurableObject {
       const game=await this.getGame();
       if(game?.result?.over) return;
       game.result={over:true,type:"draw-agreement",winner:null,text:"Partie nulle d’un commun accord."};
+      if(gameType==="awale" && game.state) game.state.over=true;
       const ratingUpdate=gameType==="chess"
         ? await this.finishChessGame(game,"draw-agreement")
         : gameType==="checkers"
           ? await this.finishCheckersGame(game,"draw-agreement")
-          : await this.finishGoGame(game,"draw-agreement");
+          : gameType==="go" ? await this.finishGoGame(game,"draw-agreement") : await this.finishAwaleGame(game,"draw-agreement");
       await this.broadcast({
         type:"state",gameType,game,drawAccepted:true,clock:await this.clockForGameType(gameType),
         settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType),ratingUpdate
@@ -1233,7 +1414,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_offer"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
@@ -1247,7 +1428,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_response"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale") return;
       const offer=await this.getRematchOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -1260,13 +1441,13 @@ export class AbaloneRoom extends DurableObject {
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
       const variant=gameType==="checkers"?await this.getCheckersVariant():null;
-      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):initialGoGameState(await this.getGoSettings());
+      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):gameType==="go"?initialGoGameState(await this.getGoSettings()):initialAwaleGameState();
       const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
       await this.ctx.storage.put("gameNumber",nextGameNumber);
       await this.ctx.storage.delete(["drawOffer","ratingUpdate"]);
-      if(gameType==="chess") await this.resetChessClock(); else if(gameType==="checkers") await this.resetCheckersClock(); else await this.resetGoClock();
+      if(gameType==="chess") await this.resetChessClock(); else if(gameType==="checkers") await this.resetCheckersClock(); else if(gameType==="go") await this.resetGoClock(); else await this.resetAwaleClock();
       await this.markPlaying(swapped);
 
       for(const socket of this.ctx.getWebSockets()){
@@ -1306,6 +1487,17 @@ export class AbaloneRoom extends DurableObject {
               await this.finishGoOnTime(settled.flagged);
               return;
             }
+          }
+        }
+      }
+      if(gameType==="awale"){
+        const now=Date.now();
+        const snapshot=await this.awaleClockSnapshot(now);
+        if(snapshot?.started && snapshot.runningSide!==null && snapshot.runningSide!==undefined){
+          const key=this.awaleClockKey(snapshot.runningSide);
+          if(Number(snapshot[key]||0)<=0){
+            const settled=await this.settleAwaleClock(now);
+            if(settled.flagged!==null){ await this.finishAwaleOnTime(settled.flagged); return; }
           }
         }
       }
