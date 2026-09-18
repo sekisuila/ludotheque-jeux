@@ -1194,6 +1194,196 @@ async function loadAwaleGamesPanel(){
 }
 
 
+
+// ============================================================
+// Abalone — classement Elo et archive/relecture dans la page Compte
+// ============================================================
+const ACCOUNT_AB_RADIUS = 4;
+const ACCOUNT_AB_BLACK = 1;
+const ACCOUNT_AB_WHITE = 2;
+const ACCOUNT_AB_EMPTY = 0;
+
+function accountAbInside(q,r){
+  return Math.abs(q)<=ACCOUNT_AB_RADIUS && Math.abs(r)<=ACCOUNT_AB_RADIUS && Math.abs(q+r)<=ACCOUNT_AB_RADIUS;
+}
+function accountAbKey(q,r){ return `${q},${r}`; }
+function accountAbParse(key){ return String(key).split(',').map(Number); }
+function accountAbAddKey(key,dir){ const [q,r]=accountAbParse(key); return accountAbKey(q+Number(dir?.[0]||0),r+Number(dir?.[1]||0)); }
+function accountAbCells(){
+  const cells=[];
+  for(let r=-ACCOUNT_AB_RADIUS;r<=ACCOUNT_AB_RADIUS;r++){
+    for(let q=-ACCOUNT_AB_RADIUS;q<=ACCOUNT_AB_RADIUS;q++) if(accountAbInside(q,r)) cells.push([q,r]);
+  }
+  return cells;
+}
+const ACCOUNT_AB_CELLS = accountAbCells();
+
+function accountAbInitialBoard(){
+  const board={};
+  for(const [q,r] of ACCOUNT_AB_CELLS) board[accountAbKey(q,r)]=ACCOUNT_AB_EMPTY;
+  for(const [q,r] of ACCOUNT_AB_CELLS){
+    if(r===-4||r===-3) board[accountAbKey(q,r)]=ACCOUNT_AB_BLACK;
+    if(r===4||r===3) board[accountAbKey(q,r)]=ACCOUNT_AB_WHITE;
+  }
+  for(const q of [0,1,2]) board[accountAbKey(q,-2)]=ACCOUNT_AB_BLACK;
+  for(const q of [-2,-1,0]) board[accountAbKey(q,2)]=ACCOUNT_AB_WHITE;
+  return board;
+}
+
+function accountAbApplyMove(board,move){
+  const next={...board};
+  const player=Number(move?.player||0);
+  const opponent=player===ACCOUNT_AB_BLACK?ACCOUNT_AB_WHITE:ACCOUNT_AB_BLACK;
+  const dir=Array.isArray(move?.dir)?move.dir:[0,0];
+  const group=Array.isArray(move?.group)?move.group:[];
+  const push=Array.isArray(move?.push)?move.push:[];
+
+  // Déplace d'abord les billes adverses, de la plus éloignée vers la plus proche.
+  for(const key of [...push].reverse()){
+    const dest=accountAbAddKey(key,dir);
+    const [dq,dr]=accountAbParse(dest);
+    next[key]=ACCOUNT_AB_EMPTY;
+    if(accountAbInside(dq,dr)) next[dest]=opponent;
+  }
+
+  // Puis déplace le groupe du joueur.
+  for(const key of group) next[key]=ACCOUNT_AB_EMPTY;
+  for(const key of group){
+    const dest=accountAbAddKey(key,dir);
+    const [dq,dr]=accountAbParse(dest);
+    if(accountAbInside(dq,dr)) next[dest]=player;
+  }
+  return next;
+}
+
+function abaloneArchiveSnapshots(replay){
+  if(!replay) return [];
+  let board=accountAbInitialBoard();
+  let ejectBlack=0,ejectWhite=0;
+  const snapshots=[{board:{...board},move:null,ejectBlack,ejectWhite}];
+  const moves=Array.isArray(replay.moves)?replay.moves:[];
+  for(const move of moves){
+    board=accountAbApplyMove(board,move);
+    if(Number(move?.eject||0)>0){
+      if(Number(move.player)===ACCOUNT_AB_BLACK) ejectBlack+=Number(move.eject||0);
+      else if(Number(move.player)===ACCOUNT_AB_WHITE) ejectWhite+=Number(move.eject||0);
+    }
+    snapshots.push({board:{...board},move,ejectBlack,ejectWhite});
+  }
+  // Le serveur conserve aussi le plateau final : on le préfère pour la dernière vue.
+  if(replay.board && snapshots.length){
+    snapshots[snapshots.length-1]={...snapshots[snapshots.length-1],board:{...replay.board},ejectBlack:Number(replay.ejected?.[ACCOUNT_AB_BLACK]??ejectBlack),ejectWhite:Number(replay.ejected?.[ACCOUNT_AB_WHITE]??ejectWhite)};
+  }
+  return snapshots;
+}
+
+let abaloneArchiveReplay={game:null,ply:0};
+
+function renderAbaloneArchiveReplay(){
+  const panel=document.getElementById('abaloneArchiveReplay');
+  if(!panel||!abaloneArchiveReplay.game?.replay) return;
+  const snaps=abaloneArchiveSnapshots(abaloneArchiveReplay.game.replay);
+  const max=Math.max(0,snaps.length-1);
+  abaloneArchiveReplay.ply=Math.max(0,Math.min(max,abaloneArchiveReplay.ply));
+  const snap=snaps[abaloneArchiveReplay.ply];
+  const board=panel.querySelector('.archive-abalone-board');
+  if(board){
+    board.innerHTML=`<div class="abalone-board-surface" aria-hidden="true"></div>`+ACCOUNT_AB_CELLS.map(([q,r])=>{
+      const key=accountAbKey(q,r),value=Number(snap.board?.[key]||0);
+      const left=50+(q+r/2)*10.45,top=50+r*10.45;
+      const marble=value===ACCOUNT_AB_BLACK?'<span class="abalone-marble black"></span>':value===ACCOUNT_AB_WHITE?'<span class="abalone-marble white"></span>':'';
+      return `<div class="abalone-cell archive" style="left:${left}%;top:${top}%">${marble}</div>`;
+    }).join('');
+  }
+  const label=panel.querySelector('[data-abalone-archive-ply]');
+  if(label){
+    const move=snap.move?.label?` · ${escapeHtml(snap.move.label)}`:'';
+    label.innerHTML=`Coup ${abaloneArchiveReplay.ply}/${max}${move}<br><small>Éjections : Noir ${snap.ejectBlack} · Blanc ${snap.ejectWhite}</small>`;
+  }
+  panel.querySelector('[data-abalone-step="start"]')?.toggleAttribute('disabled',abaloneArchiveReplay.ply===0);
+  panel.querySelector('[data-abalone-step="prev"]')?.toggleAttribute('disabled',abaloneArchiveReplay.ply===0);
+  panel.querySelector('[data-abalone-step="next"]')?.toggleAttribute('disabled',abaloneArchiveReplay.ply===max);
+  panel.querySelector('[data-abalone-step="end"]')?.toggleAttribute('disabled',abaloneArchiveReplay.ply===max);
+}
+
+function closeAbaloneArchiveReplay(){
+  abaloneArchiveReplay={game:null,ply:0};
+  const panel=document.getElementById('abaloneArchiveReplay');
+  if(panel) panel.hidden=true;
+}
+
+async function openAbaloneArchiveReplay(id){
+  const panel=document.getElementById('abaloneArchiveReplay');
+  if(!panel) return;
+  panel.hidden=false; panel.innerHTML='<p>Chargement…</p>';
+  try{
+    const game=await LudoOnline.abaloneGames.get(id);
+    if(!game.replay){ panel.innerHTML='<p>Historique indisponible pour cette ancienne partie.</p>'; return; }
+    abaloneArchiveReplay={game,ply:0};
+    panel.innerHTML=`
+      <div class="archive-replay-head">
+        <div><h3>${escapeHtml(game.blackUsername)} — ${escapeHtml(game.whiteUsername)}</h3>
+          <p>${escapeHtml(game.result)} · ${escapeHtml(chessArchiveTimeLabel(game))} · ${escapeHtml(ELO_CATEGORY_LABELS[game.category]||game.category||'')}</p>
+          <small>Noir : ${escapeHtml(game.blackUsername)} · Blanc : ${escapeHtml(game.whiteUsername)}</small>
+        </div>
+        <button class="btn small outline" id="closeAbaloneArchive">Fermer</button>
+      </div>
+      <div class="archive-abalone-board"></div>
+      <div class="archive-replay-controls">
+        <button class="btn small outline" data-abalone-step="start">⏮ Début</button>
+        <button class="btn small outline" data-abalone-step="prev">◀ Précédent</button>
+        <strong data-abalone-archive-ply></strong>
+        <button class="btn small outline" data-abalone-step="next">Suivant ▶</button>
+        <button class="btn small outline" data-abalone-step="end">Fin ⏭</button>
+      </div>`;
+    panel.querySelector('#closeAbaloneArchive')?.addEventListener('click',closeAbaloneArchiveReplay);
+    panel.querySelectorAll('[data-abalone-step]').forEach(btn=>btn.addEventListener('click',()=>{
+      const max=Math.max(0,abaloneArchiveSnapshots(abaloneArchiveReplay.game.replay).length-1);
+      if(btn.dataset.abaloneStep==='start') abaloneArchiveReplay.ply=0;
+      if(btn.dataset.abaloneStep==='prev') abaloneArchiveReplay.ply--;
+      if(btn.dataset.abaloneStep==='next') abaloneArchiveReplay.ply++;
+      if(btn.dataset.abaloneStep==='end') abaloneArchiveReplay.ply=max;
+      renderAbaloneArchiveReplay();
+    }));
+    renderAbaloneArchiveReplay();
+    panel.scrollIntoView({block:'start',behavior:'smooth'});
+  }catch(e){ panel.innerHTML=`<p>${escapeHtml(e.message)}</p>`; }
+}
+
+async function loadAbaloneRatingsPanel(){
+  const mine=document.getElementById('myAbaloneRatings');
+  const board=document.getElementById('abaloneEloLeaderboard');
+  const category=document.getElementById('abaloneEloCategory');
+  if(!mine||!board||!category||!window.LudoOnline?.abaloneRatings) return;
+  try{
+    const ratings=await LudoOnline.abaloneRatings.mine();
+    mine.innerHTML=['bullet','blitz','rapid','classical'].map(c=>{
+      const r=ratings[c]||{rating:1200,games:0};
+      return `<div class="elo-chip"><span>${ELO_CATEGORY_LABELS[c]}</span><strong>${r.rating}</strong><small>${r.games} partie${r.games>1?'s':''}</small></div>`;
+    }).join('');
+  }catch(e){ mine.innerHTML=`<p>${escapeHtml(e.message)}</p>`; }
+
+  const load=async()=>{
+    try{
+      const data=await LudoOnline.abaloneRatings.leaderboard(category.value,30),players=data.players||[];
+      board.innerHTML=players.length?`<div class="elo-table"><div class="elo-row elo-head"><span>#</span><span>Joueur</span><span>Elo</span><span>Parties</span></div>${players.map((p,i)=>`<div class="elo-row"><span>${i+1}</span><strong>${escapeHtml(p.username)}</strong><span>${p.rating}</span><span>${p.games}</span></div>`).join('')}</div>`:'<p>Aucune partie classée pour le moment.</p>';
+    }catch(e){ board.innerHTML=`<p>${escapeHtml(e.message)}</p>`; }
+  };
+  category.addEventListener('change',load);
+  await load();
+}
+
+async function loadAbaloneGamesPanel(){
+  const list=document.getElementById('abaloneGameArchiveList');
+  if(!list||!window.LudoOnline?.abaloneGames) return;
+  try{
+    const games=await LudoOnline.abaloneGames.list();
+    if(!games.length){ list.innerHTML='<p>Aucune partie d’Abalone en ligne terminée pour le moment.</p>'; return; }
+    list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.blackUsername)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.whiteUsername)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · ${escapeHtml(chessArchiveTimeLabel(g))} · ${escapeHtml(ELO_CATEGORY_LABELS[g.category]||g.category||'')} · ${g.rated?'Classée':'Amicale'}</small></div><button class="btn small ${g.replayAvailable?'':'outline'}" data-abalone-replay-id="${g.id}" ${g.replayAvailable?'':'disabled'}>${g.replayAvailable?'Rejouer':'Historique ancien'}</button></article>`).join('');
+    list.querySelectorAll('[data-abalone-replay-id]:not([disabled])').forEach(btn=>btn.addEventListener('click',()=>openAbaloneArchiveReplay(btn.dataset.abaloneReplayId)));
+  }catch(e){ list.innerHTML=`<p>${escapeHtml(e.message)}</p>`; }
+}
+
 function renderAccountContent(user, newRecoveryKey = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;

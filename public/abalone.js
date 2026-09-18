@@ -1064,8 +1064,20 @@ function abConnectOnlineRoom(code,reconnect=false) {
   abaloneUi.online.ws = ws;
 }
 
+function abOnlinePositionFingerprint(state) {
+  if (!state?.board) return "";
+  const boardSig = AB_CELLS.map(([q,r]) => Number(state.board?.[abKey(q,r)] || 0)).join("");
+  return `${boardSig}|${Number(state.turn||0)}|${Array.isArray(state.moves)?state.moves.length:0}|${state.over?1:0}|${state.winner??"-"}`;
+}
+
 function abApplyOnlineState(state) {
   if (!state) return;
+
+  // Une resynchronisation périodique ne doit pas effacer la sélection en cours
+  // si le plateau n'a pas réellement changé depuis le dernier affichage.
+  const previousSelection = [...(abaloneUi.selected || [])];
+  const samePosition = abOnlinePositionFingerprint(abaloneUi.game) === abOnlinePositionFingerprint(state);
+
   const g = abDeserializeGame(state);
   g.result=state.result||null;
   const ev = abPositionEvaluation(g);
@@ -1074,7 +1086,22 @@ function abApplyOnlineState(state) {
     if (!Number.isFinite(last.evalBlack)) { last.evalBlack = ev.blackNote; last.evalWhite = ev.whiteNote; last.evalRawBlack = ev.rawBlack; }
   }
   abaloneUi.game = g;
-  abaloneUi.selected = []; abaloneUi.candidateMoves = [];
+
+  const canKeepSelection = samePosition
+    && previousSelection.length > 0
+    && !g.over
+    && abaloneUi.mode === "online"
+    && Number(abaloneUi.online?.side) === Number(g.turn)
+    && previousSelection.every(k => g.board[k] === g.turn)
+    && abIsContiguousAligned(previousSelection);
+
+  if (canKeepSelection) {
+    abaloneUi.selected = previousSelection;
+    abaloneUi.candidateMoves = g.movesForGroup(previousSelection);
+  } else {
+    abaloneUi.selected = [];
+    abaloneUi.candidateMoves = [];
+  }
   renderAbalone();
 }
 
@@ -1139,17 +1166,37 @@ function abGroupWithClicked(key) {
   return abIsContiguousAligned(candidate) ? candidate : [key];
 }
 
+function abMoveTriggerKeys(move) {
+  if (!move) return [];
+
+  // Pour un Sumito, le clic le plus naturel est la première bille adverse poussée.
+  if (move.type === "sumito" && move.push?.length) return [move.push[0]];
+
+  // Pour un déplacement en ligne, on ne garde que la nouvelle case extérieure.
+  // Les autres « destinations » calculées correspondent encore à des cases occupées
+  // par le groupe avant le mouvement et ne doivent pas être utilisées comme cibles.
+  if (move.type === "inline" || move.type === "single") {
+    const groupSet = new Set(move.group || []);
+    return (move.destinations || []).filter(k => !groupSet.has(k));
+  }
+
+  // Pour un déplacement latéral, plusieurs cases deviennent libres simultanément.
+  // On choisit une case représentative unique, liée à une bille-ancre canonique.
+  // Cela évite qu'une même case verte corresponde à deux directions différentes.
+  if (move.type === "broadside" && move.group?.length) {
+    const anchor = [...move.group].sort()[0];
+    return [abAddKey(anchor, move.dir)];
+  }
+
+  return [...(move.destinations || [])];
+}
+
 function abMoveCanBeTriggeredByTarget(move, board, player, key) {
   const value = board[key];
-
-  // Une case vide peut déclencher un déplacement normal ou latéral.
-  if (value === AB_EMPTY) return (move.destinations || []).includes(key);
-
-  // Pour un Sumito, la cible naturelle est la première bille adverse poussée.
-  // L'ancienne interface refusait ce clic parce que la case n'était pas vide.
+  if (value === AB_EMPTY) return abMoveTriggerKeys(move).includes(key);
   return value === abOther(player)
     && move.type === "sumito"
-    && (move.push || []).includes(key);
+    && abMoveTriggerKeys(move).includes(key);
 }
 
 function onAbaloneCellClick(event) {
@@ -1235,8 +1282,13 @@ function renderAbaloneBoard() {
   if (!boardEl || !abaloneUi) return;
   const game = abaloneUi.game;
   const selectedSet = new Set(abaloneUi.selected);
-  const targetSet = new Set(abaloneUi.candidateMoves.flatMap(m => m.destinations));
-  const pushSet = new Set(abaloneUi.candidateMoves.flatMap(m => m.push || []));
+  // On n'affiche désormais que des cibles de clic non ambiguës.
+  const targetSet = new Set(abaloneUi.candidateMoves.flatMap(m =>
+    abMoveTriggerKeys(m).filter(k => game.board[k] === AB_EMPTY)
+  ));
+  const pushSet = new Set(abaloneUi.candidateMoves.flatMap(m =>
+    m.type === "sumito" ? abMoveTriggerKeys(m) : []
+  ));
 
   boardEl.innerHTML = `<div class="abalone-board-surface" aria-hidden="true"></div>` + AB_CELLS.map(([q,r]) => {
     const key = abKey(q,r);
@@ -1276,7 +1328,7 @@ function renderAbaloneInfo() {
   else if (abaloneUi.mode === "online" && !abaloneUi.online.connected) status.textContent = "Mode en ligne : créez un salon ou rejoignez-en un avec son code.";
   else if (abaloneUi.mode === "online" && abaloneUi.online.side !== game.turn) status.textContent = `En attente du coup de ${game.turn === AB_BLACK ? "Noir" : "Blanc"}…`;
   else if (abaloneUi.thinking) status.textContent = "L’IA réfléchit…";
-  else if (abaloneUi.selected.length) status.textContent = `${abaloneUi.selected.length} bille${abaloneUi.selected.length>1?"s":""} sélectionnée${abaloneUi.selected.length>1?"s":""}. Choisissez une direction disponible, cliquez sur une destination verte ou sur la bille adverse cerclée en rouge pour effectuer un Sumito.`;
+  else if (abaloneUi.selected.length) status.textContent = `${abaloneUi.selected.length} bille${abaloneUi.selected.length>1?"s":""} sélectionnée${abaloneUi.selected.length>1?"s":""}. La sélection reste active jusqu'au coup : cliquez sur une case verte, sur la bille adverse cerclée en rouge pour un Sumito, ou ailleurs pour désélectionner.`;
   else status.textContent = `${game.turn === AB_BLACK ? "Noir" : "Blanc"} joue. Cliquez sur 1, 2 ou 3 billes adjacentes et alignées.`;
 
   // Évaluation de la position courante selon la fonction Expert.
