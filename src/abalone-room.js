@@ -1292,6 +1292,23 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="sync"){
+      // Le Go bénéficie d'une resynchronisation régulière demandée par les clients.
+      // On vérifie ici l'horloge autoritative avant d'envoyer l'état : si le drapeau
+      // est réellement tombé, le résultat est fixé côté serveur et diffusé à tous.
+      if(gameType==="go"){
+        const now=Date.now();
+        const snapshot=await this.goClockSnapshot(now);
+        if(snapshot?.started && snapshot.runningSide!==null && snapshot.runningSide!==undefined){
+          const key=this.goClockKey(snapshot.runningSide);
+          if(Number(snapshot[key]||0)<=0){
+            const settled=await this.settleGoClock(now);
+            if(settled.flagged!==null){
+              await this.finishGoOnTime(settled.flagged);
+              return;
+            }
+          }
+        }
+      }
       ws.send(JSON.stringify({
         type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
