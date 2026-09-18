@@ -32,7 +32,10 @@ export function scoreYamsCategory(dice,category){
   const faceMap={ones:1,twos:2,threes:3,fours:4,fives:5,sixes:6};
   if(faceMap[category]) return counts[faceMap[category]]*faceMap[category];
   if(category==="threeKind") return counts.some(c=>c>=3)?sum:0;
-  if(category==="fourKind") return counts.some(c=>c>=4)?sum:0;
+  if(category==="fourKind"){
+    const face=counts.findIndex(c=>c>=4);
+    return face>=1 ? face*4 : 0;
+  }
   if(category==="fullHouse") return counts.includes(3)&&counts.includes(2)?25:0;
   const uniq=[...new Set(d)].sort((a,b)=>a-b);
   if(category==="smallStraight"){
