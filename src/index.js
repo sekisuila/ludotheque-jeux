@@ -157,7 +157,7 @@ function validRoomGame(game){
 }
 function isCheckersRoomGame(game){ return game === "checkers-international" || game === "checkers-english"; }
 function checkersVariantFromRoomGame(game){ return game === "checkers-english" ? "english" : "international"; }
-function isTimedRoomGame(game){ return game === "chess" || game === "go" || game === "awale" || isCheckersRoomGame(game); }
+function isTimedRoomGame(game){ return game === "chess" || game === "abalone" || game === "go" || game === "awale" || isCheckersRoomGame(game); }
 function publicSideForRoomGame(game,slot){
   if(game==="chess") return slot==="black"?"b":"w";
   if(isCheckersRoomGame(game)) return slot==="black"?0:1;
@@ -193,7 +193,7 @@ async function createRoom(request,env,user){
   // "slot 0 / slot 1" pour les Dames. Les libellés visibles dépendent de la variante.
   let creatorSlot="black";
   let creatorColor="black";
-  if(game==="chess" || go){
+  if(game==="chess" || game==="abalone" || go){
     creatorColor=String(body?.creatorColor||"random").toLowerCase();
     if(creatorColor!=="white" && creatorColor!=="black"){
       const random=new Uint8Array(1); crypto.getRandomValues(random);
@@ -238,7 +238,7 @@ async function createRoom(request,env,user){
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
   const stub=env.ABALONE_ROOMS.getByName(code);
-  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):awale?(creatorSlot==="white"?1:0):null;
+  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):awale?(creatorSlot==="white"?1:0):null;
   await stub.fetch("https://room/init",{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({
@@ -251,7 +251,7 @@ async function createRoom(request,env,user){
 
   return json({
     code,game,
-    side:game==="chess"?(creatorSlot==="white"?"w":"b"):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):awale?(creatorSlot==="white"?1:0):1,
+    side:game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):awale?(creatorSlot==="white"?1:0):1,
     creatorColor,
     creatorSide:(checkers||awale)?Number(creatorColor):null,
     variant:checkers?checkersVariantFromRoomGame(game):null,
@@ -551,6 +551,51 @@ async function awaleGameById(env,user,id){
   }});
 }
 
+
+async function abaloneRatingsForUser(env,userId){
+  const {results=[]}=await env.DB.prepare(`SELECT category,rating,games,wins,draws,losses,updated_at FROM abalone_ratings WHERE user_id=?`).bind(userId).all();
+  const ratings={};
+  for(const category of ["bullet","blitz","rapid","classical"]){
+    const row=results.find(r=>r.category===category);
+    ratings[category]=row?{rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses),updatedAt:row.updated_at}
+      :{rating:1200,games:0,wins:0,draws:0,losses:0,updatedAt:null};
+  }
+  return ratings;
+}
+async function myAbaloneRatings(env,user){ return json({ratings:await abaloneRatingsForUser(env,user.id)}); }
+async function abaloneLeaderboard(request,env){
+  const u=new URL(request.url);
+  const category=["bullet","blitz","rapid","classical"].includes(u.searchParams.get("category"))?u.searchParams.get("category"):"rapid";
+  const limit=clampInt(u.searchParams.get("limit"),1,100,30);
+  const {results=[]}=await env.DB.prepare(`SELECT u.username,r.rating,r.games,r.wins,r.draws,r.losses FROM abalone_ratings r JOIN users u ON u.id=r.user_id WHERE r.category=? AND r.games>0 ORDER BY r.rating DESC,r.games DESC,u.username COLLATE NOCASE ASC LIMIT ?`).bind(category,limit).all();
+  return json({category,label:CHESS_RATING_LABELS[category],players:results});
+}
+async function listAbaloneGames(env,user){
+  const {results=[]}=await env.DB.prepare(`SELECT r.id,r.room_code,r.game_number,r.category,r.rated,r.result,r.reason,
+    r.black_rating_before,r.white_rating_before,r.black_rating_after,r.white_rating_after,r.black_delta,r.white_delta,
+    r.time_initial_seconds,r.time_increment_seconds,r.created_at,
+    ub.username AS black_username,uw.username AS white_username,
+    CASE WHEN r.game_json IS NULL THEN 0 ELSE 1 END AS replay_available
+    FROM abalone_results r JOIN users ub ON ub.id=r.black_user_id JOIN users uw ON uw.id=r.white_user_id
+    WHERE r.black_user_id=? OR r.white_user_id=? ORDER BY r.created_at DESC LIMIT 200`).bind(user.id,user.id).all();
+  return json({games:results.map(r=>({
+    id:r.id,roomCode:r.room_code,gameNumber:Number(r.game_number),category:r.category,rated:Boolean(r.rated),result:r.result,reason:r.reason,
+    createdAt:r.created_at,blackUsername:r.black_username,whiteUsername:r.white_username,
+    blackRatingBefore:r.black_rating_before,whiteRatingBefore:r.white_rating_before,blackRatingAfter:r.black_rating_after,whiteRatingAfter:r.white_rating_after,
+    blackDelta:r.black_delta,whiteDelta:r.white_delta,initialSeconds:r.time_initial_seconds,incrementSeconds:r.time_increment_seconds,replayAvailable:Boolean(r.replay_available)
+  }))});
+}
+async function abaloneGameById(env,user,id){
+  const r=await env.DB.prepare(`SELECT r.*,ub.username AS black_username,uw.username AS white_username FROM abalone_results r
+    JOIN users ub ON ub.id=r.black_user_id JOIN users uw ON uw.id=r.white_user_id
+    WHERE r.id=? AND (r.black_user_id=? OR r.white_user_id=?)`).bind(id,user.id,user.id).first();
+  if(!r) return json({error:"Partie introuvable."},404);
+  return json({game:{id:r.id,roomCode:r.room_code,gameNumber:Number(r.game_number),category:r.category,rated:Boolean(r.rated),result:r.result,reason:r.reason,createdAt:r.created_at,
+    blackUsername:r.black_username,whiteUsername:r.white_username,initialSeconds:r.time_initial_seconds,incrementSeconds:r.time_increment_seconds,
+    blackRatingBefore:r.black_rating_before,whiteRatingBefore:r.white_rating_before,blackRatingAfter:r.black_rating_after,whiteRatingAfter:r.white_rating_after,
+    blackDelta:r.black_delta,whiteDelta:r.white_delta,replay:r.game_json?JSON.parse(r.game_json):null}});
+}
+
 async function roomWebSocket(request,env,user,code){
   const room=await env.DB.prepare("SELECT game,black_user_id,white_user_id FROM rooms WHERE code=?").bind(code).first();
   if(!room || (room.black_user_id!==user.id && room.white_user_id!==user.id)) return new Response("Accès refusé",{status:403});
@@ -583,6 +628,8 @@ async function api(request,env){
   if(p==="/api/ratings/go"&&request.method==="GET") return goLeaderboard(request,env);
   if(p==="/api/ratings/awale/me"&&request.method==="GET") return myAwaleRatings(env,user);
   if(p==="/api/ratings/awale"&&request.method==="GET") return awaleLeaderboard(request,env);
+  if(p==="/api/ratings/abalone/me"&&request.method==="GET") return myAbaloneRatings(env,user);
+  if(p==="/api/ratings/abalone"&&request.method==="GET") return abaloneLeaderboard(request,env);
   if(p==="/api/chess/games"&&request.method==="GET") return listChessGames(env,user);
   const chessGameMatch=p.match(/^\/api\/chess\/games\/([0-9a-f-]{36})$/i); if(chessGameMatch&&request.method==="GET") return chessGameById(env,user,chessGameMatch[1]);
   if(p==="/api/checkers/games"&&request.method==="GET") return listCheckersGames(request,env,user);
@@ -591,6 +638,8 @@ async function api(request,env){
   const goGameMatch=p.match(/^\/api\/go\/games\/([0-9a-f-]{36})$/i); if(goGameMatch&&request.method==="GET") return goGameById(env,user,goGameMatch[1]);
   if(p==="/api/awale/games"&&request.method==="GET") return listAwaleGames(request,env,user);
   const awaleGameMatch=p.match(/^\/api\/awale\/games\/([0-9a-f-]{36})$/i); if(awaleGameMatch&&request.method==="GET") return awaleGameById(env,user,awaleGameMatch[1]);
+  if(p==="/api/abalone/games"&&request.method==="GET") return listAbaloneGames(env,user);
+  const abaloneGameMatch=p.match(/^\/api\/abalone\/games\/([0-9a-f-]{36})$/i); if(abaloneGameMatch&&request.method==="GET") return abaloneGameById(env,user,abaloneGameMatch[1]);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
