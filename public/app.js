@@ -2022,7 +2022,7 @@ function renderYamsGamePage(game) {
             <tr><td>As à Six</td><td>Somme des dés de la valeur choisie.</td></tr>
             <tr><td>Bonus supérieur</td><td>+35 points si le total As à Six atteint au moins 63.</td></tr>
             <tr><td>Brelan</td><td>Au moins 3 dés identiques : somme des 5 dés.</td></tr>
-            <tr><td>Carré</td><td>Au moins 4 dés identiques : somme des 5 dés.</td></tr>
+            <tr><td>Carré</td><td>Au moins 4 dés identiques : total des 4 dés identiques. Exemple : 5-5-5-5-1 = 20 points.</td></tr>
             <tr><td>Full</td><td>3 dés identiques + 2 dés identiques : 25 points.</td></tr>
             <tr><td>Petite suite</td><td>4 valeurs consécutives : 30 points.</td></tr>
             <tr><td>Grande suite</td><td>5 valeurs consécutives : 40 points.</td></tr>

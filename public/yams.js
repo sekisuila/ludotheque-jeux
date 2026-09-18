@@ -23,7 +23,10 @@
     const counts=Array(7).fill(0); d.forEach(n=>counts[n]++); const sum=d.reduce((a,b)=>a+b,0);
     if(FACE[cat]) return counts[FACE[cat]]*FACE[cat];
     if(cat==="threeKind") return counts.some(c=>c>=3)?sum:0;
-    if(cat==="fourKind") return counts.some(c=>c>=4)?sum:0;
+    if(cat==="fourKind"){
+      const face=counts.findIndex(c=>c>=4);
+      return face>=1 ? face*4 : 0;
+    }
     if(cat==="fullHouse") return counts.includes(3)&&counts.includes(2)?25:0;
     const u=[...new Set(d)].sort((a,b)=>a-b).join("");
     if(cat==="smallStraight") return (u.includes("1234")||u.includes("2345")||u.includes("3456"))?30:0;
