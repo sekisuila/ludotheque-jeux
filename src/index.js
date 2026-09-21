@@ -62,6 +62,148 @@ async function currentUser(request,env){
 }
 async function requireUser(request,env){ const user=await currentUser(request,env); return user?{user}:{response:json({error:"Connexion requise."},401)}; }
 
+function clientIp(request){ return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown"; }
+async function securityKey(...parts){ return sha256(parts.map(v=>String(v??"").toLowerCase()).join("|")); }
+
+async function securityCounter(env,key){
+  const row=await env.DB.prepare("SELECT attempts,window_started_at,blocked_until,updated_at FROM security_counters WHERE key=?").bind(key).first();
+  return row?{
+    attempts:Number(row.attempts||0),
+    windowStartedAt:Number(row.window_started_at||0),
+    blockedUntil:Number(row.blocked_until||0),
+    updatedAt:Number(row.updated_at||0)
+  }:null;
+}
+
+async function hitFixedWindow(env,key,{limit,windowSeconds,blockSeconds=windowSeconds}){
+  const now=Math.floor(Date.now()/1000);
+  const current=await securityCounter(env,key);
+  if(current && current.blockedUntil>now){
+    return {allowed:false,attempts:current.attempts,retryAfter:Math.max(1,current.blockedUntil-now)};
+  }
+  let attempts=1,windowStartedAt=now;
+  if(current && now-current.windowStartedAt<windowSeconds){
+    attempts=current.attempts+1;
+    windowStartedAt=current.windowStartedAt;
+  }
+  const allowed=attempts<=limit;
+  const blockedUntil=allowed?0:now+blockSeconds;
+  await env.DB.prepare(`INSERT INTO security_counters(key,attempts,window_started_at,blocked_until,updated_at)
+    VALUES(?,?,?,?,?)
+    ON CONFLICT(key) DO UPDATE SET attempts=excluded.attempts,window_started_at=excluded.window_started_at,
+      blocked_until=excluded.blocked_until,updated_at=excluded.updated_at`)
+    .bind(key,attempts,windowStartedAt,blockedUntil,now).run();
+  return {allowed,attempts,retryAfter:allowed?0:Math.max(1,blockedUntil-now)};
+}
+
+async function clearSecurityCounter(env,key){
+  await env.DB.prepare("DELETE FROM security_counters WHERE key=?").bind(key).run();
+}
+
+function loginBackoffSeconds(attempts){
+  if(attempts>=16) return 1800;
+  if(attempts>=12) return 600;
+  if(attempts>=8) return 120;
+  return 0;
+}
+
+async function recordLoginFailure(env,key){
+  const now=Math.floor(Date.now()/1000),windowSeconds=900;
+  const current=await securityCounter(env,key);
+  const attempts=current && now-current.windowStartedAt<windowSeconds ? current.attempts+1 : 1;
+  const windowStartedAt=current && now-current.windowStartedAt<windowSeconds ? current.windowStartedAt : now;
+  const blockedUntil=now+loginBackoffSeconds(attempts);
+  await env.DB.prepare(`INSERT INTO security_counters(key,attempts,window_started_at,blocked_until,updated_at)
+    VALUES(?,?,?,?,?)
+    ON CONFLICT(key) DO UPDATE SET attempts=excluded.attempts,window_started_at=excluded.window_started_at,
+      blocked_until=excluded.blocked_until,updated_at=excluded.updated_at`)
+    .bind(key,attempts,windowStartedAt,blockedUntil,now).run();
+  return {attempts,blockedUntil,retryAfter:blockedUntil>now?blockedUntil-now:0};
+}
+
+function turnstileConfigured(env){ return Boolean(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY); }
+
+async function verifyTurnstile(request,env,token,expectedAction){
+  if(!turnstileConfigured(env)) return {ok:false,configurationError:true};
+  if(typeof token!=="string" || token.length<10 || token.length>2048) return {ok:false};
+  const form=new FormData();
+  form.append("secret",env.TURNSTILE_SECRET_KEY);
+  form.append("response",token);
+  const ip=clientIp(request); if(ip && ip!=="unknown") form.append("remoteip",ip);
+  form.append("idempotency_key",crypto.randomUUID());
+  let response;
+  try{
+    response=await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify",{method:"POST",body:form});
+  }catch(error){
+    console.error("Turnstile Siteverify network error:",error);
+    return {ok:false,serviceError:true};
+  }
+  const outcome=await response.json().catch(()=>({success:false}));
+  if(!outcome?.success) return {ok:false,outcome};
+  if(expectedAction && outcome.action!==expectedAction) return {ok:false,outcome};
+  const requestHost=new URL(request.url).hostname.toLowerCase();
+  if(outcome.hostname && outcome.hostname.toLowerCase()!==requestHost) return {ok:false,outcome};
+  return {ok:true,outcome};
+}
+
+async function requireTurnstile(request,env,token,action){
+  if(!turnstileConfigured(env)){
+    return {response:json({error:"Turnstile n’est pas encore configuré sur le serveur."},503)};
+  }
+  const verification=await verifyTurnstile(request,env,token,action);
+  if(!verification.ok){
+    const status=verification.serviceError?503:403;
+    return {response:json({
+      error:verification.serviceError?"La vérification anti-robot est momentanément indisponible. Réessayez dans quelques instants.":"La vérification anti-robot a échoué. Merci de recommencer.",
+      turnstileRequired:true
+    },status)};
+  }
+  return {ok:true};
+}
+
+async function cleanupSecurityData(env){
+  try{
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM email_verification_tokens WHERE expires_at <= datetime('now')"),
+      env.DB.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= datetime('now')"),
+      env.DB.prepare("DELETE FROM security_counters WHERE updated_at < ?").bind(Math.floor(Date.now()/1000)-172800)
+    ]);
+    const {results=[]}=await env.DB.prepare(`
+      SELECT u.id FROM users u
+      WHERE u.deleted_at IS NULL
+        AND u.email_verified_at IS NULL
+        AND u.email_verification_required_at IS NOT NULL
+        AND u.email_verification_required_at <= datetime('now','-14 days')
+        AND NOT EXISTS(SELECT 1 FROM saves s WHERE s.user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM rooms r WHERE r.black_user_id=u.id OR r.white_user_id=u.id OR r.winner_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM chess_results r WHERE r.white_user_id=u.id OR r.black_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM checkers_results r WHERE r.side0_user_id=u.id OR r.side1_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM go_results r WHERE r.black_user_id=u.id OR r.white_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM awale_results r WHERE r.side0_user_id=u.id OR r.side1_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM abalone_results r WHERE r.black_user_id=u.id OR r.white_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM yams_results r WHERE r.player0_user_id=u.id OR r.player1_user_id=u.id)
+        AND NOT EXISTS(SELECT 1 FROM jeu421_results r WHERE r.player0_user_id=u.id OR r.player1_user_id=u.id)
+      LIMIT 20`).all();
+    for(const row of results){
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM chess_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM checkers_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM go_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM awale_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM abalone_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM yams_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM jeu421_ratings WHERE user_id=?").bind(row.id),
+        env.DB.prepare("DELETE FROM users WHERE id=?").bind(row.id)
+      ]);
+    }
+  }catch(error){
+    console.error("Security cleanup:",error?.message||error);
+  }
+}
+
 async function sendResendEmail(env,{to,subject,html,text}){
   if(!env.RESEND_API_KEY) throw new Error("Le service d’e-mail n’est pas encore configuré.");
   const response=await fetch("https://api.resend.com/emails",{
@@ -108,8 +250,18 @@ async function createEmailVerification(env,userId,email,username,origin){
 
 async function requestPasswordReset(request,env){
   if(!env.RESEND_API_KEY) return json({error:"Le service de récupération par e-mail n’est pas encore configuré."},503);
-  const body=await readJson(request),email=normalizeEmail(body?.email);
+  const body=await readJson(request),email=normalizeEmail(body?.email),turnstileToken=String(body?.turnstileToken||"");
   if(!validEmail(email)) return json({error:"Saisissez une adresse e-mail valide."},400);
+  const challenge=await requireTurnstile(request,env,turnstileToken,"forgot_password"); if(challenge.response) return challenge.response;
+  const ipKey=await securityKey("forgot-ip",clientIp(request));
+  const emailKey=await securityKey("forgot-email",email);
+  const ipLimit=await hitFixedWindow(env,ipKey,{limit:10,windowSeconds:3600,blockSeconds:3600});
+  const emailLimit=await hitFixedWindow(env,emailKey,{limit:4,windowSeconds:3600,blockSeconds:3600});
+  if(!ipLimit.allowed || !emailLimit.allowed){
+    const retryAfter=Math.max(ipLimit.retryAfter||0,emailLimit.retryAfter||0);
+    return json({error:"Trop de demandes de récupération. Réessayez plus tard.",retryAfter,turnstileRequired:true},429,{"retry-after":String(retryAfter||60)});
+  }
+  await cleanupSecurityData(env);
   const generic={ok:true,message:"Si cette adresse correspond à un compte vérifié, un e-mail de réinitialisation vient d’être envoyé."};
   const user=await env.DB.prepare("SELECT id,username,email FROM users WHERE email=? COLLATE NOCASE AND email_verified_at IS NOT NULL AND deleted_at IS NULL").bind(email).first();
   if(!user) return json(generic);
@@ -126,7 +278,12 @@ async function requestPasswordReset(request,env){
     await sendResendEmail(env,{
       to:user.email,
       subject:"Réinitialisation de votre mot de passe — JeuxPartage",
-      text:`Bonjour ${user.username},\n\nVous avez demandé un nouveau mot de passe JeuxPartage. Ouvrez ce lien :\n${url}\n\nCe lien est valable 30 minutes et ne peut être utilisé qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+      text:`Bonjour ${user.username},
+
+Vous avez demandé un nouveau mot de passe JeuxPartage. Ouvrez ce lien :
+${url}
+
+Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
       html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Réinitialisation du mot de passe</h2><p>Bonjour <strong>${emailEscape(user.username)}</strong>,</p><p>Utilisez le bouton ci-dessous pour choisir un nouveau mot de passe JeuxPartage.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Choisir un nouveau mot de passe</a></p><p>Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois.</p><p style="color:#6d6258;font-size:13px">Si vous n'avez pas demandé cette réinitialisation, vous pouvez ignorer ce message.</p></div>`
     });
   }catch(error){
@@ -159,7 +316,7 @@ async function verifyEmail(request,env){
   const token=await env.DB.prepare(`SELECT t.user_id,t.email,u.email AS current_email FROM email_verification_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.expires_at > datetime('now') AND u.deleted_at IS NULL`).bind(hash).first();
   if(!token || normalizeEmail(token.email)!==normalizeEmail(token.current_email)) return json({error:"Ce lien de vérification est invalide ou a expiré."},400);
   await env.DB.batch([
-    env.DB.prepare("UPDATE users SET email_verified_at=CURRENT_TIMESTAMP WHERE id=?").bind(token.user_id),
+    env.DB.prepare("UPDATE users SET email_verified_at=CURRENT_TIMESTAMP,email_verification_required_at=NULL WHERE id=?").bind(token.user_id),
     env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(token.user_id)
   ]);
   return json({ok:true,message:"Votre adresse e-mail est maintenant vérifiée."});
@@ -176,7 +333,7 @@ async function setAccountEmail(request,env,user){
   const exists=await env.DB.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>? AND deleted_at IS NULL").bind(email,user.id).first();
   if(exists) return json({error:"Cette adresse e-mail est déjà associée à un autre compte."},409);
   await env.DB.batch([
-    env.DB.prepare("UPDATE users SET email=?,email_verified_at=NULL WHERE id=?").bind(email,user.id),
+    env.DB.prepare("UPDATE users SET email=?,email_verified_at=NULL,email_verification_required_at=CURRENT_TIMESTAMP WHERE id=?").bind(email,user.id),
     env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(user.id),
     env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(user.id)
   ]);
@@ -190,6 +347,9 @@ async function setAccountEmail(request,env,user){
 }
 
 async function resendEmailVerification(request,env,user){
+  const limitKey=await securityKey("verify-email-user",user.id);
+  const limit=await hitFixedWindow(env,limitKey,{limit:5,windowSeconds:3600,blockSeconds:3600});
+  if(!limit.allowed) return json({error:"Trop de demandes de vérification. Réessayez plus tard.",retryAfter:limit.retryAfter},429,{"retry-after":String(limit.retryAfter||60)});
   const row=await env.DB.prepare("SELECT email,email_verified_at FROM users WHERE id=? AND deleted_at IS NULL").bind(user.id).first();
   if(!row?.email) return json({error:"Ajoutez d’abord une adresse e-mail à votre compte."},400);
   if(row.email_verified_at) return json({ok:true,message:"Cette adresse e-mail est déjà vérifiée."});
@@ -224,7 +384,7 @@ async function deleteAccount(request,env,user){
     env.DB.prepare("DELETE FROM jeu421_ratings WHERE user_id=?").bind(user.id),
     env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(user.id),
     env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(user.id),
-    env.DB.prepare("UPDATE users SET username=?,email=NULL,email_verified_at=NULL,password_hash=?,password_salt=?,recovery_key_hash=NULL,recovery_key_created_at=NULL,deleted_at=CURRENT_TIMESTAMP WHERE id=?")
+    env.DB.prepare("UPDATE users SET username=?,email=NULL,email_verified_at=NULL,email_verification_required_at=NULL,password_hash=?,password_salt=?,recovery_key_hash=NULL,recovery_key_created_at=NULL,deleted_at=CURRENT_TIMESTAMP WHERE id=?")
       .bind(placeholder,disabledHash,salt,user.id)
   ]);
   return json({ok:true,message:"Votre compte a été supprimé. Les anciennes parties restent anonymisées dans l’historique de vos adversaires."},200,{"set-cookie":clearSessionCookie()});
@@ -232,17 +392,22 @@ async function deleteAccount(request,env,user){
 
 async function register(request,env){
   const body=await readJson(request);
-  const username=(body?.username||'').trim(),email=normalizeEmail(body?.email),password=body?.password||'';
+  const username=(body?.username||'').trim(),email=normalizeEmail(body?.email),password=body?.password||'',turnstileToken=String(body?.turnstileToken||"");
   if(!validUsername(username)) return json({error:"Le pseudo doit contenir 3 à 24 caractères : lettres, chiffres, _ ou -."},400);
   if(!validEmail(email)) return json({error:"Une adresse e-mail valide est nécessaire pour créer le compte."},400);
   if(!validPassword(password)) return json({error:"Le mot de passe doit contenir entre 10 et 128 caractères."},400);
+  const challenge=await requireTurnstile(request,env,turnstileToken,"register"); if(challenge.response) return challenge.response;
+  const regKey=await securityKey("register-ip",clientIp(request));
+  const regLimit=await hitFixedWindow(env,regKey,{limit:5,windowSeconds:3600,blockSeconds:3600});
+  if(!regLimit.allowed) return json({error:"Trop de créations de comptes depuis cette connexion. Réessayez plus tard.",retryAfter:regLimit.retryAfter},429,{"retry-after":String(regLimit.retryAfter||60)});
+  await cleanupSecurityData(env);
   const exists=await env.DB.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE AND deleted_at IS NULL").bind(username).first();
   if(exists) return json({error:"Ce pseudo est déjà utilisé."},409);
   const emailExists=await env.DB.prepare("SELECT 1 FROM users WHERE email=? COLLATE NOCASE AND deleted_at IS NULL").bind(email).first();
   if(emailExists) return json({error:"Cette adresse e-mail est déjà associée à un compte."},409);
   const id=crypto.randomUUID(),salt=newSalt(),hash=await hashPassword(password,salt);
   const recoveryKey=newRecoveryKey(),recoveryHash=await recoveryKeyHash(recoveryKey);
-  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt,recovery_key_hash,recovery_key_created_at,email) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?)")
+  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt,recovery_key_hash,recovery_key_created_at,email,email_verification_required_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,CURRENT_TIMESTAMP)")
     .bind(id,username,hash,salt,recoveryHash,email).run();
   let emailSent=true,emailWarning=null;
   try{ await createEmailVerification(env,id,email,username,new URL(request.url).origin); }
@@ -250,12 +415,45 @@ async function register(request,env){
   return createSession(id,username,env,201,{user:{id,username,email,emailVerified:false},recoveryKey,emailSent,emailWarning});
 }
 async function login(request,env){
-  const body=await readJson(request),identifier=String(body?.username||body?.identifier||'').trim(),password=body?.password||'';
+  const body=await readJson(request),identifier=String(body?.username||body?.identifier||'').trim(),password=body?.password||'',turnstileToken=String(body?.turnstileToken||"");
   const email=normalizeEmail(identifier);
+  const pairKey=await securityKey("login-pair",clientIp(request),identifier);
+  const ipKey=await securityKey("login-ip",clientIp(request));
+  const now=Math.floor(Date.now()/1000);
+  const pairState=await securityCounter(env,pairKey),ipState=await securityCounter(env,ipKey);
+  const pairActive=pairState && now-pairState.windowStartedAt<900 ? pairState : null;
+  const ipActive=ipState && now-ipState.windowStartedAt<900 ? ipState : null;
+  const blockedUntil=Math.max(pairActive?.blockedUntil||0,ipActive?.blockedUntil||0);
+  if(blockedUntil>now){
+    const retryAfter=Math.max(1,blockedUntil-now);
+    return json({error:`Trop de tentatives. Réessayez dans ${retryAfter} seconde${retryAfter>1?"s":""}.`,retryAfter,turnstileRequired:true},429,{"retry-after":String(retryAfter)});
+  }
+  if((ipActive?.attempts||0)>=30){
+    const gate=await hitFixedWindow(env,ipKey,{limit:30,windowSeconds:900,blockSeconds:900});
+    if(!gate.allowed) return json({error:"Trop de tentatives de connexion depuis cette connexion Internet. Réessayez plus tard.",retryAfter:gate.retryAfter,turnstileRequired:true},429,{"retry-after":String(gate.retryAfter||60)});
+  }
+  const turnstileRequired=(pairActive?.attempts||0)>=5;
+  if(turnstileRequired){
+    if(!turnstileToken) return json({error:"Après plusieurs essais, une vérification anti-robot est nécessaire.",turnstileRequired:true},403);
+    const challenge=await requireTurnstile(request,env,turnstileToken,"login"); if(challenge.response) return challenge.response;
+  }
   const user=await env.DB.prepare("SELECT id,username,email,email_verified_at,password_hash,password_salt FROM users WHERE deleted_at IS NULL AND (username=? COLLATE NOCASE OR email=? COLLATE NOCASE) LIMIT 1").bind(identifier,email).first();
-  if(!user) return json({error:"Pseudo/e-mail ou mot de passe incorrect."},401);
-  const hash=await hashPassword(password,user.password_salt);
-  if(hash!==user.password_hash) return json({error:"Pseudo/e-mail ou mot de passe incorrect."},401);
+  let valid=false;
+  if(user){
+    const hash=await hashPassword(password,user.password_salt);
+    valid=hash===user.password_hash;
+  }
+  if(!valid){
+    const pairFailure=await recordLoginFailure(env,pairKey);
+    const ipFailure=await recordLoginFailure(env,ipKey);
+    const retryAfter=Math.max(pairFailure.retryAfter||0,ipFailure.attempts>=30?900:0);
+    if(ipFailure.attempts>=30){
+      await env.DB.prepare("UPDATE security_counters SET blocked_until=? WHERE key=?").bind(now+900,ipKey).run();
+    }
+    if(retryAfter>0) return json({error:"Trop de tentatives. Un délai de sécurité est appliqué.",retryAfter,turnstileRequired:true},429,{"retry-after":String(retryAfter)});
+    return json({error:"Pseudo/e-mail ou mot de passe incorrect.",turnstileRequired:pairFailure.attempts>=5},401);
+  }
+  await Promise.all([clearSecurityCounter(env,pairKey),clearSecurityCounter(env,ipKey)]);
   return createSession(user.id,user.username,env,200,{user:publicUser(user)});
 }
 async function createSession(userId,username,env,status,extra={}){
@@ -290,6 +488,8 @@ async function generateRecoveryKey(env,user){
 }
 
 async function resetWithRecovery(request,env){
+  const recoveryLimit=await hitFixedWindow(env,await securityKey("recovery-key-ip",clientIp(request)),{limit:10,windowSeconds:900,blockSeconds:900});
+  if(!recoveryLimit.allowed) return json({error:"Trop de tentatives de récupération. Réessayez plus tard.",retryAfter:recoveryLimit.retryAfter},429,{"retry-after":String(recoveryLimit.retryAfter||60)});
   const body=await readJson(request);
   const username=(body?.username||"").trim(),key=body?.recoveryKey||"",newPassword=body?.newPassword||"";
   if(!validUsername(username) || !normalizeRecoveryKey(key) || !validPassword(newPassword)){
@@ -371,6 +571,8 @@ function chessRatingCategory(initialSeconds,incrementSeconds){
 const CHESS_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
 
 async function createRoom(request,env,user){
+  const roomLimit=await hitFixedWindow(env,await securityKey("room-create-user",user.id),{limit:12,windowSeconds:300,blockSeconds:600});
+  if(!roomLimit.allowed) return json({error:"Trop de salons créés en peu de temps. Réessayez dans quelques minutes.",retryAfter:roomLimit.retryAfter},429,{"retry-after":String(roomLimit.retryAfter||60)});
   const body=await readJson(request);
   const game=validRoomGame(body?.game)?body.game:"abalone";
   const checkers=isCheckersRoomGame(game);
@@ -865,6 +1067,7 @@ async function roomWebSocket(request,env,user,code){
 
 async function api(request,env){
   const url=new URL(request.url),p=url.pathname;
+  if(p==="/api/security/config"&&request.method==="GET") return json({turnstileEnabled:turnstileConfigured(env),turnstileSiteKey:env.TURNSTILE_SITE_KEY||null});
   if(p==="/api/auth/register"&&request.method==="POST") return register(request,env);
   if(p==="/api/auth/login"&&request.method==="POST") return login(request,env);
   if(p==="/api/auth/logout"&&request.method==="POST") return logout(request,env);
