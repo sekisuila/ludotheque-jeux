@@ -29,6 +29,18 @@ async function hashPassword(password,saltB64){
 function newSalt(){ const a=new Uint8Array(16); crypto.getRandomValues(a); return b64url(a); }
 function validUsername(s){ return typeof s==='string' && /^[A-Za-zÀ-ÖØ-öø-ÿ0-9_-]{3,24}$/u.test(s); }
 function validPassword(s){ return typeof s==="string" && s.length>=10 && s.length<=128; }
+function normalizeEmail(value){ return String(value||"").trim().toLowerCase(); }
+function validEmail(value){
+  const email=normalizeEmail(value);
+  return email.length>=5 && email.length<=254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(email);
+}
+function publicUser(row){
+  if(!row) return null;
+  return {id:row.id,username:row.username,email:row.email||null,emailVerified:Boolean(row.email_verified_at??row.emailVerified)};
+}
+function emailEscape(value){
+  return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
 function formatRecoveryKey(raw){
   return raw.replace(/[^A-Z0-9]/g,"").match(/.{1,5}/g)?.join("-") || raw;
 }
@@ -45,30 +57,206 @@ async function readJson(request){ try{return await request.json();}catch{return 
 async function currentUser(request,env){
   const token=cookieValue(request,SESSION_COOKIE); if(!token) return null;
   const tokenHash=await sha256(token);
-  const row=await env.DB.prepare(`SELECT u.id,u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at > datetime('now')`).bind(tokenHash).first();
-  return row||null;
+  const row=await env.DB.prepare(`SELECT u.id,u.username,u.email,u.email_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at > datetime('now') AND u.deleted_at IS NULL`).bind(tokenHash).first();
+  return publicUser(row);
 }
 async function requireUser(request,env){ const user=await currentUser(request,env); return user?{user}:{response:json({error:"Connexion requise."},401)}; }
 
+async function sendResendEmail(env,{to,subject,html,text}){
+  if(!env.RESEND_API_KEY) throw new Error("Le service d’e-mail n’est pas encore configuré.");
+  const response=await fetch("https://api.resend.com/emails",{
+    method:"POST",
+    headers:{"content-type":"application/json","authorization":`Bearer ${env.RESEND_API_KEY}`},
+    body:JSON.stringify({
+      from:"JeuxPartage <noreply@jeuxpartage.com>",
+      to:[to],
+      subject,
+      html,
+      text
+    })
+  });
+  if(!response.ok){
+    const detail=await response.text().catch(()=>"");
+    console.error("Resend:",response.status,detail);
+    throw new Error("L’e-mail n’a pas pu être envoyé pour le moment.");
+  }
+  return response.json().catch(()=>({ok:true}));
+}
+
+async function createEmailVerification(env,userId,email,username,origin){
+  const recent=await env.DB.prepare("SELECT 1 FROM email_verification_tokens WHERE user_id=? AND created_at > datetime('now','-2 minutes') LIMIT 1").bind(userId).first();
+  if(recent) return {sent:false,throttled:true};
+  const raw=randomToken(32),hash=await sha256(`email-verify:${raw}`);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=? OR expires_at <= datetime('now')").bind(userId),
+    env.DB.prepare("INSERT INTO email_verification_tokens(token_hash,user_id,email,expires_at) VALUES(?,?,?,datetime('now','+24 hours'))").bind(hash,userId,email)
+  ]);
+  const url=`${origin}/#/verification?token=${encodeURIComponent(raw)}`;
+  try{
+    await sendResendEmail(env,{
+      to:email,
+      subject:"Vérifiez votre adresse e-mail — JeuxPartage",
+      text:`Bonjour ${username},\n\nPour vérifier votre adresse e-mail sur JeuxPartage, ouvrez ce lien :\n${url}\n\nCe lien est valable 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Bienvenue sur JeuxPartage</h2><p>Bonjour <strong>${emailEscape(username)}</strong>,</p><p>Confirmez votre adresse e-mail pour sécuriser votre compte et permettre la récupération du mot de passe.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Vérifier mon adresse</a></p><p>Ce lien est valable 24 heures.</p><p style="color:#6d6258;font-size:13px">Votre adresse est utilisée uniquement pour l'accès et la sécurité de votre compte JeuxPartage. Elle n'est pas utilisée pour la publicité et n'est jamais vendue.</p></div>`
+    });
+  }catch(error){
+    await env.DB.prepare("DELETE FROM email_verification_tokens WHERE token_hash=?").bind(hash).run();
+    throw error;
+  }
+  return {sent:true};
+}
+
+async function requestPasswordReset(request,env){
+  if(!env.RESEND_API_KEY) return json({error:"Le service de récupération par e-mail n’est pas encore configuré."},503);
+  const body=await readJson(request),email=normalizeEmail(body?.email);
+  if(!validEmail(email)) return json({error:"Saisissez une adresse e-mail valide."},400);
+  const generic={ok:true,message:"Si cette adresse correspond à un compte vérifié, un e-mail de réinitialisation vient d’être envoyé."};
+  const user=await env.DB.prepare("SELECT id,username,email FROM users WHERE email=? COLLATE NOCASE AND email_verified_at IS NOT NULL AND deleted_at IS NULL").bind(email).first();
+  if(!user) return json(generic);
+  const recent=await env.DB.prepare("SELECT 1 FROM password_reset_tokens WHERE user_id=? AND created_at > datetime('now','-5 minutes') LIMIT 1").bind(user.id).first();
+  if(recent) return json(generic);
+  const raw=randomToken(32),hash=await sha256(`password-reset:${raw}`);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at <= datetime('now')").bind(user.id),
+    env.DB.prepare("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES(?,?,datetime('now','+30 minutes'))").bind(hash,user.id)
+  ]);
+  const origin=new URL(request.url).origin;
+  const url=`${origin}/#/reinitialiser?token=${encodeURIComponent(raw)}`;
+  try{
+    await sendResendEmail(env,{
+      to:user.email,
+      subject:"Réinitialisation de votre mot de passe — JeuxPartage",
+      text:`Bonjour ${user.username},\n\nVous avez demandé un nouveau mot de passe JeuxPartage. Ouvrez ce lien :\n${url}\n\nCe lien est valable 30 minutes et ne peut être utilisé qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Réinitialisation du mot de passe</h2><p>Bonjour <strong>${emailEscape(user.username)}</strong>,</p><p>Utilisez le bouton ci-dessous pour choisir un nouveau mot de passe JeuxPartage.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Choisir un nouveau mot de passe</a></p><p>Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois.</p><p style="color:#6d6258;font-size:13px">Si vous n'avez pas demandé cette réinitialisation, vous pouvez ignorer ce message.</p></div>`
+    });
+  }catch(error){
+    console.error("Reset email:",error);
+    await env.DB.prepare("DELETE FROM password_reset_tokens WHERE token_hash=?").bind(hash).run();
+    return json(generic);
+  }
+  return json(generic);
+}
+
+async function resetPasswordByEmail(request,env){
+  const body=await readJson(request),raw=String(body?.token||""),newPassword=body?.newPassword||"";
+  if(raw.length<20 || !validPassword(newPassword)) return json({error:"Lien invalide ou nouveau mot de passe incorrect."},400);
+  const hash=await sha256(`password-reset:${raw}`);
+  const token=await env.DB.prepare(`SELECT t.user_id,u.username,u.email,u.email_verified_at FROM password_reset_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.expires_at > datetime('now') AND u.deleted_at IS NULL`).bind(hash).first();
+  if(!token) return json({error:"Ce lien de réinitialisation est invalide ou a expiré."},400);
+  const salt=newSalt(),passwordHash=await hashPassword(newPassword,salt);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET password_hash=?,password_salt=? WHERE id=?").bind(passwordHash,salt,token.user_id),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(token.user_id),
+    env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(token.user_id)
+  ]);
+  return json({ok:true,message:"Votre mot de passe a été réinitialisé. Vous pouvez maintenant vous connecter."});
+}
+
+async function verifyEmail(request,env){
+  const body=await readJson(request),raw=String(body?.token||"");
+  if(raw.length<20) return json({error:"Lien de vérification invalide."},400);
+  const hash=await sha256(`email-verify:${raw}`);
+  const token=await env.DB.prepare(`SELECT t.user_id,t.email,u.email AS current_email FROM email_verification_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.expires_at > datetime('now') AND u.deleted_at IS NULL`).bind(hash).first();
+  if(!token || normalizeEmail(token.email)!==normalizeEmail(token.current_email)) return json({error:"Ce lien de vérification est invalide ou a expiré."},400);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET email_verified_at=CURRENT_TIMESTAMP WHERE id=?").bind(token.user_id),
+    env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(token.user_id)
+  ]);
+  return json({ok:true,message:"Votre adresse e-mail est maintenant vérifiée."});
+}
+
+async function setAccountEmail(request,env,user){
+  const body=await readJson(request),email=normalizeEmail(body?.email),password=body?.password||"";
+  if(!validEmail(email)) return json({error:"Saisissez une adresse e-mail valide."},400);
+  const current=await env.DB.prepare("SELECT email,email_verified_at,password_hash,password_salt FROM users WHERE id=? AND deleted_at IS NULL").bind(user.id).first();
+  if(!current) return json({error:"Compte introuvable."},404);
+  const supplied=await hashPassword(password,current.password_salt);
+  if(supplied!==current.password_hash) return json({error:"Le mot de passe est incorrect."},401);
+  if(normalizeEmail(current.email)===email && current.email_verified_at) return json({ok:true,email,message:"Cette adresse e-mail est déjà vérifiée."});
+  const exists=await env.DB.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>? AND deleted_at IS NULL").bind(email,user.id).first();
+  if(exists) return json({error:"Cette adresse e-mail est déjà associée à un autre compte."},409);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET email=?,email_verified_at=NULL WHERE id=?").bind(email,user.id),
+    env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(user.id)
+  ]);
+  try{
+    await createEmailVerification(env,user.id,email,user.username,new URL(request.url).origin);
+    return json({ok:true,email,message:"Adresse enregistrée. Consultez votre boîte mail pour la vérifier."});
+  }catch(error){
+    console.error("Verification email:",error);
+    return json({ok:true,email,emailSent:false,message:"Adresse enregistrée, mais l’e-mail de vérification n’a pas pu être envoyé. Vous pourrez le renvoyer depuis cette page."});
+  }
+}
+
+async function resendEmailVerification(request,env,user){
+  const row=await env.DB.prepare("SELECT email,email_verified_at FROM users WHERE id=? AND deleted_at IS NULL").bind(user.id).first();
+  if(!row?.email) return json({error:"Ajoutez d’abord une adresse e-mail à votre compte."},400);
+  if(row.email_verified_at) return json({ok:true,message:"Cette adresse e-mail est déjà vérifiée."});
+  try{
+    const r=await createEmailVerification(env,user.id,row.email,user.username,new URL(request.url).origin);
+    return json({ok:true,message:r.throttled?"Un e-mail vient déjà d’être envoyé. Patientez quelques instants avant d’en demander un autre.":"Un nouvel e-mail de vérification a été envoyé."});
+  }catch(error){
+    console.error("Resend verification:",error);
+    return json({error:error.message||"Impossible d’envoyer l’e-mail."},503);
+  }
+}
+
+async function deleteAccount(request,env,user){
+  const body=await readJson(request),password=body?.password||"",confirmation=String(body?.confirmation||"").trim().toUpperCase();
+  if(confirmation!=="SUPPRIMER") return json({error:"Pour confirmer, saisissez exactement SUPPRIMER."},400);
+  const row=await env.DB.prepare("SELECT password_hash,password_salt FROM users WHERE id=? AND deleted_at IS NULL").bind(user.id).first();
+  if(!row) return json({error:"Compte introuvable."},404);
+  const supplied=await hashPassword(password,row.password_salt);
+  if(supplied!==row.password_hash) return json({error:"Le mot de passe est incorrect."},401);
+  const placeholder=`Compte-supprime-${user.id.slice(0,8)}`;
+  const salt=newSalt(),disabledHash=await hashPassword(randomToken(48),salt);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM saves WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM rooms WHERE black_user_id=? OR white_user_id=? OR winner_user_id=?").bind(user.id,user.id,user.id),
+    env.DB.prepare("DELETE FROM chess_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM checkers_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM go_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM awale_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM abalone_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM yams_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM jeu421_ratings WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM email_verification_tokens WHERE user_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").bind(user.id),
+    env.DB.prepare("UPDATE users SET username=?,email=NULL,email_verified_at=NULL,password_hash=?,password_salt=?,recovery_key_hash=NULL,recovery_key_created_at=NULL,deleted_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(placeholder,disabledHash,salt,user.id)
+  ]);
+  return json({ok:true,message:"Votre compte a été supprimé. Les anciennes parties restent anonymisées dans l’historique de vos adversaires."},200,{"set-cookie":clearSessionCookie()});
+}
+
 async function register(request,env){
-  const body=await readJson(request); const username=(body?.username||'').trim(); const password=body?.password||'';
+  const body=await readJson(request);
+  const username=(body?.username||'').trim(),email=normalizeEmail(body?.email),password=body?.password||'';
   if(!validUsername(username)) return json({error:"Le pseudo doit contenir 3 à 24 caractères : lettres, chiffres, _ ou -."},400);
+  if(!validEmail(email)) return json({error:"Une adresse e-mail valide est nécessaire pour créer le compte."},400);
   if(!validPassword(password)) return json({error:"Le mot de passe doit contenir entre 10 et 128 caractères."},400);
-  const exists=await env.DB.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+  const exists=await env.DB.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE AND deleted_at IS NULL").bind(username).first();
   if(exists) return json({error:"Ce pseudo est déjà utilisé."},409);
+  const emailExists=await env.DB.prepare("SELECT 1 FROM users WHERE email=? COLLATE NOCASE AND deleted_at IS NULL").bind(email).first();
+  if(emailExists) return json({error:"Cette adresse e-mail est déjà associée à un compte."},409);
   const id=crypto.randomUUID(),salt=newSalt(),hash=await hashPassword(password,salt);
   const recoveryKey=newRecoveryKey(),recoveryHash=await recoveryKeyHash(recoveryKey);
-  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt,recovery_key_hash,recovery_key_created_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)")
-    .bind(id,username,hash,salt,recoveryHash).run();
-  return createSession(id,username,env,201,{recoveryKey});
+  await env.DB.prepare("INSERT INTO users(id,username,password_hash,password_salt,recovery_key_hash,recovery_key_created_at,email) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?)")
+    .bind(id,username,hash,salt,recoveryHash,email).run();
+  let emailSent=true,emailWarning=null;
+  try{ await createEmailVerification(env,id,email,username,new URL(request.url).origin); }
+  catch(error){ emailSent=false; emailWarning="Le compte a été créé, mais l’e-mail de vérification n’a pas pu être envoyé. Vous pourrez le renvoyer depuis votre compte."; console.error("Registration verification:",error); }
+  return createSession(id,username,env,201,{user:{id,username,email,emailVerified:false},recoveryKey,emailSent,emailWarning});
 }
 async function login(request,env){
-  const body=await readJson(request); const username=(body?.username||'').trim(); const password=body?.password||'';
-  const user=await env.DB.prepare("SELECT id,username,password_hash,password_salt FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
-  if(!user) return json({error:"Pseudo ou mot de passe incorrect."},401);
+  const body=await readJson(request),identifier=String(body?.username||body?.identifier||'').trim(),password=body?.password||'';
+  const email=normalizeEmail(identifier);
+  const user=await env.DB.prepare("SELECT id,username,email,email_verified_at,password_hash,password_salt FROM users WHERE deleted_at IS NULL AND (username=? COLLATE NOCASE OR email=? COLLATE NOCASE) LIMIT 1").bind(identifier,email).first();
+  if(!user) return json({error:"Pseudo/e-mail ou mot de passe incorrect."},401);
   const hash=await hashPassword(password,user.password_salt);
-  if(hash!==user.password_hash) return json({error:"Pseudo ou mot de passe incorrect."},401);
-  return createSession(user.id,user.username,env,200);
+  if(hash!==user.password_hash) return json({error:"Pseudo/e-mail ou mot de passe incorrect."},401);
+  return createSession(user.id,user.username,env,200,{user:publicUser(user)});
 }
 async function createSession(userId,username,env,status,extra={}){
   const token=randomToken(),tokenHash=await sha256(token);
@@ -92,7 +280,7 @@ async function changePassword(request,env,user){
   const salt=newSalt(),hash=await hashPassword(newPassword,salt);
   await env.DB.prepare("UPDATE users SET password_hash=?,password_salt=? WHERE id=?").bind(hash,salt,user.id).run();
   await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id).run();
-  return createSession(user.id,user.username,env,200,{message:"Mot de passe modifié."});
+  return createSession(user.id,user.username,env,200,{message:"Mot de passe modifié.",user:publicUser(user)});
 }
 
 async function generateRecoveryKey(env,user){
@@ -682,10 +870,16 @@ async function api(request,env){
   if(p==="/api/auth/logout"&&request.method==="POST") return logout(request,env);
   if(p==="/api/auth/me"&&request.method==="GET") return json({user:await currentUser(request,env)});
   if(p==="/api/auth/reset-with-recovery"&&request.method==="POST") return resetWithRecovery(request,env);
+  if(p==="/api/auth/forgot-password"&&request.method==="POST") return requestPasswordReset(request,env);
+  if(p==="/api/auth/reset-password"&&request.method==="POST") return resetPasswordByEmail(request,env);
+  if(p==="/api/auth/verify-email"&&request.method==="POST") return verifyEmail(request,env);
 
   const auth=await requireUser(request,env); if(auth.response) return auth.response; const user=auth.user;
   if(p==="/api/auth/change-password"&&request.method==="POST") return changePassword(request,env,user);
   if(p==="/api/auth/recovery-key"&&request.method==="POST") return generateRecoveryKey(env,user);
+  if(p==="/api/auth/email"&&request.method==="POST") return setAccountEmail(request,env,user);
+  if(p==="/api/auth/resend-verification"&&request.method==="POST") return resendEmailVerification(request,env,user);
+  if(p==="/api/auth/account"&&request.method==="DELETE") return deleteAccount(request,env,user);
   if(p==="/api/saves"&&request.method==="GET") return listSaves(request,env,user);
   if(p==="/api/saves"&&request.method==="POST") return createSave(request,env,user);
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
