@@ -31,8 +31,8 @@
     return state.user;
   }
 
-  async function register(username, password) {
-    const data = await request("/api/auth/register", { method: "POST", body: { username, password } });
+  async function register(username, email, password) {
+    const data = await request("/api/auth/register", { method: "POST", body: { username, email, password } });
     state.user = data.user; state.loaded = true; updateNav(); return data;
   }
   async function login(username, password) {
@@ -57,6 +57,31 @@
       method: "POST",
       body: { username, recoveryKey, newPassword }
     });
+  }
+
+  async function requestPasswordReset(email) {
+    return request("/api/auth/forgot-password", { method: "POST", body: { email } });
+  }
+
+  async function resetPasswordWithEmail(token, newPassword) {
+    return request("/api/auth/reset-password", { method: "POST", body: { token, newPassword } });
+  }
+
+  async function verifyEmail(token) {
+    return request("/api/auth/verify-email", { method: "POST", body: { token } });
+  }
+
+  async function setEmail(email, password) {
+    return request("/api/auth/email", { method: "POST", body: { email, password } });
+  }
+
+  async function resendVerification() {
+    return request("/api/auth/resend-verification", { method: "POST" });
+  }
+
+  async function deleteAccount(password, confirmation) {
+    const data=await request("/api/auth/account", { method: "DELETE", body: { password, confirmation } });
+    state.user=null; state.loaded=true; updateNav(); return data;
   }
 
   const saves = {
@@ -163,7 +188,7 @@
 
   window.LudoOnline = {
     state, request, me, register, login, logout,
-    changePassword, generateRecoveryKey, resetWithRecovery,
+    changePassword, generateRecoveryKey, resetWithRecovery, requestPasswordReset, resetPasswordWithEmail, verifyEmail, setEmail, resendVerification, deleteAccount,
     saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, rooms, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));

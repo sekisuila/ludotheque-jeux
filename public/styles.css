@@ -2520,3 +2520,15 @@ main { min-height: calc(100vh - 160px); }
 .game421-rules-page .yams-rules-table td:first-child{font-weight:800;text-align:center}
 @media(max-width:920px){.game421-layout{grid-template-columns:1fr}.game421-tokens{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.game421-dice{grid-template-columns:repeat(3,1fr)}.game421-tokens{gap:.45rem}.game421-tokens>div{padding:.55rem}.game421-tokens strong{font-size:1.3rem}}
+
+
+/* V6.29 — comptes, e-mail et confidentialité */
+.privacy-note{padding:14px 15px;border:1px solid #d7c7ad;background:#fbf7ef;border-radius:10px;color:#51483e;line-height:1.5;font-size:.94rem}
+.email-verification-state{padding:10px 12px;border-radius:9px;font-weight:700;margin:0}
+.email-verification-state.verified{background:#edf7ee;color:#28623a;border:1px solid #bfddc6}
+.email-verification-state.pending{background:#fff5df;color:#79570f;border:1px solid #ead39d}
+.email-account-card form{display:grid;gap:12px}
+.account-notice{grid-column:1/-1;background:#edf7ee;border-color:#bfddc6;color:#285e38}
+.delete-account-card{border:1px solid #dfb7b1}
+.delete-account-card h2{color:var(--danger)}
+.delete-account-card form{display:grid;gap:12px;padding-top:4px}

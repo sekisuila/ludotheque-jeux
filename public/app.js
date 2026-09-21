@@ -15,7 +15,9 @@ function router() {
   menuButton.setAttribute("aria-expanded", "false");
 
   const raw = location.hash.replace(/^#\/?/, "") || "accueil";
-  const [route, id] = raw.split("/");
+  const [path, queryString=""] = raw.split("?");
+  const [route, id] = path.split("/");
+  const routeParams = new URLSearchParams(queryString);
 
   if (route === "accueil") renderHome();
   else if (route === "catalogue") renderCatalogue();
@@ -24,6 +26,8 @@ function router() {
   else if (route === "apropos") renderAbout();
   else if (route === "compte") renderAccount();
   else if (route === "recuperation") renderRecovery();
+  else if (route === "reinitialiser") renderEmailPasswordReset(routeParams.get("token") || "");
+  else if (route === "verification") renderEmailVerification(routeParams.get("token") || "");
   else renderNotFound();
 
   requestAnimationFrame(() => {
@@ -1443,7 +1447,7 @@ async function load421GamesPanel(){
   const list=document.getElementById("game421ArchiveList");if(!list||!window.LudoOnline)return;try{const games=await LudoOnline.game421Games.list();if(!games.length){list.innerHTML="<p>Aucune partie de 421 en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · Jetons finaux ${g.player0Tokens}–${g.player1Tokens} · ${g.rated?"Classée":"Amicale"}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-421-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-421-replay-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>open421ArchiveReplay(b.getAttribute("data-421-replay-id"))));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
 }
 
-function renderAccountContent(user, newRecoveryKey = null) {
+function renderAccountContent(user, newRecoveryKey = null, accountNotice = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
 
@@ -1457,7 +1461,23 @@ function renderAccountContent(user, newRecoveryKey = null) {
           <a class="btn" href="#/jouer/abalone">Jouer à Abalone</a>
           <button id="logoutAccount" class="btn outline" type="button">Se déconnecter</button>
         </div>
-        <div class="note"><strong>En ligne :</strong> sauvegardes Abalone, salons multijoueurs privés et récupération du compte.</div>
+        <div class="note"><strong>En ligne :</strong> sauvegardes, salons multijoueurs privés et récupération du compte.</div>
+      </section>
+
+      ${accountNotice ? `<section class="panel account-card account-notice"><strong>${escapeHtml(accountNotice)}</strong></section>` : ""}
+
+      <section class="panel account-card email-account-card">
+        <h2>Adresse e-mail du compte</h2>
+        <p>${user.email ? `Adresse actuelle : <strong>${escapeHtml(user.email)}</strong>` : "Aucune adresse e-mail n’est encore associée à cet ancien compte."}</p>
+        <p class="email-verification-state ${user.emailVerified ? "verified" : "pending"}">${user.emailVerified ? "✓ Adresse vérifiée — la récupération du mot de passe par e-mail est active." : "Adresse non vérifiée — vérifiez-la pour pouvoir récupérer votre mot de passe par e-mail."}</p>
+        <form id="accountEmailForm">
+          <label><span>${user.email ? "Modifier l’adresse e-mail" : "Ajouter une adresse e-mail"}</span><input name="email" type="email" required autocomplete="email" value="${escapeHtml(user.email||"")}" placeholder="vous@exemple.fr"></label>
+          <label><span>Mot de passe actuel</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label>
+          <button class="btn small" type="submit">${user.email ? "Enregistrer et vérifier" : "Ajouter et vérifier"}</button>
+          ${user.email && !user.emailVerified ? `<button id="resendEmailVerification" class="btn outline small" type="button">Renvoyer l’e-mail de vérification</button>` : ""}
+          <p id="accountEmailStatus" class="form-status"></p>
+        </form>
+        <div class="privacy-note"><strong>Confidentialité :</strong> votre pseudo et votre adresse e-mail sont utilisés uniquement pour l’accès et la sécurité de votre compte JeuxPartage (connexion, vérification et récupération du mot de passe). Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse e-mail est transmise uniquement au prestataire technique Resend pour l’envoi de ces messages.</div>
       </section>
 
       <section class="panel account-card chess-ratings-card">
@@ -1546,12 +1566,24 @@ function renderAccountContent(user, newRecoveryKey = null) {
 
       ${newRecoveryKey ? recoveryKeyPanel(newRecoveryKey, "Votre nouvelle clé de récupération") : `
       <section class="panel account-card">
-        <h2>Clé de récupération</h2>
-        <p>Si vous oubliez votre mot de passe, cette clé vous permettra d'en choisir un nouveau.</p>
+        <h2>Clé de récupération de secours</h2>
+        <p>La récupération par e-mail est maintenant la méthode principale. Vous pouvez conserver une clé personnelle comme solution de secours indépendante de l’e-mail.</p>
         <button id="generateRecoveryKey" class="btn outline" type="button">Générer une nouvelle clé</button>
         <p id="recoveryKeyStatus" class="form-status"></p>
         <div class="note"><strong>Attention :</strong> générer une nouvelle clé invalide immédiatement la précédente.</div>
       </section>`}
+
+      <section class="panel account-card delete-account-card">
+        <h2>Supprimer mon compte</h2>
+        <p>La suppression efface votre e-mail, vos sessions, vos sauvegardes et vos classements. Les anciennes parties restent dans l’historique des adversaires sous un nom anonymisé afin de ne pas supprimer leur propre historique.</p>
+        <button id="showDeleteAccount" class="btn danger" type="button">Supprimer mon compte</button>
+        <form id="deleteAccountForm" hidden>
+          <label><span>Votre mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label>
+          <label><span>Pour confirmer, écrivez SUPPRIMER</span><input name="confirmation" required autocomplete="off" placeholder="SUPPRIMER"></label>
+          <div class="account-actions"><button class="btn danger" type="submit">Confirmer la suppression définitive</button><button id="cancelDeleteAccount" class="btn outline" type="button">Annuler</button></div>
+          <p id="deleteAccountStatus" class="form-status"></p>
+        </form>
+      </section>
     `;
 
     document.getElementById("logoutAccount")?.addEventListener("click", async () => {
@@ -1585,6 +1617,40 @@ function renderAccountContent(user, newRecoveryKey = null) {
       }
     });
 
+    document.getElementById("accountEmailForm")?.addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd=new FormData(e.currentTarget),st=document.getElementById("accountEmailStatus");
+      st.textContent="Enregistrement…";
+      try {
+        const data=await LudoOnline.setEmail(fd.get("email"),fd.get("password"));
+        const refreshed=await LudoOnline.me(true);
+        renderAccountContent(refreshed,null,data.message);
+      } catch(err){ st.textContent=err.message; }
+    });
+
+    document.getElementById("resendEmailVerification")?.addEventListener("click", async e => {
+      const st=document.getElementById("accountEmailStatus"); e.currentTarget.disabled=true; st.textContent="Envoi…";
+      try{ const data=await LudoOnline.resendVerification(); st.textContent=data.message; }
+      catch(err){ st.textContent=err.message; }
+      finally{ e.currentTarget.disabled=false; }
+    });
+
+    document.getElementById("showDeleteAccount")?.addEventListener("click", e => {
+      e.currentTarget.hidden=true; const form=document.getElementById("deleteAccountForm"); if(form) form.hidden=false;
+    });
+    document.getElementById("cancelDeleteAccount")?.addEventListener("click", () => {
+      const form=document.getElementById("deleteAccountForm"),button=document.getElementById("showDeleteAccount"); if(form){form.hidden=true;form.reset();} if(button) button.hidden=false;
+    });
+    document.getElementById("deleteAccountForm")?.addEventListener("submit", async e => {
+      e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("deleteAccountStatus");
+      if(String(fd.get("confirmation")||"").trim().toUpperCase()!=="SUPPRIMER"){st.textContent="Écrivez exactement SUPPRIMER pour confirmer.";return;}
+      st.textContent="Suppression…";
+      try{
+        const data=await LudoOnline.deleteAccount(fd.get("password"),fd.get("confirmation"));
+        root.innerHTML=`<section class="panel account-card"><h2>Compte supprimé</h2><p>${escapeHtml(data.message)}</p><a class="btn" href="#/accueil">Retour à l’accueil</a></section>`;
+      }catch(err){st.textContent=err.message;}
+    });
+
     attachRecoveryCopy();
     loadChessRatingsPanel();
     loadChessGamesPanel();
@@ -1606,7 +1672,7 @@ function renderAccountContent(user, newRecoveryKey = null) {
   root.innerHTML = `
     <form id="loginForm" class="panel account-card">
       <h2>Se connecter</h2>
-      <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
+      <label><span>Pseudo ou adresse e-mail</span><input name="username" required autocomplete="username"></label>
       <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label>
       <button class="btn" type="submit">Connexion</button>
       <a href="#/recuperation">Mot de passe oublié ?</a>
@@ -1615,8 +1681,10 @@ function renderAccountContent(user, newRecoveryKey = null) {
     <form id="registerForm" class="panel account-card">
       <h2>Créer un compte</h2>
       <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
+      <label><span>Adresse e-mail</span><input name="email" type="email" required autocomplete="email" placeholder="vous@exemple.fr"></label>
       <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
-      <small>10 caractères minimum. Après la création, une clé de récupération personnelle vous sera affichée une seule fois : conservez-la en lieu sûr.</small>
+      <small>10 caractères minimum. Un e-mail de vérification vous sera envoyé après la création du compte.</small>
+      <div class="privacy-note"><strong>Vos coordonnées restent privées.</strong> Le pseudo et l’adresse e-mail servent uniquement à accéder à JeuxPartage et à sécuriser/récupérer votre compte. Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse est transmise uniquement à Resend pour l’envoi des e-mails techniques du compte.</div>
       <button class="btn" type="submit">Créer mon compte</button>
       <p id="registerStatus" class="form-status"></p>
     </form>`;
@@ -1629,8 +1697,8 @@ function renderAccountContent(user, newRecoveryKey = null) {
   document.getElementById("registerForm")?.addEventListener("submit", async e => {
     e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
     try {
-      const data=await LudoOnline.register(fd.get("username"),fd.get("password"));
-      renderAccountContent(data.user,data.recoveryKey);
+      const data=await LudoOnline.register(fd.get("username"),fd.get("email"),fd.get("password"));
+      renderAccountContent(data.user,data.recoveryKey,data.emailWarning || "Compte créé. Vérifiez maintenant votre adresse e-mail.");
     } catch(err){ st.textContent=err.message; }
   });
 }
@@ -1639,31 +1707,33 @@ function renderRecovery() {
   app.innerHTML = `
     <div class="page account-page">
       <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/compte">Compte</a><span>›</span><span>Récupération</span></div>
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Récupération du compte</div>
-          <h1>Mot de passe oublié</h1>
-          <p class="section-lead">Saisissez le pseudo, la clé de récupération enregistrée auparavant et un nouveau mot de passe.</p>
-        </div>
-      </div>
+      <div class="section-head"><div><div class="eyebrow">Récupération du compte</div><h1>Mot de passe oublié</h1><p class="section-lead">La méthode principale utilise maintenant l’adresse e-mail vérifiée du compte.</p></div></div>
       <div id="recoveryContent" class="account-grid">
+        <form id="emailRecoveryForm" class="panel account-card">
+          <h2>Recevoir un lien par e-mail</h2>
+          <label><span>Adresse e-mail du compte</span><input name="email" type="email" required autocomplete="email" placeholder="vous@exemple.fr"></label>
+          <button class="btn" type="submit">Envoyer le lien de réinitialisation</button>
+          <p id="emailRecoveryStatus" class="form-status"></p>
+          <div class="note">Pour protéger les comptes, le site affiche la même confirmation qu’une adresse soit enregistrée ou non. Le lien, lorsqu’il est envoyé, reste valable 30 minutes.</div>
+        </form>
         <form id="recoveryForm" class="panel account-card">
-          <h2>Réinitialiser le mot de passe</h2>
+          <h2>Solution de secours : clé de récupération</h2>
+          <p>Les anciens comptes qui n’ont pas encore enregistré d’adresse e-mail peuvent toujours utiliser leur clé personnelle.</p>
           <label><span>Pseudo</span><input name="username" required minlength="3" maxlength="24" autocomplete="username"></label>
           <label><span>Clé de récupération</span><input name="recoveryKey" required autocomplete="off" placeholder="XXXXX-XXXXX-XXXXX-XXXXX"></label>
           <label><span>Nouveau mot de passe</span><input name="newPassword" type="password" required minlength="10" autocomplete="new-password"></label>
           <label><span>Confirmer le nouveau mot de passe</span><input name="confirmPassword" type="password" required minlength="10" autocomplete="new-password"></label>
-          <button class="btn" type="submit">Réinitialiser</button>
+          <button class="btn outline" type="submit">Réinitialiser avec la clé</button>
           <p id="recoveryStatus" class="form-status"></p>
         </form>
-        <section class="panel account-card">
-          <h2>Vous n'avez pas encore de clé ?</h2>
-          <p>Si vous êtes encore connecté sur un autre appareil, ouvrez <strong>Compte → Clé de récupération</strong> et générez-en une.</p>
-          <div class="note">Dans une prochaine étape, nous pourrons aussi ajouter une récupération par e-mail. La clé personnelle reste utile comme solution de secours indépendante de l'e-mail.</div>
-          <a class="btn outline" href="#/compte">Retour au compte</a>
-        </section>
       </div>
     </div>`;
+
+  document.getElementById("emailRecoveryForm")?.addEventListener("submit", async e => {
+    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("emailRecoveryStatus"); st.textContent="Envoi…";
+    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email")); st.textContent=data.message; e.currentTarget.reset(); }
+    catch(err){st.textContent=err.message;}
+  });
 
   document.getElementById("recoveryForm")?.addEventListener("submit", async e => {
     e.preventDefault();
@@ -1674,16 +1744,24 @@ function renderRecovery() {
     try {
       const data=await LudoOnline.resetWithRecovery(fd.get("username"),fd.get("recoveryKey"),next);
       const root=document.getElementById("recoveryContent");
-      root.innerHTML = `
-        <section class="panel account-card">
-          <h2>Mot de passe réinitialisé</h2>
-          <p>Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</p>
-          <a class="btn" href="#/compte">Se connecter</a>
-        </section>
-        ${recoveryKeyPanel(data.recoveryKey,"Nouvelle clé de récupération")}`;
+      root.innerHTML = `<section class="panel account-card"><h2>Mot de passe réinitialisé</h2><p>Vous pouvez maintenant vous reconnecter avec votre nouveau mot de passe.</p><a class="btn" href="#/compte">Se connecter</a></section>${recoveryKeyPanel(data.recoveryKey,"Nouvelle clé de récupération")}`;
       attachRecoveryCopy();
     } catch(err){ st.textContent=err.message; }
   });
+}
+
+function renderEmailPasswordReset(token) {
+  app.innerHTML=`<div class="page account-page"><div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><span>Nouveau mot de passe</span></div><div class="section-head"><div><div class="eyebrow">Lien reçu par e-mail</div><h1>Choisir un nouveau mot de passe</h1></div></div><div class="account-grid"><form id="emailResetForm" class="panel account-card"><label><span>Nouveau mot de passe</span><input name="newPassword" type="password" required minlength="10" autocomplete="new-password"></label><label><span>Confirmer</span><input name="confirmPassword" type="password" required minlength="10" autocomplete="new-password"></label><button class="btn" type="submit">Enregistrer le nouveau mot de passe</button><p id="emailResetStatus" class="form-status"></p></form></div></div>`;
+  const form=document.getElementById("emailResetForm"),st=document.getElementById("emailResetStatus");
+  if(!token){st.textContent="Le lien ne contient pas de jeton de réinitialisation valide.";form.querySelector("button").disabled=true;return;}
+  form.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(form),next=String(fd.get("newPassword")||""),confirm=String(fd.get("confirmPassword")||"");if(next!==confirm){st.textContent="Les deux mots de passe ne sont pas identiques.";return;}st.textContent="Réinitialisation…";try{const data=await LudoOnline.resetPasswordWithEmail(token,next);form.innerHTML=`<h2>Mot de passe modifié</h2><p>${escapeHtml(data.message)}</p><a class="btn" href="#/compte">Se connecter</a>`;}catch(err){st.textContent=err.message;}});
+}
+
+function renderEmailVerification(token) {
+  app.innerHTML=`<div class="page account-page"><div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><span>Vérification e-mail</span></div><div class="section-head"><div><div class="eyebrow">Sécurité du compte</div><h1>Vérification de l’adresse e-mail</h1></div></div><div class="account-grid"><section id="verifyEmailPanel" class="panel account-card"><p>Vérification en cours…</p></section></div></div>`;
+  const panel=document.getElementById("verifyEmailPanel");
+  if(!token){panel.innerHTML='<h2>Lien invalide</h2><p>Ce lien de vérification ne contient pas de jeton valide.</p><a class="btn" href="#/compte">Ouvrir mon compte</a>';return;}
+  LudoOnline.verifyEmail(token).then(async data=>{try{await LudoOnline.me(true);}catch{}panel.innerHTML=`<h2>Adresse vérifiée</h2><p>${escapeHtml(data.message)}</p><a class="btn" href="#/compte">Ouvrir mon compte</a>`;}).catch(err=>{panel.innerHTML=`<h2>Vérification impossible</h2><p>${escapeHtml(err.message)}</p><a class="btn" href="#/compte">Ouvrir mon compte</a>`;});
 }
 
 function escapeHtml(value) {
