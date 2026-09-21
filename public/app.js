@@ -901,13 +901,14 @@ function recoveryKeyPanel(key, title = "Votre clé de récupération") {
 
 function attachRecoveryCopy() {
   document.getElementById("copyRecoveryKey")?.addEventListener("click", async e => {
+    const button=e.currentTarget;
     const value=document.getElementById("recoveryKeyValue")?.textContent?.trim();
     if(!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      e.currentTarget.textContent="Clé copiée";
+      button.textContent="Clé copiée";
     } catch {
-      e.currentTarget.textContent="Copie impossible — sélectionnez la clé";
+      button.textContent="Copie impossible — sélectionnez la clé";
     }
   });
 }
@@ -1593,27 +1594,29 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
 
     document.getElementById("changePasswordForm")?.addEventListener("submit", async e => {
       e.preventDefault();
-      const fd=new FormData(e.currentTarget),st=document.getElementById("changePasswordStatus");
+      const form=e.currentTarget;
+      const fd=new FormData(form),st=document.getElementById("changePasswordStatus");
       const next=String(fd.get("newPassword")||""),confirm=String(fd.get("confirmPassword")||"");
       if(next!==confirm){ st.textContent="Les deux nouveaux mots de passe ne sont pas identiques."; return; }
       st.textContent="Modification…";
       try {
         const data=await LudoOnline.changePassword(fd.get("currentPassword"),next);
         st.textContent=data.message||"Mot de passe modifié.";
-        e.currentTarget.reset();
+        form.reset();
       } catch(err){ st.textContent=err.message; }
     });
 
     document.getElementById("generateRecoveryKey")?.addEventListener("click", async e => {
+      const button=e.currentTarget;
       const st=document.getElementById("recoveryKeyStatus");
       st.textContent="Génération…";
-      e.currentTarget.disabled=true;
+      button.disabled=true;
       try {
         const data=await LudoOnline.generateRecoveryKey();
         renderAccountContent(user,data.recoveryKey);
       } catch(err) {
         st.textContent=err.message;
-        e.currentTarget.disabled=false;
+        button.disabled=false;
       }
     });
 
@@ -1629,10 +1632,11 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
     });
 
     document.getElementById("resendEmailVerification")?.addEventListener("click", async e => {
-      const st=document.getElementById("accountEmailStatus"); e.currentTarget.disabled=true; st.textContent="Envoi…";
+      const button=e.currentTarget;
+      const st=document.getElementById("accountEmailStatus"); button.disabled=true; st.textContent="Envoi…";
       try{ const data=await LudoOnline.resendVerification(); st.textContent=data.message; }
       catch(err){ st.textContent=err.message; }
-      finally{ e.currentTarget.disabled=false; }
+      finally{ button.disabled=false; }
     });
 
     document.getElementById("showDeleteAccount")?.addEventListener("click", e => {
@@ -1730,8 +1734,10 @@ function renderRecovery() {
     </div>`;
 
   document.getElementById("emailRecoveryForm")?.addEventListener("submit", async e => {
-    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("emailRecoveryStatus"); st.textContent="Envoi…";
-    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email")); st.textContent=data.message; e.currentTarget.reset(); }
+    e.preventDefault();
+    const form=e.currentTarget;
+    const fd=new FormData(form),st=document.getElementById("emailRecoveryStatus"); st.textContent="Envoi…";
+    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email")); st.textContent=data.message; form.reset(); }
     catch(err){st.textContent=err.message;}
   });
 
