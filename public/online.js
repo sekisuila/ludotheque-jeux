@@ -13,7 +13,13 @@
     }
     const response = await fetch(path, { ...options, headers, body, credentials: "same-origin" });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Erreur ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(data.error || `Erreur ${response.status}`);
+      error.status = response.status;
+      error.data = data;
+      if (data && typeof data === "object") Object.assign(error, data);
+      throw error;
+    }
     return data;
   }
 
@@ -31,12 +37,12 @@
     return state.user;
   }
 
-  async function register(username, email, password) {
-    const data = await request("/api/auth/register", { method: "POST", body: { username, email, password } });
+  async function register(username, email, password, turnstileToken = "") {
+    const data = await request("/api/auth/register", { method: "POST", body: { username, email, password, turnstileToken } });
     state.user = data.user; state.loaded = true; updateNav(); return data;
   }
-  async function login(username, password) {
-    const data = await request("/api/auth/login", { method: "POST", body: { username, password } });
+  async function login(username, password, turnstileToken = "") {
+    const data = await request("/api/auth/login", { method: "POST", body: { username, password, turnstileToken } });
     state.user = data.user; state.loaded = true; updateNav(); return state.user;
   }
   async function logout() {
@@ -59,8 +65,8 @@
     });
   }
 
-  async function requestPasswordReset(email) {
-    return request("/api/auth/forgot-password", { method: "POST", body: { email } });
+  async function requestPasswordReset(email, turnstileToken = "") {
+    return request("/api/auth/forgot-password", { method: "POST", body: { email, turnstileToken } });
   }
 
   async function resetPasswordWithEmail(token, newPassword) {
@@ -83,6 +89,74 @@
     const data=await request("/api/auth/account", { method: "DELETE", body: { password, confirmation } });
     state.user=null; state.loaded=true; updateNav(); return data;
   }
+
+  const security = (() => {
+    let configPromise = null;
+    let scriptPromise = null;
+
+    async function config(force = false) {
+      if (!configPromise || force) configPromise = request("/api/security/config");
+      return configPromise;
+    }
+
+    async function loadTurnstile() {
+      if (window.turnstile) return window.turnstile;
+      if (scriptPromise) return scriptPromise;
+      scriptPromise = new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-jeuxpartage-turnstile="1"]');
+        const ready = () => window.turnstile ? resolve(window.turnstile) : reject(new Error("Turnstile n’a pas pu être chargé."));
+        if (existing) {
+          const started = Date.now();
+          const timer = setInterval(() => {
+            if (window.turnstile) { clearInterval(timer); resolve(window.turnstile); }
+            else if (Date.now() - started > 10000) { clearInterval(timer); reject(new Error("Turnstile n’a pas pu être chargé.")); }
+          }, 100);
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        script.async = true;
+        script.defer = true;
+        script.dataset.jeuxpartageTurnstile = "1";
+        script.onload = ready;
+        script.onerror = () => reject(new Error("Impossible de charger la vérification anti-robot."));
+        document.head.appendChild(script);
+      });
+      return scriptPromise;
+    }
+
+    async function render(container, action, options = {}) {
+      const cfg = await config();
+      const el = typeof container === "string" ? document.querySelector(container) : container;
+      if (!el) return null;
+      if (!cfg.turnstileEnabled || !cfg.turnstileSiteKey) {
+        el.innerHTML = '<div class="turnstile-config-warning">Protection anti-robot non configurée.</div>';
+        return null;
+      }
+      const api = await loadTurnstile();
+      el.innerHTML = "";
+      let latestToken = "";
+      const widgetId = api.render(el, {
+        sitekey: cfg.turnstileSiteKey,
+        action,
+        theme: "auto",
+        language: "fr",
+        size: "flexible",
+        appearance: options.appearance || "interaction-only",
+        callback: token => { latestToken = token || ""; options.callback?.(latestToken); },
+        "expired-callback": () => { latestToken = ""; options.expired?.(); },
+        "error-callback": code => { latestToken = ""; options.error?.(code); }
+      });
+      return {
+        id: widgetId,
+        getToken: () => api.getResponse(widgetId) || latestToken || "",
+        reset: () => { latestToken = ""; try { api.reset(widgetId); } catch {} },
+        remove: () => { latestToken = ""; try { api.remove(widgetId); } catch {} }
+      };
+    }
+
+    return { config, render };
+  })();
 
   const saves = {
     list: async (game = "abalone") => (await request(`/api/saves?game=${encodeURIComponent(game)}`)).saves,
@@ -188,7 +262,7 @@
 
   window.LudoOnline = {
     state, request, me, register, login, logout,
-    changePassword, generateRecoveryKey, resetWithRecovery, requestPasswordReset, resetPasswordWithEmail, verifyEmail, setEmail, resendVerification, deleteAccount,
+    changePassword, generateRecoveryKey, resetWithRecovery, requestPasswordReset, resetPasswordWithEmail, verifyEmail, setEmail, resendVerification, deleteAccount, security,
     saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, rooms, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));

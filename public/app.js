@@ -901,14 +901,13 @@ function recoveryKeyPanel(key, title = "Votre clé de récupération") {
 
 function attachRecoveryCopy() {
   document.getElementById("copyRecoveryKey")?.addEventListener("click", async e => {
-    const button=e.currentTarget;
     const value=document.getElementById("recoveryKeyValue")?.textContent?.trim();
     if(!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      button.textContent="Clé copiée";
+      e.currentTarget.textContent="Clé copiée";
     } catch {
-      button.textContent="Copie impossible — sélectionnez la clé";
+      e.currentTarget.textContent="Copie impossible — sélectionnez la clé";
     }
   });
 }
@@ -1607,16 +1606,15 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
     });
 
     document.getElementById("generateRecoveryKey")?.addEventListener("click", async e => {
-      const button=e.currentTarget;
       const st=document.getElementById("recoveryKeyStatus");
       st.textContent="Génération…";
-      button.disabled=true;
+      e.currentTarget.disabled=true;
       try {
         const data=await LudoOnline.generateRecoveryKey();
         renderAccountContent(user,data.recoveryKey);
       } catch(err) {
         st.textContent=err.message;
-        button.disabled=false;
+        e.currentTarget.disabled=false;
       }
     });
 
@@ -1678,6 +1676,10 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
       <h2>Se connecter</h2>
       <label><span>Pseudo ou adresse e-mail</span><input name="username" required autocomplete="username"></label>
       <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="current-password"></label>
+      <div id="loginTurnstileWrap" class="turnstile-challenge" hidden>
+        <small>Après plusieurs essais infructueux, confirmez que vous êtes bien une personne.</small>
+        <div id="loginTurnstile" class="turnstile-box"></div>
+      </div>
       <button class="btn" type="submit">Connexion</button>
       <a href="#/recuperation">Mot de passe oublié ?</a>
       <p id="loginStatus" class="form-status"></p>
@@ -1689,21 +1691,49 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
       <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
       <small>10 caractères minimum. Un e-mail de vérification vous sera envoyé après la création du compte.</small>
       <div class="privacy-note"><strong>Vos coordonnées restent privées.</strong> Le pseudo et l’adresse e-mail servent uniquement à accéder à JeuxPartage et à sécuriser/récupérer votre compte. Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse est transmise uniquement à Resend pour l’envoi des e-mails techniques du compte.</div>
+      <div id="registerTurnstile" class="turnstile-box"></div>
       <button class="btn" type="submit">Créer mon compte</button>
       <p id="registerStatus" class="form-status"></p>
     </form>`;
 
+  const registerTurnstilePromise=LudoOnline.security.render("#registerTurnstile","register",{appearance:"always"}).catch(err=>{
+    const st=document.getElementById("registerStatus"); if(st) st.textContent=err.message; return null;
+  });
+  let loginTurnstilePromise=null;
+  const ensureLoginTurnstile=()=>{
+    const wrap=document.getElementById("loginTurnstileWrap"); if(wrap) wrap.hidden=false;
+    if(!loginTurnstilePromise) loginTurnstilePromise=LudoOnline.security.render("#loginTurnstile","login",{appearance:"always"}).catch(err=>{
+      const st=document.getElementById("loginStatus"); if(st) st.textContent=err.message; return null;
+    });
+    return loginTurnstilePromise;
+  };
+
   document.getElementById("loginForm")?.addEventListener("submit", async e => {
-    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("loginStatus"); st.textContent="Connexion…";
-    try { const u=await LudoOnline.login(fd.get("username"),fd.get("password")); renderAccountContent(u); } catch(err){ st.textContent=err.message; }
+    e.preventDefault();
+    const form=e.currentTarget,fd=new FormData(form),st=document.getElementById("loginStatus"); st.textContent="Connexion…";
+    const widget=loginTurnstilePromise?await loginTurnstilePromise:null;
+    const token=widget?.getToken?.()||"";
+    if(loginTurnstilePromise && !token){ st.textContent="Effectuez d’abord la vérification anti-robot."; return; }
+    try {
+      const u=await LudoOnline.login(fd.get("username"),fd.get("password"),token);
+      renderAccountContent(u);
+    } catch(err){
+      st.textContent=err.message;
+      if(err.turnstileRequired) await ensureLoginTurnstile();
+      widget?.reset?.();
+    }
   });
 
   document.getElementById("registerForm")?.addEventListener("submit", async e => {
-    e.preventDefault(); const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
+    e.preventDefault();
+    const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
+    const widget=await registerTurnstilePromise;
+    const token=widget?.getToken?.()||"";
+    if(!widget || !token){ st.textContent="Effectuez d’abord la vérification anti-robot."; return; }
     try {
-      const data=await LudoOnline.register(fd.get("username"),fd.get("email"),fd.get("password"));
+      const data=await LudoOnline.register(fd.get("username"),fd.get("email"),fd.get("password"),token);
       renderAccountContent(data.user,data.recoveryKey,data.emailWarning || "Compte créé. Vérifiez maintenant votre adresse e-mail.");
-    } catch(err){ st.textContent=err.message; }
+    } catch(err){ st.textContent=err.message; widget.reset?.(); }
   });
 }
 
@@ -1716,6 +1746,7 @@ function renderRecovery() {
         <form id="emailRecoveryForm" class="panel account-card">
           <h2>Recevoir un lien par e-mail</h2>
           <label><span>Adresse e-mail du compte</span><input name="email" type="email" required autocomplete="email" placeholder="vous@exemple.fr"></label>
+          <div id="emailRecoveryTurnstile" class="turnstile-box"></div>
           <button class="btn" type="submit">Envoyer le lien de réinitialisation</button>
           <p id="emailRecoveryStatus" class="form-status"></p>
           <div class="note">Pour protéger les comptes, le site affiche la même confirmation qu’une adresse soit enregistrée ou non. Le lien, lorsqu’il est envoyé, reste valable 30 minutes.</div>
@@ -1733,12 +1764,20 @@ function renderRecovery() {
       </div>
     </div>`;
 
+  const emailRecoveryTurnstilePromise=LudoOnline.security.render("#emailRecoveryTurnstile","forgot_password",{appearance:"always"}).catch(err=>{
+    const st=document.getElementById("emailRecoveryStatus"); if(st) st.textContent=err.message; return null;
+  });
+
   document.getElementById("emailRecoveryForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const form=e.currentTarget;
     const fd=new FormData(form),st=document.getElementById("emailRecoveryStatus"); st.textContent="Envoi…";
-    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email")); st.textContent=data.message; form.reset(); }
+    const widget=await emailRecoveryTurnstilePromise;
+    const token=widget?.getToken?.()||"";
+    if(!widget || !token){ st.textContent="Effectuez d’abord la vérification anti-robot."; return; }
+    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email"),token); st.textContent=data.message; form.reset(); }
     catch(err){st.textContent=err.message;}
+    finally{widget.reset?.();}
   });
 
   document.getElementById("recoveryForm")?.addEventListener("submit", async e => {

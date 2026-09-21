@@ -2532,3 +2532,34 @@ main { min-height: calc(100vh - 160px); }
 .delete-account-card{border:1px solid #dfb7b1}
 .delete-account-card h2{color:var(--danger)}
 .delete-account-card form{display:grid;gap:12px;padding-top:4px}
+
+/* V6.31 — vérification anti-robot Cloudflare Turnstile */
+.turnstile-box {
+  width: 100%;
+  min-height: 66px;
+  margin: 10px 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.turnstile-box > div { max-width: 100%; }
+.turnstile-challenge {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(80, 63, 43, .18);
+  border-radius: 10px;
+  background: rgba(255,255,255,.55);
+}
+.turnstile-challenge small { display:block; margin-bottom:6px; }
+.turnstile-config-warning {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(150, 79, 42, .28);
+  border-radius: 8px;
+  background: rgba(255, 244, 232, .9);
+  color: #7b4328;
+  font-size: .92rem;
+}
+@media (max-width: 560px) {
+  .turnstile-box { overflow-x: auto; }
+}
