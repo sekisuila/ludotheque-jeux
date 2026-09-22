@@ -36,6 +36,52 @@ function router() {
   });
 }
 
+
+const HOME_GAME_CATEGORIES = [
+  {
+    title: "Stratégie",
+    description: "Jeux de réflexion, d’anticipation et de confrontation.",
+    ids: ["echecs", "dames", "go", "awale", "abalone"]
+  },
+  {
+    title: "Plateau & tuiles",
+    description: "Construire, développer un territoire et optimiser ses placements.",
+    ids: ["catan", "carcassonne"]
+  },
+  {
+    title: "Cartes",
+    description: "Plis, combinaisons, défausse et tactique avec des cartes.",
+    ids: ["cartes"]
+  },
+  {
+    title: "Dés",
+    description: "Probabilités, prises de risque et choix de relance.",
+    ids: ["yams", "421", "des"]
+  },
+  {
+    title: "Dominos",
+    description: "Placement, blocage et gestion des valeurs disponibles.",
+    ids: ["dominos"]
+  }
+];
+
+function homeCategorySection(category) {
+  const games = category.ids.map(id => GAMES.find(game => game.id === id)).filter(Boolean);
+  if (!games.length) return "";
+  return `
+    <section class="home-category-block">
+      <div class="home-category-head">
+        <div>
+          <h3>${category.title}</h3>
+          <p>${category.description}</p>
+        </div>
+        <a href="#/catalogue" class="home-category-link">Voir le catalogue</a>
+      </div>
+      <div class="grid cards home-category-grid">${games.map(gameCard).join("")}</div>
+    </section>
+  `;
+}
+
 function renderHome() {
   app.innerHTML = `
     <div class="page">
@@ -58,15 +104,16 @@ function renderHome() {
         </div>
       </section>
 
-      <section class="section">
+      <section class="section home-game-categories">
         <div class="section-head">
           <div>
-            <div class="eyebrow">À découvrir</div>
-            <h2>Quelques incontournables</h2>
+            <div class="eyebrow">Explorer la ludothèque</div>
+            <h2>Les jeux classés par grandes catégories</h2>
+            <p class="section-lead">Choisissez directement la famille qui vous intéresse. Le catalogue complet reste disponible pour rechercher ou filtrer plus précisément.</p>
           </div>
           <a class="btn outline small" href="#/catalogue">Voir tout le catalogue</a>
         </div>
-        <div class="grid cards">${GAMES.slice(0, 6).map(gameCard).join("")}</div>
+        <div class="home-category-list">${HOME_GAME_CATEGORIES.map(homeCategorySection).join("")}</div>
       </section>
 
       <section class="section">
@@ -1447,6 +1494,128 @@ async function load421GamesPanel(){
   const list=document.getElementById("game421ArchiveList");if(!list||!window.LudoOnline)return;try{const games=await LudoOnline.game421Games.list();if(!games.length){list.innerHTML="<p>Aucune partie de 421 en ligne terminée pour le moment.</p>";return;}list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · Jetons finaux ${g.player0Tokens}–${g.player1Tokens} · ${g.rated?"Classée":"Amicale"}</small></div><button class="btn small ${g.replayAvailable?"":"outline"}" data-421-replay-id="${g.id}" ${g.replayAvailable?"":"disabled"}>${g.replayAvailable?"Rejouer":"Historique ancien"}</button></article>`).join("");list.querySelectorAll("[data-421-replay-id]:not([disabled])").forEach(b=>b.addEventListener("click",()=>open421ArchiveReplay(b.getAttribute("data-421-replay-id"))));}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
 }
 
+
+const ACCOUNT_HISTORY_STORAGE_KEY = "jeuxpartage.account.lastHistoryGame";
+const ACCOUNT_HISTORY_GAMES = [
+  {
+    id: "echecs",
+    label: "Échecs",
+    description: "Retrouvez vos parties multijoueurs terminées et rejouez-les coup par coup.",
+    listId: "chessGameArchiveList",
+    replayId: "chessArchiveReplay",
+    replayClass: "chess-archive-replay",
+    note: "Les parties d’Échecs jouées avant la V6.6 peuvent apparaître sans relecture complète."
+  },
+  {
+    id: "dames",
+    label: "Dames",
+    description: "Les parties internationales 10×10 et anglaises 8×8 sont réunies dans cet historique.",
+    listId: "checkersGameArchiveList",
+    replayId: "checkersArchiveReplay",
+    replayClass: "chess-archive-replay"
+  },
+  {
+    id: "go",
+    label: "Go",
+    description: "Retrouvez vos parties terminées, quelle que soit la taille du goban.",
+    listId: "goGameArchiveList",
+    replayId: "goArchiveReplay",
+    replayClass: "chess-archive-replay go-archive-replay"
+  },
+  {
+    id: "awale",
+    label: "Awélé",
+    description: "Retrouvez vos parties terminées et rejouez les semailles coup par coup.",
+    listId: "awaleGameArchiveList",
+    replayId: "awaleArchiveReplay",
+    replayClass: "chess-archive-replay awale-archive-replay"
+  },
+  {
+    id: "abalone",
+    label: "Abalone",
+    description: "Retrouvez vos parties terminées et rejouez les déplacements coup par coup.",
+    listId: "abaloneGameArchiveList",
+    replayId: "abaloneArchiveReplay",
+    replayClass: "chess-archive-replay abalone-archive-replay"
+  },
+  {
+    id: "yams",
+    label: "Yams",
+    description: "Retrouvez vos parties terminées et revoyez les lancers et les choix de score.",
+    listId: "yamsGameArchiveList",
+    replayId: "yamsArchiveReplay",
+    replayClass: "chess-archive-replay yams-archive-replay"
+  },
+  {
+    id: "421",
+    label: "421",
+    description: "Retrouvez vos parties terminées et revoyez les lancers et transferts de jetons.",
+    listId: "game421ArchiveList",
+    replayId: "game421ArchiveReplay",
+    replayClass: "chess-archive-replay"
+  }
+];
+
+const ACCOUNT_HISTORY_LOADERS = {
+  echecs: loadChessGamesPanel,
+  dames: loadCheckersGamesPanel,
+  go: loadGoGamesPanel,
+  awale: loadAwaleGamesPanel,
+  abalone: loadAbaloneGamesPanel,
+  yams: loadYamsGamesPanel,
+  "421": load421GamesPanel
+};
+
+function readLastAccountHistoryGame() {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_HISTORY_STORAGE_KEY);
+    return ACCOUNT_HISTORY_GAMES.some(game => game.id === saved) ? saved : ACCOUNT_HISTORY_GAMES[0].id;
+  } catch {
+    return ACCOUNT_HISTORY_GAMES[0].id;
+  }
+}
+
+function rememberAccountHistoryGame(gameId) {
+  try {
+    localStorage.setItem(ACCOUNT_HISTORY_STORAGE_KEY, gameId);
+  } catch {
+    // Le filtre fonctionne quand même si le stockage local est indisponible.
+  }
+}
+
+function loadAccountHistoryGame(gameId, remember = true) {
+  const container = document.getElementById("accountHistoryContent");
+  const select = document.getElementById("accountHistoryGame");
+  const config = ACCOUNT_HISTORY_GAMES.find(game => game.id === gameId) || ACCOUNT_HISTORY_GAMES[0];
+  if (!container) return;
+
+  if (select) select.value = config.id;
+  if (remember) rememberAccountHistoryGame(config.id);
+
+  container.innerHTML = `
+    <div class="account-history-selected">
+      <h3>${config.label}</h3>
+      <p>${config.description}</p>
+    </div>
+    <div id="${config.listId}" class="chess-game-archive"><p>Chargement des parties…</p></div>
+    <div id="${config.replayId}" class="${config.replayClass}" hidden></div>
+    ${config.note ? `<div class="note account-history-note">${config.note}</div>` : ""}
+  `;
+
+  const loader = ACCOUNT_HISTORY_LOADERS[config.id];
+  if (typeof loader === "function") loader();
+}
+
+function initAccountGameHistory() {
+  const select = document.getElementById("accountHistoryGame");
+  if (!select) return;
+
+  const saved = readLastAccountHistoryGame();
+  select.value = saved;
+  select.addEventListener("change", () => loadAccountHistoryGame(select.value, true));
+  loadAccountHistoryGame(saved, false);
+}
+
 function renderAccountContent(user, newRecoveryKey = null, accountNotice = null) {
   const root = document.getElementById("accountContent");
   if (!root) return;
@@ -1496,12 +1665,21 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
         <div class="note">Chaque catégorie possède son Elo propre. Une nouvelle catégorie commence à <strong>1200</strong>. Seules les parties marquées « classée Elo » modifient le classement.</div>
       </section>
 
-      <section class="panel account-card chess-archive-card">
-        <h2>Mes parties d’Échecs</h2>
-        <p>Retrouvez vos parties multijoueurs terminées et rejouez-les coup par coup.</p>
-        <div id="chessGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div>
-        <div id="chessArchiveReplay" class="chess-archive-replay" hidden></div>
-        <div class="note">Les parties jouées avant la V6.6 peuvent apparaître sans relecture complète, car leurs coups n’étaient pas encore archivés dans D1.</div>
+            <section class="panel account-card chess-archive-card account-history-card">
+        <div class="account-history-toolbar">
+          <div>
+            <h2>Mes parties</h2>
+            <p>Choisissez un jeu pour n’afficher que les parties correspondantes.</p>
+          </div>
+          <label class="account-history-filter">
+            <span>Jeu</span>
+            <select id="accountHistoryGame">
+              ${ACCOUNT_HISTORY_GAMES.map(game => `<option value="${game.id}">${game.label}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <div id="accountHistoryContent"><p>Chargement…</p></div>
+        <div class="note"><strong>Pratique :</strong> le dernier jeu choisi est mémorisé automatiquement sur cet appareil.</div>
       </section>
 
       <section class="panel account-card chess-ratings-card">
@@ -1516,12 +1694,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
         <div class="note">Chaque variante et chaque cadence possèdent leur propre Elo. Une nouvelle catégorie commence à <strong>1200</strong>.</div>
       </section>
 
-      <section class="panel account-card chess-archive-card">
-        <h2>Mes parties de Dames</h2>
-        <p>Les parties internationales et anglaises terminées sont archivées et peuvent être rejouées coup par coup.</p>
-        <div id="checkersGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div>
-        <div id="checkersArchiveReplay" class="chess-archive-replay" hidden></div>
-      </section>
+      
 
       <section class="panel account-card chess-ratings-card">
         <h2>Classement Elo — Go</h2>
@@ -1529,14 +1702,14 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
         <div id="myGoRatings" class="elo-grid"><p>Chargement des classements…</p></div><h3>Classement des joueurs</h3><div id="goEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
         <div class="note">Chaque taille de goban et chaque cadence possèdent leur propre Elo.</div>
       </section>
-      <section class="panel account-card chess-archive-card"><h2>Mes parties de Go</h2><p>Retrouvez vos parties terminées et rejouez-les coup par coup.</p><div id="goGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="goArchiveReplay" class="chess-archive-replay go-archive-replay" hidden></div></section>
+      
       <section class="panel account-card chess-ratings-card">
         <h2>Classement Elo — Awélé</h2>
         <div class="elo-leaderboard-head"><h3>Classement des joueurs</h3><label><span>Cadence</span><select id="awaleEloCategory"><option value="bullet">Bullet</option><option value="blitz">Blitz</option><option value="rapid" selected>Rapide</option><option value="classical">Classique</option></select></label></div>
         <div id="myAwaleRatings" class="elo-grid"><p>Chargement des classements…</p></div><div id="awaleEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
         <div class="note">Chaque cadence possède son propre Elo, avec 1200 comme valeur de départ.</div>
       </section>
-      <section class="panel account-card chess-archive-card"><h2>Mes parties d’Awélé</h2><p>Retrouvez vos parties terminées et rejouez les semailles coup par coup.</p><div id="awaleGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="awaleArchiveReplay" class="chess-archive-replay awale-archive-replay" hidden></div></section>
+      
 
       <section class="panel account-card chess-ratings-card">
         <h2>Classement Elo — Abalone</h2>
@@ -1544,16 +1717,16 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
         <div id="myAbaloneRatings" class="elo-grid"><p>Chargement des classements…</p></div><div id="abaloneEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
         <div class="note">Chaque cadence possède son propre Elo, avec 1200 comme valeur de départ.</div>
       </section>
-      <section class="panel account-card chess-archive-card"><h2>Mes parties d’Abalone</h2><p>Retrouvez vos parties terminées et rejouez-les coup par coup.</p><div id="abaloneGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="abaloneArchiveReplay" class="chess-archive-replay abalone-archive-replay" hidden></div></section>
+      
 
       <section class="panel account-card chess-ratings-card">
         <h2>Classement Elo — Yams</h2>
         <div id="myYamsRating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="yamsEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div>
         <div class="note">Le Yams possède un Elo unique. Les parties amicales ne modifient pas le classement.</div>
       </section>
-      <section class="panel account-card chess-archive-card"><h2>Mes parties de Yams</h2><p>Retrouvez vos parties terminées et revoyez les lancers et choix de score.</p><div id="yamsGameArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="yamsArchiveReplay" class="chess-archive-replay yams-archive-replay" hidden></div></section>
+      
       <section class="panel account-card chess-ratings-card"><h2>Classement Elo — 421</h2><div id="my421Rating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="game421EloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div><div class="note">Le 421 possède un Elo unique. Les parties amicales ne modifient pas le classement.</div></section>
-      <section class="panel account-card chess-archive-card"><h2>Mes parties de 421</h2><p>Retrouvez vos parties terminées et revoyez les lancers et transferts de jetons.</p><div id="game421ArchiveList" class="chess-game-archive"><p>Chargement…</p></div><div id="game421ArchiveReplay" class="chess-archive-replay" hidden></div></section>
+      
 
       <form id="changePasswordForm" class="panel account-card">
         <h2>Changer le mot de passe</h2>
@@ -1655,19 +1828,13 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
 
     attachRecoveryCopy();
     loadChessRatingsPanel();
-    loadChessGamesPanel();
     loadCheckersRatingsPanel();
-    loadCheckersGamesPanel();
     loadGoRatingsPanel();
-    loadGoGamesPanel();
     loadAwaleRatingsPanel();
-    loadAwaleGamesPanel();
     loadAbaloneRatingsPanel();
-    loadAbaloneGamesPanel();
     loadYamsRatingsPanel();
-    loadYamsGamesPanel();
     load421RatingsPanel();
-    load421GamesPanel();
+    initAccountGameHistory();
     return;
   }
 
