@@ -2563,3 +2563,92 @@ main { min-height: calc(100vh - 160px); }
 @media (max-width: 560px) {
   .turnstile-box { overflow-x: auto; }
 }
+
+
+/* ============================================================
+   V6.32 — Accueil par catégories + historique filtré par jeu
+   ============================================================ */
+.home-category-list{
+  display:grid;
+  gap:24px;
+}
+.home-category-block{
+  padding:20px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:color-mix(in srgb,var(--paper) 94%,var(--surface-2) 6%);
+}
+.home-category-head{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:16px;
+}
+.home-category-head h3{
+  margin:0;
+  font-size:1.45rem;
+}
+.home-category-head p{
+  margin:.35rem 0 0;
+  color:var(--muted);
+}
+.home-category-link{
+  flex:0 0 auto;
+  font-weight:800;
+  color:var(--primary-2);
+}
+.home-category-grid{
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr))!important;
+}
+
+.account-history-card{
+  gap:18px;
+}
+.account-history-toolbar{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:18px;
+  flex-wrap:wrap;
+}
+.account-history-toolbar h2{
+  margin:0 0 .35rem;
+}
+.account-history-toolbar p{
+  margin:0;
+  color:var(--muted);
+}
+.account-history-filter{
+  min-width:min(100%,260px);
+}
+.account-history-filter select{
+  width:100%;
+  min-height:44px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--surface);
+  padding:10px 12px;
+  color:var(--text);
+}
+#accountHistoryContent{
+  display:grid;
+  gap:14px;
+}
+.account-history-selected h3{
+  margin:0 0 .25rem;
+}
+.account-history-selected p{
+  margin:0;
+  color:var(--muted);
+}
+.account-history-note{
+  margin-top:2px;
+}
+
+@media(max-width:680px){
+  .home-category-block{padding:14px}
+  .home-category-head{align-items:start;flex-direction:column}
+  .account-history-toolbar{align-items:stretch;flex-direction:column}
+  .account-history-filter{min-width:0;width:100%}
+}
