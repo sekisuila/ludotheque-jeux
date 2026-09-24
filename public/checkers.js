@@ -520,11 +520,13 @@ function initDraughts(variant = "international") {
   if(draughtUi?.online?.clockTimer) clearInterval(draughtUi.online.clockTimer);
   const game = new DraughtsGame(variant);
   const cfg = game.config;
+  const draughtModeEl = document.getElementById("draughtMode");
+  if (draughtModeEl) draughtModeEl.value = "online";
   draughtUi = {
     game,
     selected: null,
     candidateMoves: [],
-    mode: document.getElementById("draughtMode")?.value || "online",
+    mode: "online",
     aiLevel: "medium",
     humanSide: cfg.firstSide,
     orientation: cfg.firstSide,
@@ -532,6 +534,11 @@ function initDraughts(variant = "international") {
     variant,
     online:draughtEmptyOnlineState()
   };
+
+  const draughtAiSettings = document.getElementById("draughtAiSettings");
+  const draughtOnlineSettings = document.getElementById("draughtOnlineSettings");
+  if (draughtAiSettings) draughtAiSettings.hidden = true;
+  if (draughtOnlineSettings) draughtOnlineSettings.hidden = false;
 
   document.getElementById("draughtMode")?.addEventListener("change", e => {
     if(draughtUi.mode==="online") draughtDisconnectOnline();
@@ -807,7 +814,20 @@ function draughtSelectedTimeControl(){
   return {initialSeconds:Math.round(mins*60),incrementSeconds:Math.round(inc)};
 }
 
+function draughtForceOnlineMode(){
+  if(!draughtUi) return;
+  draughtUi.mode="online";
+  draughtUi.thinking=false;
+  const mode=document.getElementById("draughtMode");
+  if(mode) mode.value="online";
+  const ai=document.getElementById("draughtAiSettings");
+  const online=document.getElementById("draughtOnlineSettings");
+  if(ai) ai.hidden=true;
+  if(online) online.hidden=false;
+}
+
 async function draughtCreateOnlineRoom(){
+  draughtForceOnlineMode();
   const user=await draughtRefreshOnlineLoginStatus(); if(!user) return;
   try{
     draughtSetRoomStatus("Création du salon…");
@@ -827,6 +847,7 @@ async function draughtCreateOnlineRoom(){
 }
 
 async function draughtJoinOnlineRoom(){
+  draughtForceOnlineMode();
   const user=await draughtRefreshOnlineLoginStatus(); if(!user) return;
   const code=(document.getElementById("draughtRoomCode")?.value||"").trim().toUpperCase();
   if(code.length!==6){ draughtSetRoomStatus("Saisissez un code de salon à 6 caractères.",true); return; }
