@@ -1,0 +1,26 @@
+Stockfish 19 / Stockfish.js 19.0.0
+=====================================
+
+Strathasard distribue la variante WebAssembly "lite single-threaded" du paquet
+npm stockfish@19.0.0 sans modification du moteur.
+
+Fichiers distribués au déploiement :
+- stockfish-19-lite-single.js
+- stockfish-19-lite-single.wasm
+- Copying.txt (GNU GPL version 3)
+
+Source exacte de Stockfish.js 19 utilisée pour produire cette génération :
+https://github.com/nmrugg/stockfish.js/commit/54fde71d90c7c403964f6cacef48f7bbec495df1
+
+Cette mise à jour Stockfish.js 19 indique être basée sur Stockfish 19 :
+https://github.com/official-stockfish/Stockfish/commit/edb0d9db6731067ec50ce619ff372b463bc4dd5d
+
+Projet Stockfish.js :
+https://github.com/nmrugg/stockfish.js
+
+Projet Stockfish officiel :
+https://github.com/official-stockfish/Stockfish
+
+Stockfish.js et Stockfish sont distribués sous GNU GPL v3.
+Strathasard ne modifie pas le moteur Stockfish ; son code d'intégration
+(stockfish-engine.js) reste séparé et communique avec lui via le protocole UCI.
