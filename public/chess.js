@@ -1025,7 +1025,7 @@ function initChess() {
     selected: null,
     candidateMoves: [],
     pendingPromotion: null,
-    mode: "ai",
+    mode: document.getElementById("chessMode")?.value || "online",
     aiLevel: "medium",
     humanColor: "w",
     orientation: "w",
