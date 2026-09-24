@@ -1043,7 +1043,7 @@ function initChess() {
     candidateMoves: [],
     pendingPromotion: null,
     mode: "online",
-    aiLevel: "medium",
+    aiLevel: document.getElementById("chessAiLevel")?.value || "sf-1320",
     humanColor: "w",
     orientation: "w",
     thinking: false,
@@ -1107,6 +1107,7 @@ function initChess() {
 }
 
 function newChessGame() {
+  window.StrathasardStockfish?.stop?.();
   if (chessUi.mode === "online") {
     chessDisconnectOnlineRoom();
     chessUi.game = new ChessGame();
@@ -1311,13 +1312,41 @@ function undoChessMove() {
   renderChessBoard();
 }
 
+function chessLevelUsesStockfish(level) {
+  return String(level || "").startsWith("sf-");
+}
+
 function maybeChessAiTurn() {
   if (chessUi.mode !== "ai" || chessUi.game.status().over || chessUi.game.state.turn === chessUi.humanColor) return;
   chessUi.thinking = true;
   renderChessInfo();
 
-  window.setTimeout(() => {
-    const move = chessChooseAiMove(chessUi.game, chessUi.aiLevel);
+  const gameAtStart = chessUi.game;
+  const turnAtStart = chessUi.game.state.turn;
+  const levelAtStart = chessUi.aiLevel;
+
+  window.setTimeout(async () => {
+    let move = null;
+
+    try {
+      if (chessLevelUsesStockfish(levelAtStart) && window.StrathasardStockfish) {
+        move = await window.StrathasardStockfish.chooseMove(gameAtStart, levelAtStart);
+      } else {
+        move = chessChooseAiMove(gameAtStart, levelAtStart);
+      }
+    } catch (error) {
+      console.warn("Stockfish indisponible, repli sur l’IA Strathasard :", error);
+      move = chessChooseAiMove(gameAtStart, "hard");
+    }
+
+    // Si l'utilisateur a changé de mode, recommencé la partie ou si la position
+    // a évolué pendant le calcul, on ignore la réponse tardive du moteur.
+    if (chessUi.mode !== "ai" || chessUi.game !== gameAtStart || chessUi.game.state.turn !== turnAtStart) {
+      chessUi.thinking = false;
+      renderChessBoard();
+      return;
+    }
+
     if (move) chessUi.game.play(move);
     chessUi.thinking = false;
     renderChessBoard();

@@ -2185,8 +2185,24 @@ function renderChessPlay() {
           <div class="chess-toolbar">
             <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
             <div id="chessAiSettings" class="toolbar-group" hidden>
-              <label><span>Niveau IA</span><select id="chessAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
+              <label><span>Niveau IA</span><select id="chessAiLevel">
+                <option value="easy">Débutant — IA Strathasard</option>
+                <option value="medium">Facile — IA Strathasard</option>
+                <option value="hard">Intermédiaire — IA Strathasard</option>
+                <option value="sf-1320" selected>Stockfish — env. 1320 Elo</option>
+                <option value="sf-1400">Stockfish — env. 1400 Elo</option>
+                <option value="sf-1600">Stockfish — env. 1600 Elo</option>
+                <option value="sf-1800">Stockfish — env. 1800 Elo</option>
+                <option value="sf-2000">Stockfish — env. 2000 Elo</option>
+                <option value="sf-2200">Stockfish — env. 2200 Elo</option>
+                <option value="sf-2400">Stockfish — env. 2400 Elo</option>
+                <option value="sf-2600">Stockfish — env. 2600 Elo</option>
+                <option value="sf-2800">Stockfish — env. 2800 Elo</option>
+                <option value="sf-3000">Stockfish — env. 3000 Elo</option>
+                <option value="sf-max">Stockfish — maximum</option>
+              </select></label>
               <label><span>Votre couleur</span><select id="chessSide"><option value="w">Blancs</option><option value="b">Noirs</option></select></label>
+              <small class="engine-credit">Stockfish 19 WebAssembly — GPLv3 · <a href="/vendor/stockfish/Copying.txt" target="_blank" rel="noopener">licence</a> · <a href="/vendor/stockfish/SOURCE.txt" target="_blank" rel="noopener">sources</a></small>
             </div>
             <div id="chessOnlineSettings" class="toolbar-group chess-online-settings">
               <label><span>Couleur si vous créez</span><select id="chessCreatorColor"><option value="random" selected>Aléatoire</option><option value="white">Blancs</option><option value="black">Noirs</option></select></label>

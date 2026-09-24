@@ -8,9 +8,13 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 migrations apply ludotheque-jeux-db --local",
-    "db:remote": "wrangler d1 migrations apply ludotheque-jeux-db --remote"
+    "db:remote": "wrangler d1 migrations apply ludotheque-jeux-db --remote",
+    "postinstall": "node scripts/copy-stockfish.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "stockfish": "19.0.0"
   }
 }
