@@ -524,7 +524,7 @@ function initDraughts(variant = "international") {
     game,
     selected: null,
     candidateMoves: [],
-    mode: "ai",
+    mode: document.getElementById("draughtMode")?.value || "online",
     aiLevel: "medium",
     humanSide: cfg.firstSide,
     orientation: cfg.firstSide,
