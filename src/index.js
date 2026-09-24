@@ -210,7 +210,7 @@ async function sendResendEmail(env,{to,subject,html,text}){
     method:"POST",
     headers:{"content-type":"application/json","authorization":`Bearer ${env.RESEND_API_KEY}`},
     body:JSON.stringify({
-      from:"JeuxPartage <noreply@jeuxpartage.com>",
+      from:"Strathasard <noreply@strathasard.com>",
       to:[to],
       subject,
       html,
@@ -237,9 +237,9 @@ async function createEmailVerification(env,userId,email,username,origin){
   try{
     await sendResendEmail(env,{
       to:email,
-      subject:"Vérifiez votre adresse e-mail — JeuxPartage",
-      text:`Bonjour ${username},\n\nPour vérifier votre adresse e-mail sur JeuxPartage, ouvrez ce lien :\n${url}\n\nCe lien est valable 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
-      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Bienvenue sur JeuxPartage</h2><p>Bonjour <strong>${emailEscape(username)}</strong>,</p><p>Confirmez votre adresse e-mail pour sécuriser votre compte et permettre la récupération du mot de passe.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Vérifier mon adresse</a></p><p>Ce lien est valable 24 heures.</p><p style="color:#6d6258;font-size:13px">Votre adresse est utilisée uniquement pour l'accès et la sécurité de votre compte JeuxPartage. Elle n'est pas utilisée pour la publicité et n'est jamais vendue.</p></div>`
+      subject:"Vérifiez votre adresse e-mail — Strathasard",
+      text:`Bonjour ${username},\n\nPour vérifier votre adresse e-mail sur Strathasard, ouvrez ce lien :\n${url}\n\nCe lien est valable 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Bienvenue sur Strathasard</h2><p>Bonjour <strong>${emailEscape(username)}</strong>,</p><p>Confirmez votre adresse e-mail pour sécuriser votre compte et permettre la récupération du mot de passe.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Vérifier mon adresse</a></p><p>Ce lien est valable 24 heures.</p><p style="color:#6d6258;font-size:13px">Votre adresse est utilisée uniquement pour l'accès et la sécurité de votre compte Strathasard. Elle n'est pas utilisée pour la publicité et n'est jamais vendue.</p></div>`
     });
   }catch(error){
     await env.DB.prepare("DELETE FROM email_verification_tokens WHERE token_hash=?").bind(hash).run();
@@ -277,14 +277,14 @@ async function requestPasswordReset(request,env){
   try{
     await sendResendEmail(env,{
       to:user.email,
-      subject:"Réinitialisation de votre mot de passe — JeuxPartage",
+      subject:"Réinitialisation de votre mot de passe — Strathasard",
       text:`Bonjour ${user.username},
 
-Vous avez demandé un nouveau mot de passe JeuxPartage. Ouvrez ce lien :
+Vous avez demandé un nouveau mot de passe Strathasard. Ouvrez ce lien :
 ${url}
 
 Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
-      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Réinitialisation du mot de passe</h2><p>Bonjour <strong>${emailEscape(user.username)}</strong>,</p><p>Utilisez le bouton ci-dessous pour choisir un nouveau mot de passe JeuxPartage.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Choisir un nouveau mot de passe</a></p><p>Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois.</p><p style="color:#6d6258;font-size:13px">Si vous n'avez pas demandé cette réinitialisation, vous pouvez ignorer ce message.</p></div>`
+      html:`<div style="font-family:Arial,sans-serif;line-height:1.55;color:#2d2924"><h2>Réinitialisation du mot de passe</h2><p>Bonjour <strong>${emailEscape(user.username)}</strong>,</p><p>Utilisez le bouton ci-dessous pour choisir un nouveau mot de passe Strathasard.</p><p><a href="${emailEscape(url)}" style="display:inline-block;padding:12px 18px;background:#765b3b;color:white;text-decoration:none;border-radius:8px">Choisir un nouveau mot de passe</a></p><p>Ce lien est valable 30 minutes et ne peut être utilisé qu'une fois.</p><p style="color:#6d6258;font-size:13px">Si vous n'avez pas demandé cette réinitialisation, vous pouvez ignorer ce message.</p></div>`
     });
   }catch(error){
     console.error("Reset email:",error);
@@ -1128,7 +1128,7 @@ export default {
       if(url.pathname.startsWith('/api/')) return await api(request,env);
       return env.ASSETS.fetch(request);
     }catch(error){
-      console.error("Erreur serveur Ludothèque:", error?.stack || error?.message || error);
+      console.error("Erreur serveur Strathasard:", error?.stack || error?.message || error);
       if(url.pathname.startsWith('/api/')){
         return json({error:"Erreur interne du serveur. Consultez les logs Cloudflare."},500);
       }
