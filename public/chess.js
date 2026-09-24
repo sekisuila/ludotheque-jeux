@@ -721,7 +721,20 @@ async function chessRefreshOnlineAccountState() {
   }
 }
 
+function chessForceOnlineMode() {
+  if (!chessUi) return;
+  chessUi.mode = "online";
+  chessUi.thinking = false;
+  const mode = document.getElementById("chessMode");
+  if (mode) mode.value = "online";
+  const ai = document.getElementById("chessAiSettings");
+  const online = document.getElementById("chessOnlineSettings");
+  if (ai) ai.hidden = true;
+  if (online) online.hidden = false;
+}
+
 async function chessCreateOnlineRoom() {
+  chessForceOnlineMode();
   try {
     const user = await LudoOnline.me(true);
     if (!user) throw new Error("Connectez-vous d’abord.");
@@ -742,6 +755,7 @@ async function chessCreateOnlineRoom() {
 }
 
 async function chessJoinOnlineRoom() {
+  chessForceOnlineMode();
   const code = document.getElementById("chessRoomCode")?.value?.trim()?.toUpperCase();
   if (!code) return chessSetRoomStatus("Saisissez le code du salon.");
   try {
@@ -1020,18 +1034,26 @@ function initChess() {
     try { chessUi.online.ws.close(1000, "Nouvelle interface"); } catch {}
   }
 
+  const chessModeEl = document.getElementById("chessMode");
+  if (chessModeEl) chessModeEl.value = "online";
+
   chessUi = {
     game: new ChessGame(),
     selected: null,
     candidateMoves: [],
     pendingPromotion: null,
-    mode: document.getElementById("chessMode")?.value || "online",
+    mode: "online",
     aiLevel: "medium",
     humanColor: "w",
     orientation: "w",
     thinking: false,
     online: chessEmptyOnlineState()
   };
+
+  const chessAiSettings = document.getElementById("chessAiSettings");
+  const chessOnlineSettings = document.getElementById("chessOnlineSettings");
+  if (chessAiSettings) chessAiSettings.hidden = true;
+  if (chessOnlineSettings) chessOnlineSettings.hidden = false;
 
   document.getElementById("chessMode").addEventListener("change", e => {
     const previousMode = chessUi.mode;
