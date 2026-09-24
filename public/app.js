@@ -1495,7 +1495,8 @@ async function load421GamesPanel(){
 }
 
 
-const ACCOUNT_HISTORY_STORAGE_KEY = "jeuxpartage.account.lastHistoryGame";
+const ACCOUNT_HISTORY_STORAGE_KEY = "strathasard.account.lastHistoryGame";
+const LEGACY_ACCOUNT_HISTORY_STORAGE_KEY = "jeux" + "partage.account.lastHistoryGame";
 const ACCOUNT_HISTORY_GAMES = [
   {
     id: "echecs",
@@ -1568,8 +1569,13 @@ const ACCOUNT_HISTORY_LOADERS = {
 
 function readLastAccountHistoryGame() {
   try {
-    const saved = localStorage.getItem(ACCOUNT_HISTORY_STORAGE_KEY);
-    return ACCOUNT_HISTORY_GAMES.some(game => game.id === saved) ? saved : ACCOUNT_HISTORY_GAMES[0].id;
+    const saved = localStorage.getItem(ACCOUNT_HISTORY_STORAGE_KEY) || localStorage.getItem(LEGACY_ACCOUNT_HISTORY_STORAGE_KEY);
+    if (ACCOUNT_HISTORY_GAMES.some(game => game.id === saved)) {
+      localStorage.setItem(ACCOUNT_HISTORY_STORAGE_KEY, saved);
+      localStorage.removeItem(LEGACY_ACCOUNT_HISTORY_STORAGE_KEY);
+      return saved;
+    }
+    return ACCOUNT_HISTORY_GAMES[0].id;
   } catch {
     return ACCOUNT_HISTORY_GAMES[0].id;
   }
@@ -1646,7 +1652,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
           ${user.email && !user.emailVerified ? `<button id="resendEmailVerification" class="btn outline small" type="button">Renvoyer l’e-mail de vérification</button>` : ""}
           <p id="accountEmailStatus" class="form-status"></p>
         </form>
-        <div class="privacy-note"><strong>Confidentialité :</strong> votre pseudo et votre adresse e-mail sont utilisés uniquement pour l’accès et la sécurité de votre compte JeuxPartage (connexion, vérification et récupération du mot de passe). Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse e-mail est transmise uniquement au prestataire technique Resend pour l’envoi de ces messages.</div>
+        <div class="privacy-note"><strong>Confidentialité :</strong> votre pseudo et votre adresse e-mail sont utilisés uniquement pour l’accès et la sécurité de votre compte Strathasard (connexion, vérification et récupération du mot de passe). Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse e-mail est transmise uniquement au prestataire technique Resend pour l’envoi de ces messages.</div>
       </section>
 
       <section class="panel account-card chess-ratings-card">
@@ -1857,7 +1863,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
       <label><span>Adresse e-mail</span><input name="email" type="email" required autocomplete="email" placeholder="vous@exemple.fr"></label>
       <label><span>Mot de passe</span><input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
       <small>10 caractères minimum. Un e-mail de vérification vous sera envoyé après la création du compte.</small>
-      <div class="privacy-note"><strong>Vos coordonnées restent privées.</strong> Le pseudo et l’adresse e-mail servent uniquement à accéder à JeuxPartage et à sécuriser/récupérer votre compte. Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse est transmise uniquement à Resend pour l’envoi des e-mails techniques du compte.</div>
+      <div class="privacy-note"><strong>Vos coordonnées restent privées.</strong> Le pseudo et l’adresse e-mail servent uniquement à accéder à Strathasard et à sécuriser/récupérer votre compte. Ils ne sont jamais utilisés pour la publicité, ni vendus ou loués. L’adresse est transmise uniquement à Resend pour l’envoi des e-mails techniques du compte.</div>
       <div id="registerTurnstile" class="turnstile-box"></div>
       <button class="btn" type="submit">Créer mon compte</button>
       <p id="registerStatus" class="form-status"></p>

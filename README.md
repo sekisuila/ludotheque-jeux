@@ -1,6 +1,6 @@
-# Ludothèque V6 — comptes, D1 et multijoueur Abalone
+# Strathasard — comptes, D1 et multijoueur
 
-Cette version ajoute une première couche serveur Cloudflare à la Ludothèque.
+Ce dépôt contient le site Strathasard et sa couche serveur Cloudflare.
 
 ## Fonctions ajoutées
 
