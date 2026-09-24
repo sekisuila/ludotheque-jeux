@@ -103,7 +103,7 @@
       if (window.turnstile) return window.turnstile;
       if (scriptPromise) return scriptPromise;
       scriptPromise = new Promise((resolve, reject) => {
-        const existing = document.querySelector('script[data-jeuxpartage-turnstile="1"]');
+        const existing = document.querySelector('script[data-strathasard-turnstile="1"]');
         const ready = () => window.turnstile ? resolve(window.turnstile) : reject(new Error("Turnstile n’a pas pu être chargé."));
         if (existing) {
           const started = Date.now();
@@ -117,7 +117,7 @@
         script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
         script.async = true;
         script.defer = true;
-        script.dataset.jeuxpartageTurnstile = "1";
+        script.dataset.strathasardTurnstile = "1";
         script.onload = ready;
         script.onerror = () => reject(new Error("Impossible de charger la vérification anti-robot."));
         document.head.appendChild(script);
