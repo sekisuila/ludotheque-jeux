@@ -2,6 +2,24 @@
 
 Ce dépôt contient le site Strathasard et sa couche serveur Cloudflare.
 
+## Moteur d’échecs Stockfish 19
+
+Le mode **Joueur contre IA** des Échecs peut utiliser Stockfish 19 en WebAssembly,
+version `lite single-threaded`, avec limitation de force UCI entre environ
+1320 et 3000 Elo, plus un mode maximum. Les trois anciennes IA légères restent
+disponibles pour les joueurs débutants.
+
+Le paquet `stockfish@19.0.0` est installé par npm. Le script
+`scripts/copy-stockfish.mjs` copie au moment de l’installation les fichiers
+du moteur dans `public/vendor/stockfish/`, afin qu’ils soient servis comme
+assets statiques par Cloudflare.
+
+La licence GPLv3 complète est disponible dans
+`public/vendor/stockfish/Copying.txt`, et les références vers le code source
+exact sont dans `public/vendor/stockfish/SOURCE.txt` et
+`THIRD_PARTY_LICENSES.md`.
+
+
 ## Fonctions ajoutées
 
 - comptes utilisateurs par pseudo + mot de passe ;
