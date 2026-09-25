@@ -99,7 +99,17 @@
   function scheduleAi(){
     clearTimeout(aiTimer);const step=()=>{const g=ui.game;if(ui.mode!=="ai"||g.result?.over||g.state.turn!==1)return;
       if(g.state.rolls===0){localRoll(g);render();aiTimer=setTimeout(step,420);return;}
-      const c=evaluate(g.state.dice);if(c.rank>=850||g.state.rolls>=3){localStop(g);render();return;}
+      const c=evaluate(g.state.dice);
+      if(c.rank>=850||g.state.rolls>=3){
+        localStop(g);
+        render();
+        // Le perdant commence la manche suivante. Si c'est encore l'IA,
+        // elle doit enchaîner automatiquement au lieu de laisser la partie bloquée.
+        if(ui.mode==="ai"&&!g.result?.over&&g.state.turn===1){
+          aiTimer=setTimeout(step,450);
+        }
+        return;
+      }
       g.state.held=aiHolds(g.state.dice);localRoll(g);render();aiTimer=setTimeout(step,420);
     };aiTimer=setTimeout(step,450);
   }
