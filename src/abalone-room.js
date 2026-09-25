@@ -1965,8 +1965,9 @@ export class AbaloneRoom extends DurableObject {
           }
         }
       }
+      const syncGame=await this.getGame();
       ws.send(JSON.stringify({
-        type:"state",gameType,game:await this.getGame(),players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
+        type:"state",gameType,game:gameType==="dominos"?publicDominoGameState(syncGame,Number(session.side)):syncGame,players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
         clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
         ratings:await this.ratingsForGameType(gameType),ratingUpdate:await this.getRatingUpdate()
