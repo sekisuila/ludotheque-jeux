@@ -136,6 +136,27 @@
       const api = await loadTurnstile();
       el.innerHTML = "";
       let latestToken = "";
+      let executionPromise = null;
+      let resolveExecution = null;
+      let rejectExecution = null;
+
+      const finishExecution = token => {
+        latestToken = token || "";
+        if (resolveExecution) resolveExecution(latestToken);
+        executionPromise = null;
+        resolveExecution = null;
+        rejectExecution = null;
+        options.callback?.(latestToken);
+      };
+
+      const failExecution = error => {
+        latestToken = "";
+        if (rejectExecution) rejectExecution(error instanceof Error ? error : new Error(String(error || "Échec de la vérification anti-robot.")));
+        executionPromise = null;
+        resolveExecution = null;
+        rejectExecution = null;
+      };
+
       const widgetId = api.render(el, {
         sitekey: cfg.turnstileSiteKey,
         action,
@@ -143,15 +164,51 @@
         language: "fr",
         size: "flexible",
         appearance: options.appearance || "interaction-only",
-        callback: token => { latestToken = token || ""; options.callback?.(latestToken); },
-        "expired-callback": () => { latestToken = ""; options.expired?.(); },
-        "error-callback": code => { latestToken = ""; options.error?.(code); }
+        execution: options.execution || "render",
+        callback: finishExecution,
+        "expired-callback": () => {
+          latestToken = "";
+          failExecution(new Error("La vérification anti-robot a expiré. Merci de recommencer."));
+          options.expired?.();
+        },
+        "error-callback": code => {
+          failExecution(new Error("La vérification anti-robot a échoué."));
+          options.error?.(code);
+        }
       });
+
       return {
         id: widgetId,
         getToken: () => api.getResponse(widgetId) || latestToken || "",
-        reset: () => { latestToken = ""; try { api.reset(widgetId); } catch {} },
-        remove: () => { latestToken = ""; try { api.remove(widgetId); } catch {} }
+        execute: () => {
+          const existing = api.getResponse(widgetId) || latestToken || "";
+          if (existing) return Promise.resolve(existing);
+          if (executionPromise) return executionPromise;
+          executionPromise = new Promise((resolve, reject) => {
+            resolveExecution = resolve;
+            rejectExecution = reject;
+            try {
+              api.execute(widgetId);
+            } catch (error) {
+              failExecution(error);
+            }
+          });
+          return executionPromise;
+        },
+        reset: () => {
+          latestToken = "";
+          executionPromise = null;
+          resolveExecution = null;
+          rejectExecution = null;
+          try { api.reset(widgetId); } catch {}
+        },
+        remove: () => {
+          latestToken = "";
+          executionPromise = null;
+          resolveExecution = null;
+          rejectExecution = null;
+          try { api.remove(widgetId); } catch {}
+        }
       };
     }
 
