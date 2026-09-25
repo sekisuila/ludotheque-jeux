@@ -52,7 +52,7 @@
     const other=1-side;if(!s.roundResults[other])startTurn(s,other);else settleRound(g);
   }
 
-  let ui=null,aiTimer=null,reconnectTimer=null;
+  let ui=null,aiTimer=null,aiRunId=0,reconnectTimer=null;
   const onlineEmpty=()=>({ws:null,code:null,connected:false,side:null,players:{black:null,white:null},game:null,ratings:null,ratingUpdate:null,settings:null,reconnectAttempts:0,manualClose:false});
   function game(){return ui.mode==="online"?(ui.online.game||newGame()):ui.game;}
   function names(){if(ui.mode==="online")return[ui.online.players?.black?.username||"Joueur 1",ui.online.players?.white?.username||"Joueur 2"];if(ui.mode==="ai")return["Vous","IA"];return["Joueur 1","Joueur 2"];}
@@ -84,7 +84,12 @@
     const rs=document.getElementById("game421RoomState");if(rs&&ui.mode==="online"){const r=ui.online.ratings;rs.innerHTML=ui.online.connected?`<strong>Salon ${esc(ui.online.code||"")}</strong><span>Vous êtes Joueur ${mySide()+1}${r?` · Elo ${mySide()===0?(r.player0?.rating??1200):(r.player1?.rating??1200)}`:""}</span>`:"";}
   }
   function render(){if(!ui)return;const g=game();renderDice(g);renderTokens(g);renderStatus(g);renderOnline(g);const roll=document.getElementById("roll421"),stop=document.getElementById("stop421");if(roll){roll.disabled=!canPlay(g)||g.state.rolls>=3;roll.textContent=g.state.rolls?`Relancer (${3-g.state.rolls} restant${3-g.state.rolls>1?"s":""})`:`Lancer les dés`;}if(stop)stop.disabled=!canPlay(g)||g.state.rolls<1;}
-  function resetLocal(){clearTimeout(aiTimer);ui.game=newGame();render();}
+  function cancelAi(){
+    aiRunId++;
+    clearTimeout(aiTimer);
+    aiTimer=null;
+  }
+  function resetLocal(){cancelAi();ui.game=newGame();render();}
   function toggleHold(i){const g=game();if(!canPlay(g)||g.state.rolls<1)return;g.state.held[i]=!g.state.held[i];renderDice(g);if(ui.mode==="online")ui.online.ws?.send(JSON.stringify({type:"game421_hold",index:i,held:g.state.held[i]}));}
   function roll(){const g=game();if(!canPlay(g)||g.state.rolls>=3)return;if(ui.mode==="online")ui.online.ws?.send(JSON.stringify({type:"game421_roll",held:g.state.held}));else{localRoll(g);render();}}
   function stop(){const g=game();if(!canPlay(g)||g.state.rolls<1)return;if(ui.mode==="online")ui.online.ws?.send(JSON.stringify({type:"game421_stop"}));else{localStop(g);render();if(ui.mode==="ai"&&!g.result?.over&&g.state.turn===1)scheduleAi();}}
@@ -97,21 +102,45 @@
     const high=Math.max(...dice);return dice.map(v=>v===high);
   }
   function scheduleAi(){
-    clearTimeout(aiTimer);const step=()=>{const g=ui.game;if(ui.mode!=="ai"||g.result?.over||g.state.turn!==1)return;
-      if(g.state.rolls===0){localRoll(g);render();aiTimer=setTimeout(step,420);return;}
+    cancelAi();
+    const runId=aiRunId;
+    const queueStep=(step,delay)=>{
+      aiTimer=setTimeout(()=>{
+        aiTimer=null;
+        if(runId===aiRunId) step();
+      },delay);
+    };
+    const step=()=>{
+      if(runId!==aiRunId||!ui||ui.mode!=="ai")return;
+      const g=ui.game;
+      if(!g||g.result?.over||g.state.turn!==1)return;
+
+      if(g.state.rolls===0){
+        localRoll(g);
+        // On programme la suite AVANT le rendu : même si l'affichage rencontre
+        // un problème, le tour de l'IA ne reste pas bloqué.
+        queueStep(step,420);
+        render();
+        return;
+      }
+
       const c=evaluate(g.state.dice);
       if(c.rank>=850||g.state.rolls>=3){
         localStop(g);
+        // Toujours revérifier l'état après une manche. Si l'IA a perdu,
+        // startRound() lui redonne le trait et ce même step démarre sa
+        // nouvelle manche. Si le tour revient à l'humain, step() s'arrête.
+        if(!g.result?.over) queueStep(step,450);
         render();
-        // Le perdant commence la manche suivante. Si c'est encore l'IA,
-        // elle doit enchaîner automatiquement au lieu de laisser la partie bloquée.
-        if(ui.mode==="ai"&&!g.result?.over&&g.state.turn===1){
-          aiTimer=setTimeout(step,450);
-        }
         return;
       }
-      g.state.held=aiHolds(g.state.dice);localRoll(g);render();aiTimer=setTimeout(step,420);
-    };aiTimer=setTimeout(step,450);
+
+      g.state.held=aiHolds(g.state.dice);
+      localRoll(g);
+      queueStep(step,420);
+      render();
+    };
+    queueStep(step,450);
   }
 
   function onlineStatus(t){const e=document.getElementById("game421OnlineStatus");if(e)e.textContent=t||"";}
