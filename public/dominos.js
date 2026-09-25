@@ -103,7 +103,7 @@
     g.state.turn=1-side;return g;
   }
 
-  let ui=null,aiTimer=null,reconnectTimer=null;
+  let ui=null,aiTimer=null,reconnectTimer=null,dominoBoardResizeObserver=null;
   const onlineEmpty=()=>({ws:null,code:null,connected:false,side:null,players:{black:null,white:null},game:null,ratings:null,ratingUpdate:null,settings:null,reconnectAttempts:0,manualClose:false});
   function game(){return ui.mode==="online"?(ui.online.game||newGame()):ui.game;}
   function mySide(){return ui.mode==="online"?Number(ui.online.side):0;}
@@ -144,11 +144,79 @@
       <div class="domino-score-card ${g.state.turn===1&&!g.result?.over?"active":""}"><span>${n[1]}</span><strong>${s[1]}</strong><small>points</small></div>
       ${lr?`<div class="domino-last-round">Manche précédente : ${lr.winner===null?"égalité":`${n[lr.winner]} +${lr.points} pt${lr.points>1?"s":""}`}</div>`:""}`;
   }
+  function layoutDominoBoard(){
+    const el=document.getElementById("dominoBoard");if(!el)return;
+    const pieces=[...el.querySelectorAll(".domino-board-piece")];
+    if(!pieces.length){el.style.height="110px";return;}
+
+    // Dimensions réelles des petits dominos du plateau.
+    // Un chevauchement de 2 px fait se toucher les bordures comme sur une table.
+    const TILE_W=56,TILE_H=30,OVERLAP=2;
+    const H_STEP=TILE_W-OVERLAP,V_STEP=TILE_W-OVERLAP;
+    const TURN_DOMINOES=2;
+    const width=Math.max(180,el.clientWidth||180);
+
+    // On limite volontairement une ligne à 11 dominos même sur grand écran :
+    // la chaîne reste lisible et forme rapidement le serpentin demandé.
+    const fit=Math.floor((width-16-TILE_W)/H_STEP)+1;
+    const rowCapacity=Math.max(3,Math.min(11,fit));
+    const rowSpan=TILE_W+(rowCapacity-1)*H_STEP;
+
+    let x=(width-rowSpan)/2+TILE_W/2;
+    let y=8+TILE_H/2;
+    let direction=1;
+    let index=0;
+    let maxBottom=y+TILE_H/2;
+
+    const place=(piece,cx,cy,rotation)=>{
+      piece.style.left=`${cx-TILE_W/2}px`;
+      piece.style.top=`${cy-TILE_H/2}px`;
+      piece.style.transform=`rotate(${rotation}deg)`;
+      const visualHalfHeight=(rotation%180===0)?TILE_H/2:TILE_W/2;
+      maxBottom=Math.max(maxBottom,cy+visualHalfHeight);
+    };
+
+    while(index<pieces.length){
+      let used=0;
+
+      // Ligne horizontale : gauche -> droite, puis droite -> gauche.
+      while(index<pieces.length&&used<rowCapacity){
+        place(pieces[index],x,y,direction===1?0:180);
+        index++;used++;
+        if(index<pieces.length&&used<rowCapacity)x+=direction*H_STEP;
+      }
+      if(index>=pieces.length)break;
+
+      // Arrivé au bord, la chaîne descend avec deux dominos verticaux.
+      // La colonne est placée sous la moitié extérieure du dernier domino,
+      // ce qui donne visuellement un virage continu plutôt qu'une nouvelle ligne isolée.
+      const columnX=x+direction*((TILE_W-TILE_H)/2);
+      let verticalY=y;
+      for(let turn=0;turn<TURN_DOMINOES&&index<pieces.length;turn++){
+        verticalY=turn===0
+          ? y+TILE_H/2+TILE_W/2-OVERLAP
+          : verticalY+V_STEP;
+        place(pieces[index],columnX,verticalY,90);
+        index++;
+      }
+      if(index>=pieces.length)break;
+
+      // On repart dans le sens opposé, directement sous la colonne.
+      y=verticalY+TILE_W/2+TILE_H/2-OVERLAP;
+      x=columnX-direction*((TILE_W-TILE_H)/2);
+      direction*=-1;
+    }
+
+    el.style.height=`${Math.max(110,Math.ceil(maxBottom+8))}px`;
+  }
+
   function renderBoard(g){
     const el=document.getElementById("dominoBoard");if(!el)return;
-    el.innerHTML=(g.state.chain||[]).map(t=>dominoHtml(t,{oriented:true,small:true})).join("");
+    const chain=g.state.chain||[];
+    el.innerHTML=chain.map((t,i)=>`<span class="domino-board-piece" data-chain-index="${i}">${dominoHtml(t,{oriented:true,small:true})}</span>`).join("");
+    requestAnimationFrame(layoutDominoBoard);
     const ends=document.getElementById("dominoEnds");if(ends){
-      const chain=g.state.chain||[],l=chain[0]?.left,r=chain[chain.length-1]?.right;
+      const l=chain[0]?.left,r=chain[chain.length-1]?.right;
       ends.textContent=chain.length?`Extrémités libres : ${l} et ${r}`:"";
     }
   }
@@ -311,6 +379,15 @@
 
   window.initDominos=function(){
     ui={mode:"online",game:newGame(),selected:null,aiLevel:"medium",online:onlineEmpty()};
+
+    // Recalcule automatiquement le serpentin si la fenêtre ou la colonne de jeu change de largeur.
+    dominoBoardResizeObserver?.disconnect();
+    const board=document.getElementById("dominoBoard");
+    if(board&&window.ResizeObserver){
+      dominoBoardResizeObserver=new ResizeObserver(()=>layoutDominoBoard());
+      dominoBoardResizeObserver.observe(board);
+    }
+
     const mode=document.getElementById("dominoMode");
     mode?.addEventListener("change",()=>{disconnect();ui.mode=mode.value;resetLocal();document.getElementById("dominoOnlineSettings").hidden=ui.mode!=="online";document.getElementById("dominoAiSettings").hidden=ui.mode!=="ai";render();});
     document.getElementById("dominoAiLevel")?.addEventListener("change",e=>{ui.aiLevel=e.target.value;});
