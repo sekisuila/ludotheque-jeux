@@ -2672,6 +2672,7 @@ main { min-height: calc(100vh - 160px); }
 .domino-back-row,.domino-hand-row{display:flex;gap:.35rem;flex-wrap:wrap;justify-content:center}
 .domino-table{background:linear-gradient(145deg,#edf6ef,#e4efe7);border:1px solid var(--line);border-radius:18px;padding:1rem;min-height:180px;display:flex;flex-direction:column;justify-content:center}
 .domino-board{display:flex;align-items:center;justify-content:center;gap:.18rem;flex-wrap:wrap;min-height:110px}
+.domino-board .domino-tile.double{transform:rotate(90deg);margin:14px 12px}
 .domino-ends{text-align:center;color:var(--muted);font-size:.9rem;margin-top:.65rem}
 .domino-hand{margin-top:1rem;padding:.8rem;border:1px solid var(--line);border-radius:14px;background:var(--surface,white)}
 .domino-hand-button{border:0;background:transparent;padding:.18rem;border-radius:10px;cursor:pointer}
