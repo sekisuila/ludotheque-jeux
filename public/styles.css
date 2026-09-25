@@ -2652,3 +2652,47 @@ main { min-height: calc(100vh - 160px); }
   .account-history-toolbar{align-items:stretch;flex-direction:column}
   .account-history-filter{min-width:0;width:100%}
 }
+
+
+/* ============================================================
+   Dominos
+   ============================================================ */
+.domino-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:1.25rem;align-items:start}
+.domino-shell{min-width:0}
+.domino-ai-settings{display:flex;justify-content:flex-end;margin:.75rem 0}
+.domino-ai-settings label{display:flex;align-items:center;gap:.6rem}
+.domino-score{display:grid;grid-template-columns:1fr .8fr .8fr 1fr;gap:.65rem;margin:1rem 0}
+.domino-score>div{background:var(--surface,white);border:1px solid var(--line);border-radius:12px;padding:.7rem;text-align:center}
+.domino-score span,.domino-score small{display:block;color:var(--muted)}
+.domino-score strong{font-size:1.55rem;font-variant-numeric:tabular-nums}
+.domino-score-card.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 14%,transparent)}
+.domino-last-round{grid-column:1/-1!important;font-size:.9rem;color:var(--muted)}
+.domino-opponent{padding:.75rem;border:1px dashed var(--line);border-radius:14px;margin-bottom:.9rem}
+.domino-opponent-head,.domino-hand-title{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:.55rem}
+.domino-back-row,.domino-hand-row{display:flex;gap:.35rem;flex-wrap:wrap;justify-content:center}
+.domino-table{background:linear-gradient(145deg,#edf6ef,#e4efe7);border:1px solid var(--line);border-radius:18px;padding:1rem;min-height:180px;display:flex;flex-direction:column;justify-content:center}
+.domino-board{display:flex;align-items:center;justify-content:center;gap:.18rem;flex-wrap:wrap;min-height:110px}
+.domino-board .domino-tile.double{transform:rotate(90deg);margin:14px 12px}
+.domino-ends{text-align:center;color:var(--muted);font-size:.9rem;margin-top:.65rem}
+.domino-hand{margin-top:1rem;padding:.8rem;border:1px solid var(--line);border-radius:14px;background:var(--surface,white)}
+.domino-hand-button{border:0;background:transparent;padding:.18rem;border-radius:10px;cursor:pointer}
+.domino-hand-button:disabled{cursor:default;opacity:.65}
+.domino-hand-button.playable{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+.domino-hand-button:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.domino-actions{display:flex;justify-content:center;gap:.65rem;flex-wrap:wrap;margin:1rem 0 .5rem}
+.domino-tile{display:inline-flex;position:relative;align-items:stretch;width:72px;height:38px;border:2px solid #252a2c;border-radius:7px;background:#faf7ec;box-shadow:0 2px 4px rgba(0,0,0,.14);overflow:hidden;vertical-align:middle}
+.domino-tile.small{width:56px;height:30px;border-radius:6px;border-width:1.5px}
+.domino-tile.selected{outline:3px solid var(--accent);outline-offset:2px;transform:translateY(-3px)}
+.domino-divider{position:absolute;left:50%;top:2px;bottom:2px;width:1.5px;background:#333;transform:translateX(-50%);z-index:2}
+.domino-half{position:relative;flex:1;display:block}
+.domino-pip{position:absolute;width:5px;height:5px;border-radius:50%;background:#202426;transform:translate(-50%,-50%)}
+.domino-tile.small .domino-pip{width:4px;height:4px}
+.domino-pip.p1{left:25%;top:25%}.domino-pip.p2{left:50%;top:25%}.domino-pip.p3{left:75%;top:25%}
+.domino-pip.p4{left:25%;top:50%}.domino-pip.p5{left:50%;top:50%}.domino-pip.p6{left:75%;top:50%}
+.domino-pip.p7{left:25%;top:75%}.domino-pip.p8{left:50%;top:75%}.domino-pip.p9{left:75%;top:75%}
+.domino-back{background:repeating-linear-gradient(45deg,#244f43,#244f43 5px,#2f6556 5px,#2f6556 10px);border-color:#18362f;color:white;align-items:center;justify-content:center}
+.domino-back-mark{font-weight:900;font-size:.85rem;letter-spacing:.05em}
+.domino-back .domino-divider{display:none}
+.domino-help p{margin:.75rem 0}
+@media(max-width:960px){.domino-layout{grid-template-columns:1fr}.domino-score{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.domino-score{gap:.4rem}.domino-score>div{padding:.55rem}.domino-tile{width:62px;height:34px}.domino-board{justify-content:flex-start}.domino-table{overflow-x:auto}.domino-actions .btn{flex:1 1 30%}}

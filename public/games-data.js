@@ -234,21 +234,21 @@ const GAMES = [
     id: "dominos",
     name: "Dominos",
     category: "Hasard & placement",
-    players: "2 à 4 joueurs",
+    players: "2 joueurs",
     duration: "15 à 40 min",
     difficulty: "Accessible",
-    intro: "Alignez les dominos en faisant correspondre leurs valeurs et essayez de vider votre main avant vos adversaires.",
-    goal: "Être le premier à poser tous ses dominos ou terminer avec le moins de points en main selon la variante.",
+    intro: "La variante double-six à pioche : 28 dominos, 7 par joueur, plusieurs manches et une course jusqu’à 100 points.",
+    goal: "Atteindre 100 points en vidant sa main ou en terminant une manche bloquée avec moins de points que l’adversaire.",
     rules: [
-      "Mélangez les dominos face cachée et distribuez-en un nombre déterminé à chaque joueur.",
-      "Le premier domino est posé selon la règle de départ de la variante.",
-      "À son tour, un joueur ajoute un domino dont une extrémité correspond à l'une des extrémités libres de la chaîne.",
-      "S'il ne peut pas jouer, il pioche ou passe selon la variante.",
-      "Les doubles peuvent être placés transversalement pour une meilleure lisibilité.",
-      "La manche prend fin lorsqu'un joueur n'a plus de domino ou lorsque le jeu est bloqué."
+      "La partie utilise un jeu double-six de 28 dominos. Chaque joueur reçoit 7 dominos ; les 14 autres forment la pioche.",
+      "Le plus grand double commence la manche. Si personne n’a de double, le domino de plus forte valeur est posé en premier.",
+      "À son tour, un joueur pose un domino dont une extrémité correspond à l’une des deux extrémités libres de la chaîne.",
+      "S’il ne peut pas jouer, il pioche jusqu’à obtenir un domino jouable ou jusqu’à épuisement de la pioche. Sans pioche ni coup possible, il passe.",
+      "La manche se termine lorsqu’un joueur n’a plus de domino ou lorsque les deux joueurs sont bloqués.",
+      "En vidant sa main, le gagnant marque les points restant dans la main adverse. En cas de blocage, le joueur ayant le moins de points marque la différence. Le premier à 100 points gagne la partie."
     ],
-    tips: "Essayez de conserver plusieurs valeurs différentes en main pour éviter d'être rapidement bloqué.",
-    demo: false,
+    tips: "Gardez plusieurs valeurs ouvertes en main et surveillez les valeurs qui disparaissent de la chaîne : elles donnent de précieux indices pour bloquer l’adversaire.",
+    demo: true,
     art: "domino"
   }
 ];
