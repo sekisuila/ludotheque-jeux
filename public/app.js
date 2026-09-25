@@ -125,7 +125,7 @@ function renderHome() {
         </div>
         <div class="feature-list">
           <article class="feature"><div class="ico">📖</div><h3>Règles illustrées</h3><p>Chaque fiche combine explications, étapes numérotées et schémas visuels sans dépendre d'images externes.</p></article>
-          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go, Abalone et le Yams, avec jeu local, IA et modes en ligne selon les jeux.</p></article>
+          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go, Abalone, le Yams, le 421 et les Dominos, avec jeu local, IA et modes en ligne selon les jeux.</p></article>
           <article class="feature"><div class="ico">🌐</div><h3>Multijoueur extensible</h3><p>La structure est prête à recevoir plus tard un serveur WebSocket pour jouer à distance entre utilisateurs.</p></article>
         </div>
       </section>
