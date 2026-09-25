@@ -1496,6 +1496,24 @@ async function load421GamesPanel(){
 }
 
 
+async function loadDominoRatingsPanel(){
+  const mine=document.getElementById("myDominoRating"),board=document.getElementById("dominoEloLeaderboard");
+  if(!mine||!board||!window.LudoOnline)return;
+  try{
+    const [rating,data]=await Promise.all([LudoOnline.dominoRatings.mine(),LudoOnline.dominoRatings.leaderboard(30)]);
+    mine.innerHTML=`<div><span>Dominos</span><strong>${Number(rating.rating||1200)}</strong><small>${Number(rating.games||0)} partie${Number(rating.games||0)>1?"s":""}</small></div>`;
+    board.innerHTML=data.players?.length?data.players.map((r,i)=>`<div class="elo-row"><span>${i+1}.</span><strong>${escapeHtml(r.username)}</strong><b>${Number(r.rating)}</b><small>${Number(r.games)} p.</small></div>`).join(""):'<p>Aucun classement Dominos pour le moment.</p>';
+  }catch(e){mine.innerHTML=`<p>${escapeHtml(e.message)}</p>`;board.innerHTML="";}
+}
+async function loadDominoGamesPanel(){
+  const list=document.getElementById("dominoGameArchiveList");if(!list||!window.LudoOnline)return;
+  try{
+    const games=await LudoOnline.dominoGames.list();
+    if(!games.length){list.innerHTML="<p>Aucune partie de Dominos en ligne terminée pour le moment.</p>";return;}
+    list.innerHTML=games.map(g=>`<article class="archive-game-row"><div><strong>${escapeHtml(g.player0Username)} <span class="archive-result">${escapeHtml(g.result)}</span> ${escapeHtml(g.player1Username)}</strong><small>${escapeHtml(chessArchiveDate(g.createdAt))} · Score final ${g.player0Score}–${g.player1Score} · ${g.rated?"Classée":"Amicale"}</small></div></article>`).join("");
+  }catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+}
+
 const ACCOUNT_HISTORY_STORAGE_KEY = "strathasard.account.lastHistoryGame";
 const LEGACY_ACCOUNT_HISTORY_STORAGE_KEY = "jeux" + "partage.account.lastHistoryGame";
 const ACCOUNT_HISTORY_GAMES = [
@@ -1555,6 +1573,14 @@ const ACCOUNT_HISTORY_GAMES = [
     listId: "game421ArchiveList",
     replayId: "game421ArchiveReplay",
     replayClass: "chess-archive-replay"
+  },
+  {
+    id: "dominos",
+    label: "Dominos",
+    description: "Retrouvez vos parties multijoueurs de Dominos et leur score final.",
+    listId: "dominoGameArchiveList",
+    replayId: "dominoArchiveReplay",
+    replayClass: "chess-archive-replay"
   }
 ];
 
@@ -1565,7 +1591,8 @@ const ACCOUNT_HISTORY_LOADERS = {
   awale: loadAwaleGamesPanel,
   abalone: loadAbaloneGamesPanel,
   yams: loadYamsGamesPanel,
-  "421": load421GamesPanel
+  "421": load421GamesPanel,
+  dominos: loadDominoGamesPanel
 };
 
 function readLastAccountHistoryGame() {
@@ -1733,6 +1760,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
       </section>
       
       <section class="panel account-card chess-ratings-card"><h2>Classement Elo — 421</h2><div id="my421Rating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="game421EloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div><div class="note">Le 421 possède un Elo unique. Les parties amicales ne modifient pas le classement.</div></section>
+      <section class="panel account-card chess-ratings-card"><h2>Classement Elo — Dominos</h2><div id="myDominoRating" class="elo-grid"><p>Chargement du classement…</p></div><h3>Classement des joueurs</h3><div id="dominoEloLeaderboard" class="elo-leaderboard"><p>Chargement…</p></div><div class="note">Les Dominos possèdent un Elo unique. Les parties amicales ne modifient pas le classement.</div></section>
       
 
       <form id="changePasswordForm" class="panel account-card">
@@ -1841,6 +1869,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
     loadAbaloneRatingsPanel();
     loadYamsRatingsPanel();
     load421RatingsPanel();
+    loadDominoRatingsPanel();
     initAccountGameHistory();
     return;
   }
