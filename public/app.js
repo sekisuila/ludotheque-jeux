@@ -182,6 +182,7 @@ function renderGame(id) {
   if (id === "abalone") return renderAbaloneGamePage(game);
   if (id === "yams") return renderYamsGamePage(game);
   if (id === "421") return render421GamePage(game);
+  if (id === "dominos") return renderDominoGamePage(game);
 
   app.innerHTML = `
     <div class="page">
@@ -2025,6 +2026,7 @@ function renderPlay(id) {
   if (id === "awale") return renderAwalePlay();
   if (id === "yams") return renderYamsPlay();
   if (id === "421") return render421Play();
+  if (id === "dominos") return renderDominoPlay();
 
   app.innerHTML = `
     <div class="page">
@@ -2037,6 +2039,7 @@ function renderPlay(id) {
         <article class="play-card"><div class="visual">${illustration("awale", false)}</div><div><span class="tag">Jouable</span><h2>Awélé</h2><p>Deux joueurs en local ou joueur contre IA, avec semailles, captures et règle de nourrissage.</p><a class="btn" href="#/jouer/awale">Jouer à l’Awélé</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>Yams</h2><p>Cinq dés, jusqu’à trois lancers, feuille de score complète, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>421</h2><p>Trois dés, 21 jetons, charge et décharge, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/421">Jouer au 421</a></div></article>
+        <article class="play-card"><div class="visual">${illustration("domino", false)}</div><div><span class="tag">Nouveau</span><h2>Dominos</h2><p>Double-six à pioche, manches jusqu’à 100 points, trois niveaux d’IA et salons multijoueurs.</p><a class="btn" href="#/jouer/dominos">Jouer aux Dominos</a></div></article>
       </div>
     </div>
   `;
@@ -2447,6 +2450,101 @@ function render421GamePage(game){
 }
 function render421Play(){
   app.innerHTML=`<div class="page game421-page"><div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>421</span></div><div class="section-head"><div><div class="eyebrow">Jeu de dés</div><h1>421 interactif</h1><p class="section-lead">Conservez vos meilleurs dés, validez votre combinaison et débarrassez-vous de vos jetons.</p></div><a class="btn outline small" href="#/jeu/421">Voir les règles</a></div><div class="game421-layout"><section class="game-shell"><div class="yams-toolbar"><label><strong>Mode :</strong><select id="game421Mode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label><button id="new421" class="btn small" type="button">Nouvelle partie</button></div><div id="game421OnlineSettings" class="yams-online-settings"><div class="yams-online-grid"><label><span>Ordre à la création</span><select id="game421CreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Joueur 1 — commence</option><option value="1">Joueur 2</option></select></label><label class="form-check"><input id="game421Rated" type="checkbox" checked><span>Partie classée Elo</span></label></div><div class="yams-room-actions"><button id="create421Room" class="btn small" type="button">Créer un salon</button><input id="game421RoomCode" maxlength="6" placeholder="CODE" autocomplete="off"><button id="join421Room" class="btn outline small" type="button">Rejoindre</button></div><div id="game421OnlineStatus" class="form-status"></div><div id="game421RoomState" class="yams-room-state"></div></div><div id="game421Tokens" class="game421-tokens"></div><div id="game421Dice" class="yams-dice game421-dice"></div><div id="game421Combo" class="game421-combo"></div><div class="game421-actions"><button id="roll421" class="btn" type="button">Lancer les dés</button><button id="stop421" class="btn outline" type="button">Valider la combinaison</button></div><div id="game421Status" class="status"></div><div id="game421OnlineActions" class="chess-online-actions" hidden><button id="resign421" class="btn danger small" type="button">Abandonner</button><button id="draw421" class="btn outline small" type="button">Proposer nulle</button><button id="rematch421" class="btn small" type="button" hidden>Proposer une revanche</button></div><div id="game421Prompt" class="online-decision" hidden><strong>Proposition</strong><span></span><div><button id="accept421" class="btn small" type="button">Accepter</button><button id="decline421" class="btn outline small" type="button">Refuser</button></div></div><div id="game421RatingResult" class="rating-result" hidden></div></section><aside class="panel"><h2>Repères</h2><p><strong>Charge :</strong> évitez de récupérer les jetons du pot.</p><p><strong>Décharge :</strong> gagnez les manches pour donner vos jetons à l’adversaire.</p><p><strong>Nénette :</strong> 2-2-1 est la combinaison la plus faible.</p><div class="note"><strong>Astuce :</strong> un 4, un 2 ou un As conservé peut ouvrir la voie au 421, mais deux As donnent aussi accès à plusieurs combinaisons très fortes.</div></aside></div></div>`;init421();
+}
+
+
+function renderDominoGamePage(game){
+  app.innerHTML=`
+    <div class="page domino-rules-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/catalogue">Catalogue</a><span>›</span><span>Dominos</span></div>
+      <section class="game-hero">
+        <div class="game-hero-visual">${illustration("domino",true)}</div>
+        <div>
+          <div class="eyebrow">Placement & blocage</div>
+          <h1>Dominos double-six</h1>
+          <p>Notre variante à deux joueurs utilise les 28 dominos du double-six, une pioche et plusieurs manches jusqu’à 100 points.</p>
+          <div class="stats"><div class="stat"><strong>28 dominos</strong><span>Double-six</span></div><div class="stat"><strong>7 chacun</strong><span>Distribution</span></div><div class="stat"><strong>100 points</strong><span>Victoire</span></div></div>
+          <div class="hero-actions"><a class="btn" href="#/jouer/dominos">Jouer aux Dominos</a></div>
+        </div>
+      </section>
+      <div class="content-grid">
+        <article class="panel">
+          <h2>Déroulement d’une manche</h2>
+          <ol class="rule-list">
+            <li>Les 28 dominos sont mélangés. Chaque joueur en reçoit <strong>7</strong> et les 14 autres constituent la pioche.</li>
+            <li>Le joueur qui possède le <strong>plus grand double</strong> le pose automatiquement. Si aucun joueur n’a de double, le domino de plus forte valeur ouvre la manche.</li>
+            <li>À tour de rôle, posez un domino en faisant correspondre une de ses valeurs avec l’une des deux extrémités libres de la chaîne.</li>
+            <li>Si aucun domino de votre main ne convient, vous piochez jusqu’à pouvoir jouer ou jusqu’à vider la pioche.</li>
+            <li>Si la pioche est vide et qu’aucun domino ne convient, vous passez. Deux joueurs bloqués successivement mettent fin à la manche.</li>
+          </ol>
+          <h2 style="margin-top:24px">Score</h2>
+          <p>Si un joueur vide sa main, il marque la somme des points restant dans la main adverse. Si la manche est bloquée, le joueur ayant le moins de points en main marque la <strong>différence</strong> entre les deux mains. À égalité, personne ne marque.</p>
+          <div class="note"><strong>Partie :</strong> les manches s’enchaînent jusqu’à ce qu’un joueur atteigne ou dépasse 100 points.</div>
+        </article>
+        <aside class="panel">
+          <h3>Modes disponibles</h3>
+          <p><strong>Contre IA :</strong> trois niveaux — facile, moyen et difficile.</p>
+          <p><strong>Local :</strong> deux joueurs utilisent le même écran ; seule la main du joueur actif est affichée.</p>
+          <p><strong>Multijoueur :</strong> le serveur conserve les mains cachées et n’envoie à chaque joueur que ses propres dominos.</p>
+          <div class="note">Les parties en ligne peuvent être classées Elo ou amicales.</div>
+        </aside>
+      </div>
+    </div>`;
+}
+
+function renderDominoPlay(){
+  app.innerHTML=`
+    <div class="page domino-page">
+      <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>Dominos</span></div>
+      <div class="section-head">
+        <div><div class="eyebrow">Double-six</div><h1>Dominos interactifs</h1><p class="section-lead">Posez vos dominos aux extrémités de la chaîne, gérez la pioche et soyez le premier à atteindre 100 points.</p></div>
+        <a class="btn outline small" href="#/jeu/dominos">Voir les règles</a>
+      </div>
+      <div class="domino-layout">
+        <section class="game-shell domino-shell">
+          <div class="yams-toolbar">
+            <label><strong>Mode :</strong><select id="dominoMode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <button id="newDomino" class="btn small" type="button">Nouvelle partie</button>
+          </div>
+          <div id="dominoAiSettings" class="domino-ai-settings" hidden>
+            <label><span>Niveau IA</span><select id="dominoAiLevel"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select></label>
+          </div>
+          <div id="dominoOnlineSettings" class="yams-online-settings">
+            <div class="yams-online-grid">
+              <label><span>Place à la création</span><select id="dominoCreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Joueur 1</option><option value="1">Joueur 2</option></select></label>
+              <label class="form-check"><input id="dominoRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+            </div>
+            <div class="yams-room-actions"><button id="createDominoRoom" class="btn small" type="button">Créer un salon</button><input id="dominoRoomCode" maxlength="6" placeholder="CODE" autocomplete="off"><button id="joinDominoRoom" class="btn outline small" type="button">Rejoindre</button></div>
+            <div id="dominoOnlineStatus" class="form-status"></div><div id="dominoRoomState" class="yams-room-state"></div>
+          </div>
+
+          <div id="dominoScore" class="domino-score"></div>
+          <div id="dominoOpponent" class="domino-opponent"></div>
+          <div class="domino-table">
+            <div id="dominoBoard" class="domino-board" aria-label="Chaîne de dominos"></div>
+            <div id="dominoEnds" class="domino-ends"></div>
+          </div>
+          <div id="dominoHand" class="domino-hand"></div>
+          <div class="domino-actions">
+            <button id="dominoPlayLeft" class="btn outline" type="button">Poser à gauche</button>
+            <button id="dominoDraw" class="btn" type="button">Piocher</button>
+            <button id="dominoPlayRight" class="btn outline" type="button">Poser à droite</button>
+          </div>
+          <div id="dominoStatus" class="status"></div>
+          <div id="dominoOnlineActions" class="chess-online-actions" hidden><button id="resignDomino" class="btn danger small" type="button">Abandonner</button><button id="rematchDomino" class="btn small" type="button" hidden>Proposer une revanche</button></div>
+          <div id="dominoPrompt" class="online-decision" hidden><strong>Proposition</strong><span></span><div><button id="acceptDomino" class="btn small" type="button">Accepter</button><button id="declineDomino" class="btn outline small" type="button">Refuser</button></div></div>
+          <div id="dominoRatingResult" class="rating-result" hidden></div>
+        </section>
+        <aside class="panel domino-help">
+          <h2>Repères</h2>
+          <p><strong>Sélection :</strong> cliquez d’abord sur un domino de votre main, puis choisissez gauche ou droite.</p>
+          <p><strong>Pioche :</strong> si aucun domino ne convient, le bouton pioche automatiquement jusqu’au premier domino jouable.</p>
+          <p><strong>Blocage :</strong> lorsque la pioche est vide, le même bouton devient « Passer ».</p>
+          <div class="note"><strong>IA difficile :</strong> elle tient compte des valeurs déjà sorties et cherche davantage à fermer les possibilités adverses.</div>
+        </aside>
+      </div>
+    </div>`;
+  initDominos();
 }
 
 function renderAbout() {
