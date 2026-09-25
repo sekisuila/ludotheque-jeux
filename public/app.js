@@ -1869,7 +1869,7 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
       <p id="registerStatus" class="form-status"></p>
     </form>`;
 
-  const registerTurnstilePromise=LudoOnline.security.render("#registerTurnstile","register",{appearance:"always"}).catch(err=>{
+  const registerTurnstilePromise=LudoOnline.security.render("#registerTurnstile","register",{appearance:"interaction-only",execution:"execute"}).catch(err=>{
     const st=document.getElementById("registerStatus"); if(st) st.textContent=err.message; return null;
   });
   let loginTurnstilePromise=null;
@@ -1899,14 +1899,27 @@ function renderAccountContent(user, newRecoveryKey = null, accountNotice = null)
 
   document.getElementById("registerForm")?.addEventListener("submit", async e => {
     e.preventDefault();
-    const fd=new FormData(e.currentTarget),st=document.getElementById("registerStatus"); st.textContent="Création…";
+    const form=e.currentTarget,fd=new FormData(form),st=document.getElementById("registerStatus");
+    const button=form.querySelector('button[type="submit"]');
+    if(button) button.disabled=true;
+    st.textContent="Vérification anti-robot…";
     const widget=await registerTurnstilePromise;
-    const token=widget?.getToken?.()||"";
-    if(!widget || !token){ st.textContent="Effectuez d’abord la vérification anti-robot."; return; }
+    if(!widget){
+      st.textContent="Protection anti-robot indisponible.";
+      if(button) button.disabled=false;
+      return;
+    }
     try {
+      const token=await widget.execute();
+      if(!token) throw new Error("La vérification anti-robot n’a pas abouti.");
+      st.textContent="Création…";
       const data=await LudoOnline.register(fd.get("username"),fd.get("email"),fd.get("password"),token);
       renderAccountContent(data.user,data.recoveryKey,data.emailWarning || "Compte créé. Vérifiez maintenant votre adresse e-mail.");
-    } catch(err){ st.textContent=err.message; widget.reset?.(); }
+    } catch(err){
+      st.textContent=err.message;
+      widget.reset?.();
+      if(button) button.disabled=false;
+    }
   });
 }
 
@@ -1937,20 +1950,36 @@ function renderRecovery() {
       </div>
     </div>`;
 
-  const emailRecoveryTurnstilePromise=LudoOnline.security.render("#emailRecoveryTurnstile","forgot_password",{appearance:"always"}).catch(err=>{
+  const emailRecoveryTurnstilePromise=LudoOnline.security.render("#emailRecoveryTurnstile","forgot_password",{appearance:"interaction-only",execution:"execute"}).catch(err=>{
     const st=document.getElementById("emailRecoveryStatus"); if(st) st.textContent=err.message; return null;
   });
 
   document.getElementById("emailRecoveryForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const form=e.currentTarget;
-    const fd=new FormData(form),st=document.getElementById("emailRecoveryStatus"); st.textContent="Envoi…";
+    const fd=new FormData(form),st=document.getElementById("emailRecoveryStatus");
+    const button=form.querySelector('button[type="submit"]');
+    if(button) button.disabled=true;
+    st.textContent="Vérification anti-robot…";
     const widget=await emailRecoveryTurnstilePromise;
-    const token=widget?.getToken?.()||"";
-    if(!widget || !token){ st.textContent="Effectuez d’abord la vérification anti-robot."; return; }
-    try{ const data=await LudoOnline.requestPasswordReset(fd.get("email"),token); st.textContent=data.message; form.reset(); }
-    catch(err){st.textContent=err.message;}
-    finally{widget.reset?.();}
+    if(!widget){
+      st.textContent="Protection anti-robot indisponible.";
+      if(button) button.disabled=false;
+      return;
+    }
+    try{
+      const token=await widget.execute();
+      if(!token) throw new Error("La vérification anti-robot n’a pas abouti.");
+      st.textContent="Envoi…";
+      const data=await LudoOnline.requestPasswordReset(fd.get("email"),token);
+      st.textContent=data.message;
+      form.reset();
+    } catch(err){
+      st.textContent=err.message;
+    } finally {
+      widget.reset?.();
+      if(button) button.disabled=false;
+    }
   });
 
   document.getElementById("recoveryForm")?.addEventListener("submit", async e => {
