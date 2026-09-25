@@ -371,6 +371,7 @@ async function deleteAccount(request,env,user){
   if(supplied!==row.password_hash) return json({error:"Le mot de passe est incorrect."},401);
   const placeholder=`Compte-supprime-${user.id.slice(0,8)}`;
   const salt=newSalt(),disabledHash=await hashPassword(randomToken(48),salt);
+  try{ await env.DB.prepare("DELETE FROM domino_ratings WHERE user_id=?").bind(user.id).run(); }catch{}
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id),
     env.DB.prepare("DELETE FROM saves WHERE user_id=?").bind(user.id),
