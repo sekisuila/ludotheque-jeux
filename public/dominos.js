@@ -183,7 +183,8 @@
     if(g.result?.over){setStatus(`${names()[g.result.winner]} gagne la partie ${g.state.scores[0]}–${g.state.scores[1]}.`);return;}
     if(ui.mode==="online"&&(!ui.online.players.black||!ui.online.players.white)){setStatus("Salon créé. En attente du deuxième joueur…");return;}
     const n=names(),turnName=n[g.state.turn];
-    const hand=ui.mode==="online"&&g.state.turn===mySide()?handForView(g):ui.mode!=="online"?g.state.hands[g.state.turn]:[];
+    if(ui.mode==="online"&&g.state.turn!==mySide()){setStatus(`${turnName} joue.`);return;}
+    const hand=ui.mode==="online"?handForView(g):g.state.hands[g.state.turn];
     const can=hand.some?.(t=>legalSides(g,t).length);
     setStatus(`${turnName} joue.${can?" Choisissez un domino puis une extrémité.":" Aucun domino jouable : piochez ou passez si la pioche est vide."}`);
   }
