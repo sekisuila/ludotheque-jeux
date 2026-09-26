@@ -669,6 +669,189 @@ function abChooseAiMove(game, level = "medium") {
 // -------------------------------
 let abaloneUi = null;
 
+function abPlayerName(player){
+  player=Number(player);
+  if(abaloneUi?.mode==="online"){
+    const p=player===AB_BLACK?abaloneUi.online?.players?.black:abaloneUi.online?.players?.white;
+    return p?.username||(player===AB_BLACK?"Noir":"Blanc");
+  }
+  if(abaloneUi?.mode==="ai") return player===Number(abaloneUi.humanSide)?"Vous":"IA";
+  return player===AB_BLACK?"Noir":"Blanc";
+}
+
+function abLatestMoveInfo(){
+  const moves=abaloneUi?.game?.moves||[];
+  const index=moves.length-1;
+  if(index<0)return null;
+  const move=moves[index];
+  const key=`${index}:${move.player||""}:${(move.group||[]).join("|")}:${(move.dir||[]).join(",")}:${(move.push||[]).join("|")}:${move.eject||0}`;
+  return {index,move,key};
+}
+
+function abIsOpponentAction(player){
+  player=Number(player);
+  if(abaloneUi?.mode==="online") return (abaloneUi.online?.side===AB_BLACK||abaloneUi.online?.side===AB_WHITE)&&player!==Number(abaloneUi.online.side);
+  if(abaloneUi?.mode==="ai") return player!==Number(abaloneUi.humanSide);
+  return abaloneUi?.mode==="local";
+}
+
+function abClearMoveAnimation(){
+  if(!abaloneUi)return;
+  for(const timer of abaloneUi.animationTimers||[]) clearTimeout(timer);
+  abaloneUi.animationTimers=[];
+  document.querySelectorAll("#abaloneBoard .ab-last-origin,#abaloneBoard .ab-last-destination,#abaloneBoard .ab-last-push,#abaloneBoard .ab-animate-origin,#abaloneBoard .ab-animate-destination,#abaloneBoard .ab-animate-push").forEach(el=>{
+    el.classList.remove("ab-animate-origin","ab-animate-destination","ab-animate-push");
+  });
+  document.getElementById("abaloneBoard")?.classList.remove("ab-eject-flash");
+}
+
+function abSyncMoveFeedback({animate=true,revealLatest=true}={}){
+  const latest=abLatestMoveInfo();
+  if(!latest){
+    abaloneUi.lastSeenActionKey=null;
+    abaloneUi.moveFeedback=null;
+    return;
+  }
+  if(latest.key===abaloneUi.lastSeenActionKey)return;
+  abaloneUi.lastSeenActionKey=latest.key;
+  abClearMoveAnimation();
+  if(!revealLatest){
+    abaloneUi.moveFeedback=null;
+    return;
+  }
+  abaloneUi.moveFeedback={...latest,animate:Boolean(animate&&abIsOpponentAction(latest.move.player))};
+}
+
+function abMoveSentence(move){
+  if(!move)return"";
+  const actor=abPlayerName(move.player);
+  const count=Math.max(1,Number(move.group?.length||1));
+  let action=move.type==="sumito"
+    ? `réalise un Sumito ${count}–${Number(move.push?.length||0)}`
+    : move.type==="broadside"
+      ? `déplace ${count} bille${count>1?"s":""} latéralement`
+      : `déplace ${count} bille${count>1?"s":""} en ligne`;
+  let text=`${actor} ${action} ${abDirectionName(move.dir)}`;
+  if(move.push?.length) text+=` et pousse ${move.push.length} bille${move.push.length>1?"s":""} adverse${move.push.length>1?"s":""}`;
+  if(move.eject) text+=`, avec une éjection`;
+  return text+".";
+}
+
+function abRenderMoveNotice(){
+  const el=document.getElementById("abaloneMoveNotice");if(!el)return;
+  const feedback=abaloneUi?.moveFeedback;
+  if(!feedback){el.hidden=true;el.textContent="";return;}
+  el.hidden=false;
+  el.textContent=abMoveSentence(feedback.move);
+}
+
+function abRenderContext(){
+  const el=document.getElementById("abaloneMatchContext");if(!el||!abaloneUi)return;
+  const items=[];
+  if(abaloneUi.mode==="online"){
+    items.push("Multijoueur en ligne");
+    const tc=abaloneUi.online?.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60,inc=Number(tc.incrementSeconds||0);
+      items.push(`Cadence ${Number.isInteger(min)?min:min.toFixed(1)}+${inc}`);
+      items.push(abaloneUi.online.settings?.rated?"Classée Elo":"Amicale");
+    }else{
+      const preset=document.getElementById("abaloneTimePreset")?.selectedOptions?.[0]?.textContent;
+      if(preset)items.push(`Cadence ${preset}`);
+    }
+    if(abaloneUi.online.side===AB_BLACK||abaloneUi.online.side===AB_WHITE) items.push(`Vous : ${Number(abaloneUi.online.side)===AB_BLACK?"Noir":"Blanc"}`);
+  }else if(abaloneUi.mode==="ai"){
+    items.push("Joueur contre IA");
+    items.push(`IA : ${document.getElementById("abaloneAiLevel")?.selectedOptions?.[0]?.textContent||"Intermédiaire"}`);
+    items.push(`Vous : ${Number(abaloneUi.humanSide)===AB_BLACK?"Noir":"Blanc"}`);
+  }else{
+    items.push("2 joueurs sur le même écran");
+    items.push("Victoire : 6 billes adverses éjectées");
+  }
+  el.innerHTML=items.map(x=>`<span>${abEscapeHtml(String(x))}</span>`).join("");
+}
+
+function abCurrentResult(){
+  const game=abaloneUi?.game;
+  if(!game?.over)return null;
+  if(game.result?.over)return game.result;
+  const winner=game.winner==null?null:Number(game.winner);
+  return {
+    over:true,
+    type:winner==null?"draw":"ejections",
+    winner,
+    text:winner==null
+      ?"Partie nulle."
+      : `${abPlayerName(winner)} gagne après avoir éjecté 6 billes adverses.`
+  };
+}
+
+function abRenderGameResult(){
+  const box=document.getElementById("abaloneGameResult");if(!box)return;
+  const result=abCurrentResult();
+  if(!result){box.hidden=true;return;}
+  const title=document.getElementById("abaloneGameResultTitle");
+  const text=document.getElementById("abaloneGameResultText");
+  const again=document.getElementById("abaloneResultNew");
+  box.hidden=false;
+  if(title){
+    if(result.winner==null) title.textContent="Partie nulle";
+    else if(abaloneUi.mode==="ai") title.textContent=Number(result.winner)===Number(abaloneUi.humanSide)?"Vous gagnez la partie !":"L’IA gagne la partie !";
+    else title.textContent=`${abPlayerName(result.winner)} gagne la partie !`;
+  }
+  if(text)text.textContent=result.text||"Partie terminée.";
+  if(again){
+    if(abaloneUi.mode==="online"){
+      again.textContent="Proposer une revanche";
+      again.disabled=!(abaloneUi.online?.players?.black&&abaloneUi.online?.players?.white);
+    }else{
+      again.textContent="Nouvelle partie";
+      again.disabled=false;
+    }
+  }
+}
+
+function abRestartFromResult(){
+  if(abaloneUi?.mode==="online"){abSendAction("rematch_offer");return;}
+  newAbaloneGame();
+}
+
+function abBackHomeFromResult(){
+  if(abaloneUi?.mode==="online")abDisconnectOnlineRoom();
+  abClearMoveAnimation();
+  location.hash="#/accueil";
+}
+
+function abAnimateLatestMove(){
+  const feedback=abaloneUi?.moveFeedback;
+  if(!feedback?.animate)return;
+  feedback.animate=false;
+  if(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)return;
+  const board=document.getElementById("abaloneBoard");if(!board)return;
+  const move=feedback.move;
+  const timers=[];
+
+  for(const key of move.group||[]) board.querySelector(`.abalone-cell[data-key="${key}"]`)?.classList.add("ab-animate-origin");
+
+  timers.push(setTimeout(()=>{
+    for(const key of move.destinations||[]) board.querySelector(`.abalone-cell[data-key="${key}"]`)?.classList.add("ab-animate-destination");
+  },180));
+
+  timers.push(setTimeout(()=>{
+    for(const key of move.push||[]){
+      const pushedDest=abAddKey(key,move.dir);
+      board.querySelector(`.abalone-cell[data-key="${pushedDest}"]`)?.classList.add("ab-animate-push");
+    }
+    if(move.eject)board.classList.add("ab-eject-flash");
+  },340));
+
+  timers.push(setTimeout(()=>{
+    board.querySelectorAll(".ab-animate-origin,.ab-animate-destination,.ab-animate-push").forEach(el=>el.classList.remove("ab-animate-origin","ab-animate-destination","ab-animate-push"));
+    board.classList.remove("ab-eject-flash");
+  },1250));
+  abaloneUi.animationTimers=timers;
+}
+
 // ------------------------------------------------------------
 // Sauvegardes locales Abalone
 // ------------------------------------------------------------
@@ -1038,7 +1221,7 @@ function abConnectOnlineRoom(code,reconnect=false) {
         if(data.ratingUpdate!==undefined) abaloneUi.online.ratingUpdate=data.ratingUpdate;
         if(data.drawOffer) abShowProposal("draw",data.drawOffer);
         if(data.rematchOffer) abShowProposal("rematch",data.rematchOffer);
-        abApplyOnlineState(data.game);
+        abApplyOnlineState(data.game,{revealLatest:data.type==="state"});
         const color=abaloneUi.online.side===AB_BLACK?"Noir":"Blanc";
         abSetRoomStatus(`Salon ${abaloneUi.online.code} — vous jouez ${color}.`);
       } else if (data.type === "players") {
@@ -1051,7 +1234,7 @@ function abConnectOnlineRoom(code,reconnect=false) {
       else if(data.type==="rematch_offer") abShowProposal("rematch",data.offer);
       else if(data.type==="draw_declined"||data.type==="rematch_declined"){document.getElementById("abaloneOnlinePrompt").hidden=true;abaloneUi.online.pendingProposal=null;abSetRoomStatus(data.type==="draw_declined"?"Proposition de nulle refusée.":"Revanche refusée.");}
       else if(data.type==="rematch_started"){
-        abaloneUi.online.side=Number(data.side);abaloneUi.online.players=data.players||abaloneUi.online.players;abaloneUi.online.settings=data.settings||abaloneUi.online.settings;abaloneUi.online.ratings=data.ratings||abaloneUi.online.ratings;abaloneUi.online.ratingUpdate=null;if(data.clock)abSetClock(data.clock);abApplyOnlineState(data.game);abSetRoomStatus("Revanche commencée — couleurs inversées.");
+        abaloneUi.online.side=Number(data.side);abaloneUi.online.players=data.players||abaloneUi.online.players;abaloneUi.online.settings=data.settings||abaloneUi.online.settings;abaloneUi.online.ratings=data.ratings||abaloneUi.online.ratings;abaloneUi.online.ratingUpdate=null;if(data.clock)abSetClock(data.clock);abaloneUi.lastSeenActionKey=null;abaloneUi.moveFeedback=null;abApplyOnlineState(data.game,{revealLatest:false});abSetRoomStatus("Revanche commencée — couleurs inversées.");
       } else if (data.type === "error") abSetRoomStatus(data.message || "Coup refusé par le serveur.");
     },
     close: () => {
@@ -1070,7 +1253,7 @@ function abOnlinePositionFingerprint(state) {
   return `${boardSig}|${Number(state.turn||0)}|${Array.isArray(state.moves)?state.moves.length:0}|${state.over?1:0}|${state.winner??"-"}`;
 }
 
-function abApplyOnlineState(state) {
+function abApplyOnlineState(state,{revealLatest=true}={}) {
   if (!state) return;
 
   // Une resynchronisation périodique ne doit pas effacer la sélection en cours
@@ -1102,13 +1285,14 @@ function abApplyOnlineState(state) {
     abaloneUi.selected = [];
     abaloneUi.candidateMoves = [];
   }
+  abSyncMoveFeedback({animate:true,revealLatest});
   renderAbalone();
 }
 
 function initAbalone() {
   abaloneUi = {
     game: new AbaloneGame(), mode: "online", aiLevel: "medium", humanSide: AB_BLACK,
-    selected: [], candidateMoves: [], thinking: false,
+    selected: [], candidateMoves: [], thinking: false, lastSeenActionKey:null, moveFeedback:null, animationTimers:[],
     online: { ws:null,code:"",connected:false,side:null,players:null,clock:null,settings:null,ratings:null,ratingUpdate:null,pendingProposal:null,result:null,reconnecting:false }
   };
   const modeEl=document.getElementById("abaloneMode"); if(modeEl)modeEl.value="online";
@@ -1117,11 +1301,14 @@ function initAbalone() {
     abaloneUi.mode = e.target.value;
     if(ai) ai.hidden = abaloneUi.mode !== "ai";
     if(on) on.hidden = abaloneUi.mode !== "online";
-    if (abaloneUi.mode === "online") { abDisconnectOnlineRoom(); abaloneUi.game=new AbaloneGame();abaloneUi.selected=[];abaloneUi.candidateMoves=[];renderAbalone();abRefreshOnlineAccountState(); }
+    if (abaloneUi.mode === "online") { abDisconnectOnlineRoom();abClearMoveAnimation(); abaloneUi.game=new AbaloneGame();abaloneUi.selected=[];abaloneUi.candidateMoves=[];abaloneUi.lastSeenActionKey=null;abaloneUi.moveFeedback=null;renderAbalone();abRefreshOnlineAccountState(); }
     else newAbaloneGame();
   });
-  document.getElementById("abaloneTimePreset")?.addEventListener("change",e=>{document.getElementById("abaloneCustomTime").hidden=e.target.value!=="custom";});
-  document.getElementById("abaloneAiLevel")?.addEventListener("change", e => { abaloneUi.aiLevel = e.target.value; });
+  document.getElementById("abaloneTimePreset")?.addEventListener("change",e=>{document.getElementById("abaloneCustomTime").hidden=e.target.value!=="custom";abRenderContext();});
+  document.getElementById("abaloneInitialMinutes")?.addEventListener("input",abRenderContext);
+  document.getElementById("abaloneIncrementSeconds")?.addEventListener("input",abRenderContext);
+  document.getElementById("abaloneRated")?.addEventListener("change",abRenderContext);
+  document.getElementById("abaloneAiLevel")?.addEventListener("change", e => { abaloneUi.aiLevel = e.target.value; abRenderContext(); });
   document.getElementById("abaloneSide")?.addEventListener("change", e => { abaloneUi.humanSide = Number(e.target.value); newAbaloneGame(); });
   document.getElementById("newAbalone")?.addEventListener("click", newAbaloneGame);
   document.getElementById("undoAbalone")?.addEventListener("click", undoAbaloneMove);
@@ -1138,16 +1325,21 @@ function initAbalone() {
   document.getElementById("offerRematchAbalone")?.addEventListener("click",()=>abSendAction("rematch_offer"));
   document.getElementById("acceptAbaloneProposal")?.addEventListener("click",()=>abRespondProposal(true));
   document.getElementById("declineAbaloneProposal")?.addEventListener("click",()=>abRespondProposal(false));
+  document.getElementById("abaloneResultNew")?.addEventListener("click",abRestartFromResult);
+  document.getElementById("abaloneResultHome")?.addEventListener("click",abBackHomeFromResult);
   document.querySelectorAll("[data-ab-dir]").forEach(btn => btn.addEventListener("click", () => playSelectedAbaloneDirection(Number(btn.dataset.abDir))));
   refreshAbaloneSaveList(); abRefreshOnlineAccountState(); renderAbalone();
 }
 
 function newAbaloneGame() {
   if (abaloneUi?.mode === "online") abDisconnectOnlineRoom();
+  abClearMoveAnimation();
   abaloneUi.game = new AbaloneGame();
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
   abaloneUi.thinking = false;
+  abaloneUi.lastSeenActionKey = null;
+  abaloneUi.moveFeedback = null;
   renderAbalone();
   maybeAbaloneAiTurn();
 }
@@ -1246,6 +1438,7 @@ function playAbaloneMove(move) {
   if (!abaloneUi.game.play(move)) return;
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
+  abSyncMoveFeedback({animate:true,revealLatest:true});
   renderAbalone();
   maybeAbaloneAiTurn();
 }
@@ -1257,6 +1450,9 @@ function undoAbaloneMove() {
   if (abaloneUi.mode === "ai" && game.turn !== abaloneUi.humanSide && game.history.length) game.undo();
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
+  abClearMoveAnimation();
+  abaloneUi.moveFeedback=null;
+  abaloneUi.lastSeenActionKey=abLatestMoveInfo()?.key||null;
   renderAbalone();
 }
 
@@ -1267,6 +1463,7 @@ function maybeAbaloneAiTurn() {
   window.setTimeout(() => {
     const move = abChooseAiMove(abaloneUi.game, abaloneUi.aiLevel);
     if (move) abaloneUi.game.play(move);
+    abSyncMoveFeedback({animate:true,revealLatest:true});
     abaloneUi.thinking = false;
     renderAbalone();
   }, 120);
@@ -1289,13 +1486,17 @@ function renderAbaloneBoard() {
   const pushSet = new Set(abaloneUi.candidateMoves.flatMap(m =>
     m.type === "sumito" ? abMoveTriggerKeys(m) : []
   ));
+  const lastMove=game.moves[game.moves.length-1]||null;
+  const lastOrigins=new Set(lastMove?.group||[]);
+  const lastDestinations=new Set(lastMove?.destinations||[]);
+  const lastPushedDestinations=new Set((lastMove?.push||[]).map(k=>abAddKey(k,lastMove.dir)));
 
   boardEl.innerHTML = `<div class="abalone-board-surface" aria-hidden="true"></div>` + AB_CELLS.map(([q,r]) => {
     const key = abKey(q,r);
     const value = game.board[key];
     const left = 50 + (q + r/2) * 10.45;
     const top = 50 + r * 10.45;
-    const classes = ["abalone-cell", selectedSet.has(key)?"selected":"", targetSet.has(key)?"target":"", pushSet.has(key)?"push-target":""].filter(Boolean).join(" ");
+    const classes = ["abalone-cell", selectedSet.has(key)?"selected":"", targetSet.has(key)?"target":"", pushSet.has(key)?"push-target":"", lastOrigins.has(key)?"ab-last-origin":"", lastDestinations.has(key)?"ab-last-destination":"", lastPushedDestinations.has(key)?"ab-last-push":""].filter(Boolean).join(" ");
     const marble = value ? `<span class="abalone-marble ${value===AB_BLACK?"black":"white"}"></span>` : "";
     const disabled = !abCanHumanInteract() ? "disabled" : "";
     return `<button class="${classes}" data-key="${key}" style="left:${left}%;top:${top}%" ${disabled} aria-label="${value===AB_BLACK?"Bille noire":value===AB_WHITE?"Bille blanche":"Case vide"} ${key}">${marble}</button>`;
@@ -1350,12 +1551,18 @@ function renderAbaloneInfo() {
     const eb = Number.isFinite(m.evalBlack) ? m.evalBlack : null;
     const ew = Number.isFinite(m.evalWhite) ? m.evalWhite : null;
     const evalText = eb == null ? "" : `<small>N ${eb.toFixed(1)} · B ${ew.toFixed(1)}</small>`;
-    return `<div class="abalone-history-row"><span>${i+1}.</span><span class="ab-dot ${m.player===AB_BLACK?"black":"white"}"></span><span><b>${m.label}</b>${evalText}</span></div>`;
+    return `<div class="abalone-history-row ${i===game.moves.length-1?"latest":""}"><span>${i+1}.</span><span class="ab-dot ${m.player===AB_BLACK?"black":"white"}"></span><span><b>${abEscapeHtml(abPlayerName(m.player))} — ${abEscapeHtml(m.label)}</b>${evalText}</span></div>`;
   }).join("") : `<div class="history-empty">Les coups et leurs évaluations apparaîtront ici.</div>`;
   hist.scrollTop = hist.scrollHeight;
+  const count=document.getElementById("abaloneHistoryCount");
+  if(count)count.textContent=`${game.moves.length} coup${game.moves.length>1?"s":""}`;
   document.getElementById("undoAbalone").disabled = abaloneUi.mode === "online" || abaloneUi.thinking || !game.history.length;
+  abRenderContext();
+  abRenderMoveNotice();
+  abRenderGameResult();
   abUpdateClockDisplay();
   abUpdateOnlineControls();
+  abAnimateLatestMove();
 }
 
 // Export minimal pour les tests Node sans affecter le navigateur.
