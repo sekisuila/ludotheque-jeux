@@ -463,7 +463,11 @@ async function createSession(userId,username,env,status,extra={}){
   return json({user:{id:userId,username},...extra},status,{"set-cookie":setSessionCookie(token)});
 }
 async function logout(request,env){
+  const user=await currentUser(request,env);
   const token=cookieValue(request,SESSION_COOKIE);
+  if(user){
+    try{await env.DB.prepare("DELETE FROM online_presence WHERE user_id=?").bind(user.id).run();}catch{}
+  }
   if(token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
   return json({ok:true},200,{"set-cookie":clearSessionCookie()});
 }
