@@ -723,8 +723,12 @@ async function lobbyHeartbeat(request,env,user){
 
 async function lobbySnapshot(env,user){
   const now=Date.now(),onlineSince=now-LOBBY_ONLINE_MS;
-  await env.DB.prepare("UPDATE game_invites SET status='expired',responded_at=? WHERE status='pending' AND expires_at<=?")
-    .bind(now,now).run();
+  const {results:expired=[]}=await env.DB.prepare("SELECT id,room_code FROM game_invites WHERE status='pending' AND expires_at<=?")
+    .bind(now).all();
+  for(const item of expired){
+    await env.DB.prepare("UPDATE game_invites SET status='expired',responded_at=? WHERE id=? AND status='pending'").bind(now,item.id).run();
+    await env.DB.prepare("UPDATE rooms SET status='finished',updated_at=CURRENT_TIMESTAMP WHERE code=? AND status='waiting'").bind(item.room_code).run();
+  }
 
   const {results:online=[]}=await env.DB.prepare(`
     SELECT u.id,u.username,p.last_seen,p.page,p.game
