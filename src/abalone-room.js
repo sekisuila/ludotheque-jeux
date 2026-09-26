@@ -6,7 +6,7 @@ import { GO_BLACK, GO_WHITE, otherGoSide, initialGoGameState, playServerGoMove, 
 import { initialAwaleGameState, playServerAwaleMove } from "./awale-engine.js";
 import { initialYamsGameState, playServerYamsRoll, playServerYamsHold, playServerYamsScore, yamsTotal } from "./yams-engine.js";
 import { initial421GameState, playServer421Roll, playServer421Hold, playServer421Stop } from "./game421-engine.js";
-import { initialDominoGameState, playServerDominoPlay, playServerDominoDraw, publicDominoGameState } from "./domino-engine.js";
+import { initialDominoGameState, playServerDominoPlay, playServerDominoDraw, advanceDominoRound, publicDominoGameState } from "./domino-engine.js";
 
 const json = (data,status=200) => new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8"}});
 const CHESS_CATEGORIES = new Set(["bullet","blitz","rapid","classical"]);
@@ -1542,6 +1542,16 @@ export class AbaloneRoom extends DurableObject {
       let ratingUpdate=null;
       if(result.state?.result?.over) ratingUpdate=await this.finishDominoGame(result.state,"score"); else await this.ctx.storage.put("game",result.state);
       await this.broadcastDominoState(result.state,ratingUpdate); return;
+    }
+    if(gameType==="dominos" && data.type==="domino_next_round"){
+      const players=await this.getPlayers(); if(!players.black||!players.white){ws.send(JSON.stringify({type:"error",message:"Attendez le deuxième joueur."}));return;}
+      const current=await this.getGame();
+      if(!current?.state?.awaitingNextRound)return;
+      const result=advanceDominoRound(current);
+      if(!result.ok){ws.send(JSON.stringify({type:"error",message:result.error}));return;}
+      await this.ctx.storage.put("game",result.state);
+      await this.broadcastDominoState(result.state,null);
+      return;
     }
     if(gameType==="dominos" && data.type==="resign"){
       const game=await this.getGame(); if(game?.result?.over)return;
