@@ -502,7 +502,9 @@
     try{
       const user=await LudoOnline.me(true);if(!user){onlineStatus("Connectez-vous d’abord dans Compte.");return;}
       const creatorSide=document.getElementById("dominoCreatorSide")?.value||"random",rated=document.getElementById("dominoRated")?.checked!==false;
-      const data=await LudoOnline.rooms.create("dominos",{creatorSide,rated});ui.online=onlineEmpty();await connect(data.code,data.side);
+      const data=await LudoOnline.rooms.create("dominos",{creatorSide,rated});
+      cancelDominoMoveAnimation();ui.moveFeedback=null;ui.lastSeenPlayKey=null;ui.online=onlineEmpty();
+      await connect(data.code,data.side);
     }catch(e){onlineStatus(e.message);}
   }
   async function joinRoom(){
@@ -510,7 +512,8 @@
     try{
       const user=await LudoOnline.me(true);if(!user){onlineStatus("Connectez-vous d’abord dans Compte.");return;}
       const data=await LudoOnline.rooms.join(code);if(data.game!=="dominos")throw new Error("Ce code ne correspond pas à une partie de Dominos.");
-      ui.online=onlineEmpty();await connect(data.code,data.side);
+      cancelDominoMoveAnimation();ui.moveFeedback=null;ui.lastSeenPlayKey=null;ui.online=onlineEmpty();
+      await connect(data.code,data.side);
     }catch(e){onlineStatus(e.message);}
   }
 
