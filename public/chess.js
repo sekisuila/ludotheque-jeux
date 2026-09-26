@@ -1689,6 +1689,16 @@ async function chessMaybeSubmitAiRating(status){
   chessUi.aiRatingSubmitting=true;
   chessRenderAiRatingPanel();
   const submittedGameId=chessUi.aiGameId;
+  const submittedLevel=chessUi.aiRatedLevel;
+  const submittedColor=chessUi.humanColor;
+  const submittedReason=status.type;
+  const submittedMoveCount=chessUi.game.history.length;
+  let submittedResult="draw";
+  if(status.type==="checkmate"){
+    const winner=chessOpposite(chessUi.game.state.turn);
+    submittedResult=winner===submittedColor?"win":"loss";
+  }
+
   const user=await LudoOnline?.me?.().catch(()=>null);
   if(!user||!LudoOnline?.chessAiRating){
     if(chessUi.aiGameId===submittedGameId)chessUi.aiRatingSubmitting=false;
@@ -1696,20 +1706,14 @@ async function chessMaybeSubmitAiRating(status){
     return;
   }
 
-  let result="draw";
-  if(status.type==="checkmate"){
-    const winner=chessOpposite(chessUi.game.state.turn);
-    result=winner===chessUi.humanColor?"win":"loss";
-  }
-
   try{
     const data=await LudoOnline.chessAiRating.record({
-      clientGameId:chessUi.aiGameId,
-      engineLevel:chessUi.aiRatedLevel,
-      playerColor:chessUi.humanColor,
-      result,
-      reason:status.type,
-      moveCount:chessUi.game.history.length
+      clientGameId:submittedGameId,
+      engineLevel:submittedLevel,
+      playerColor:submittedColor,
+      result:submittedResult,
+      reason:submittedReason,
+      moveCount:submittedMoveCount
     });
     chessUi.aiRating=data.rating||chessUi.aiRating;
     if(chessUi.aiGameId===submittedGameId){
