@@ -3499,3 +3499,108 @@ main { min-height: calc(100vh - 160px); }
 @media (prefers-reduced-motion:reduce){
   .awale-source-flash,.awale-sow-flash,.awale-capture-flash{animation:none!important}
 }
+
+
+/* ============================================================
+   ABALONE — interface compacte, dernier coup et fin de partie
+   ============================================================ */
+.abalone-compact-page{width:min(1500px,calc(100% - 30px));padding-top:22px}
+.abalone-page-head{margin-bottom:12px}
+.abalone-page-head h1{margin:.15rem 0 .3rem;font-size:clamp(1.8rem,3vw,2.7rem)}
+.abalone-page-head .section-lead{margin:.15rem 0}
+.abalone-compact-shell{padding:14px 16px 16px;overflow:visible}
+.abalone-compact-shell .abalone-toolbar{margin-bottom:8px}
+.abalone-save-details{margin:7px 0 9px;border:1px solid var(--line);border-radius:12px;background:#faf7f0}
+.abalone-save-details>summary{cursor:pointer;padding:8px 11px;color:var(--primary-2);font-size:.82rem;font-weight:850}
+.abalone-save-details[open]>summary{border-bottom:1px solid var(--line)}
+.abalone-save-details .abalone-savebar{margin:8px 10px;padding:9px}
+.abalone-match-context{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 10px}
+.abalone-match-context span{padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:#f4efe5;color:var(--primary-2);font-size:.8rem;font-weight:800}
+
+.abalone-stage.abalone-three-column{display:grid;grid-template-columns:minmax(205px,240px) minmax(510px,1fr) minmax(230px,285px);gap:14px;align-items:start}
+.abalone-info-rail{display:grid;gap:10px;position:sticky;top:88px;min-width:0}
+.abalone-info-card{padding:12px;border:1px solid var(--line);border-radius:14px;background:#fffdf8}
+.abalone-info-card .turn-box{margin:0}
+.abalone-info-card .abalone-score-grid{grid-template-columns:1fr;margin:9px 0 0}
+.abalone-info-card .abalone-score-grid>div{padding:8px 9px}
+.abalone-info-card .abalone-score-grid strong{font-size:1rem}
+.abalone-evaluation-card h3{margin:0 0 7px;font-size:.95rem}
+.abalone-evaluation-card .abalone-evaluation{margin:0;gap:7px}
+.abalone-evaluation-card .abalone-eval-card{padding:8px}
+.abalone-evaluation-card .abalone-evaluation>small{font-size:.68rem;line-height:1.3}
+.abalone-info-rail .abalone-clock-panel{position:static;gap:8px}
+.abalone-info-rail .abalone-clock-readout{gap:8px}
+.abalone-info-rail .abalone-clock-card{min-height:84px;padding:8px 10px;gap:6px}
+.abalone-info-rail .abalone-clock-card>b{font-size:1.65rem;padding-top:5px}
+.abalone-online-actions{display:grid!important;grid-template-columns:1fr;gap:7px}
+.abalone-online-actions[hidden]{display:none!important}
+
+.abalone-board-column{min-width:0}
+.abalone-compact-shell .abalone-board-wrap{width:min(100%,calc(100vh - 255px));max-width:690px;margin:0 auto;padding:2px}
+.abalone-compact-shell .abalone-move-controls{grid-template-columns:minmax(170px,220px) 1fr;margin-top:8px;padding:8px 11px;gap:10px}
+.abalone-compact-shell .abalone-dir-pad{grid-template-columns:42px minmax(54px,1fr) 42px;grid-template-rows:repeat(3,34px)}
+.abalone-compact-shell .abalone-dir-pad button{width:36px;height:32px;font-size:1rem}
+.abalone-compact-shell .abalone-move-controls p{font-size:.78rem}
+.abalone-compact-shell .abalone-status{min-height:40px;margin-top:8px;padding:8px 10px;font-size:.86rem}
+
+.abalone-move-notice{margin-top:8px;padding:9px 12px;border-left:4px solid var(--accent);border-radius:10px;background:#fff4df;color:#5a4933;font-size:.86rem;font-weight:800}
+.abalone-move-notice[hidden]{display:none!important}
+.abalone-cell.ab-last-origin{outline:2px solid rgba(200,135,45,.55);outline-offset:1px}
+.abalone-cell.ab-last-destination{box-shadow:inset 0 0 0 4px rgba(64,139,87,.4),inset 0 3px 5px rgba(22,28,25,.38),0 0 0 2px rgba(44,117,66,.25)}
+.abalone-cell.ab-last-push{box-shadow:inset 0 0 0 4px rgba(177,63,50,.42),inset 0 3px 5px rgba(22,28,25,.38),0 0 0 2px rgba(177,63,50,.2)}
+.abalone-cell.ab-animate-origin{animation:ab-origin-pulse .7s ease}
+.abalone-cell.ab-animate-destination{animation:ab-destination-pulse .72s ease}
+.abalone-cell.ab-animate-push{animation:ab-push-pulse .82s ease}
+.abalone-board.ab-eject-flash .abalone-board-surface{animation:ab-eject-board .9s ease}
+@keyframes ab-origin-pulse{0%,100%{transform:translate(-50%,-50%)}45%{transform:translate(-50%,-50%) scale(.9);outline:5px solid #d49a2f}}
+@keyframes ab-destination-pulse{0%,100%{transform:translate(-50%,-50%)}45%{transform:translate(-50%,-50%) scale(1.1);box-shadow:inset 0 0 0 7px rgba(70,170,92,.82),0 0 14px rgba(70,170,92,.55)}}
+@keyframes ab-push-pulse{0%,100%{transform:translate(-50%,-50%)}45%{transform:translate(-50%,-50%) scale(1.1);box-shadow:inset 0 0 0 7px rgba(190,68,55,.8),0 0 14px rgba(190,68,55,.55)}}
+@keyframes ab-eject-board{0%,100%{filter:none}45%{filter:drop-shadow(0 0 15px rgba(177,63,50,.72))}}
+
+.abalone-history-panel{display:grid;grid-template-rows:auto minmax(220px,1fr) auto auto;gap:8px;max-height:calc(100vh - 120px);position:sticky;top:88px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fffdf8;min-width:0}
+.abalone-history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.abalone-history-head h3{margin:0;font-size:1rem}
+.abalone-history-head span{font-size:.74rem;color:var(--muted);font-weight:800}
+.abalone-history-panel .abalone-history{max-height:none;overflow:auto;border-top:1px solid var(--line)}
+.abalone-history-panel .abalone-history-row{grid-template-columns:25px 14px minmax(0,1fr);gap:6px;padding:7px 3px;font-size:.78rem}
+.abalone-history-panel .abalone-history-row.latest{background:#eef4ef;box-shadow:inset 3px 0 0 var(--primary)}
+.abalone-history-panel .abalone-history-row b{font-size:.78rem}
+.abalone-history-panel .abalone-history-row small{font-size:.68rem}
+.abalone-history-eval-help,.abalone-rules-reminder{border-top:1px solid var(--line);padding-top:7px;color:var(--muted);font-size:.73rem}
+.abalone-history-eval-help summary,.abalone-rules-reminder summary{cursor:pointer;color:var(--primary-2);font-weight:800}
+.abalone-history-eval-help p,.abalone-rules-reminder p{margin:.4rem 0 0}
+
+.abalone-game-result{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin-top:9px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--line));border-radius:14px;background:#f1f6f2}
+.abalone-game-result[hidden]{display:none!important}
+.abalone-game-result h2{margin:2px 0 3px;font-size:1.18rem}
+.abalone-game-result p{margin:0;color:var(--muted);font-size:.84rem}
+.abalone-result-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.abalone-result-actions .btn{min-height:36px;padding:7px 10px;font-size:.82rem}
+
+@media (max-width:1220px){
+  .abalone-stage.abalone-three-column{grid-template-columns:minmax(205px,235px) minmax(0,1fr)}
+  .abalone-history-panel{grid-column:1/-1;position:static;max-height:none;grid-template-rows:auto auto auto auto}
+  .abalone-history-panel .abalone-history{max-height:230px}
+}
+@media (max-width:840px){
+  .abalone-compact-page{width:min(100% - 20px,780px)}
+  .abalone-stage.abalone-three-column{grid-template-columns:1fr}
+  .abalone-info-rail{position:static;order:2}
+  .abalone-board-column{order:1}
+  .abalone-history-panel{order:3}
+  .abalone-info-card .abalone-score-grid{grid-template-columns:1fr 1fr}
+  .abalone-info-rail .abalone-clock-readout{grid-template-columns:1fr 1fr}
+  .abalone-online-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .abalone-compact-shell .abalone-board-wrap{width:min(100%,680px)}
+  .abalone-game-result{grid-template-columns:1fr}
+  .abalone-result-actions{justify-content:flex-start}
+}
+@media (max-width:600px){
+  .abalone-compact-shell{padding:11px}
+  .abalone-info-card .abalone-score-grid,.abalone-info-rail .abalone-clock-readout{grid-template-columns:1fr}
+  .abalone-online-actions{grid-template-columns:1fr!important}
+  .abalone-compact-shell .abalone-move-controls{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  .abalone-cell.ab-animate-origin,.abalone-cell.ab-animate-destination,.abalone-cell.ab-animate-push,.abalone-board.ab-eject-flash .abalone-board-surface{animation:none!important}
+}
