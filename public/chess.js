@@ -516,6 +516,8 @@ function chessChooseAiMove(game, level) {
 // ------------------------------------------------------------
 let chessUi = null;
 let chessClockTimer = null;
+let chessMoveGhost = null;
+let chessMoveAnimation = null;
 
 const CHESS_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
 
@@ -698,9 +700,248 @@ function chessEmptyOnlineState() {
   };
 }
 
+function chessLatestMoveMeta(game=chessUi?.game) {
+  const index=(game?.history?.length||0)-1;
+  if(index<0)return null;
+  const entry=game.history[index];
+  const move=entry?.move;
+  if(!move)return null;
+  const mover=entry.state?.turn || chessColor(entry.state?.board?.[move.fr]?.[move.fc]);
+  return {
+    index,entry,move,mover,
+    key:`${index}:${mover||""}:${move.fr},${move.fc}-${move.tr},${move.tc}:${move.promotion||""}`
+  };
+}
+
+function chessPlayerLabel(color) {
+  if(chessUi?.mode==="online"){
+    const p=color==="w"?chessUi.online?.players?.white:chessUi.online?.players?.black;
+    return p?.username || (color==="w"?"Blancs":"Noirs");
+  }
+  if(chessUi?.mode==="ai") return color===chessUi.humanColor?"Vous":"IA";
+  return color==="w"?"Blancs":"Noirs";
+}
+
+function chessMoveSentence(color,san,from,to) {
+  if(chessUi?.mode==="local"){
+    const side=color==="w"?"Les Blancs":"Les Noirs";
+    return `${side} ont joué ${san} (${from} → ${to}).`;
+  }
+  if(chessUi?.mode==="ai"){
+    const actor=color===chessUi.humanColor?"Vous avez":"L’IA a";
+    return `${actor} joué ${san} (${from} → ${to}).`;
+  }
+  return `${chessPlayerLabel(color)} a joué ${san} (${from} → ${to}).`;
+}
+
+function chessWinnerTitle(color) {
+  if(chessUi?.mode==="local")return `${color==="w"?"Les Blancs":"Les Noirs"} gagnent la partie !`;
+  if(chessUi?.mode==="ai")return color===chessUi.humanColor?"Vous gagnez la partie !":"L’IA gagne la partie !";
+  return `${chessPlayerLabel(color)} gagne la partie !`;
+}
+
+function chessIsOpponentMove(color) {
+  if(!color||!chessUi)return false;
+  if(chessUi.mode==="online") return Boolean(chessUi.online?.side) && color!==chessUi.online.side;
+  if(chessUi.mode==="ai") return color!==chessUi.humanColor;
+  return chessUi.mode==="local";
+}
+
+function chessCancelMoveAnimation() {
+  try{chessMoveAnimation?.cancel();}catch{}
+  chessMoveAnimation=null;
+  chessMoveGhost?.remove();
+  chessMoveGhost=null;
+  document.querySelectorAll(".chess-square.chess-arriving").forEach(el=>el.classList.remove("chess-arriving"));
+}
+
+function chessSyncMoveFeedback({animate=true,revealLatest=true}={}) {
+  const latest=chessLatestMoveMeta();
+  if(!latest){
+    chessUi.lastSeenMoveKey=null;
+    chessUi.moveFeedback=null;
+    return;
+  }
+  if(latest.key===chessUi.lastSeenMoveKey)return;
+  chessUi.lastSeenMoveKey=latest.key;
+  chessCancelMoveAnimation();
+
+  if(!revealLatest||!chessIsOpponentMove(latest.mover)){
+    chessUi.moveFeedback=null;
+    return;
+  }
+
+  const finalPiece=chessUi.game.state.board?.[latest.move.tr]?.[latest.move.tc]
+    || latest.entry.state?.board?.[latest.move.fr]?.[latest.move.fc]
+    || null;
+  chessUi.moveFeedback={
+    key:latest.key,
+    index:latest.index,
+    move:{...latest.move},
+    mover:latest.mover,
+    san:latest.entry.san||"",
+    piece:finalPiece,
+    animate:Boolean(animate)
+  };
+}
+
+function chessRenderMoveNotice() {
+  const el=document.getElementById("chessMoveNotice");if(!el)return;
+  const feedback=chessUi?.moveFeedback;
+  if(!feedback){
+    el.hidden=true;el.textContent="";return;
+  }
+  const m=feedback.move;
+  const from=chessSquareName(m.fr,m.fc),to=chessSquareName(m.tr,m.tc);
+  const played=feedback.san||`${from}–${to}`;
+  el.hidden=false;
+  el.textContent=chessMoveSentence(feedback.mover,played,from,to);
+}
+
+function chessRenderContext() {
+  const el=document.getElementById("chessMatchContext");if(!el||!chessUi)return;
+  const items=[];
+  if(chessUi.mode==="online"){
+    items.push("En ligne");
+    const tc=chessUi.online?.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60,inc=Number(tc.incrementSeconds||0);
+      const category=chessUi.online?.settings?.ratingCategory;
+      items.push(`Cadence ${Number.isInteger(min)?min:min.toFixed(1)}+${inc}${category?` · ${CHESS_RATING_LABELS[category]||category}`:""}`);
+      items.push(chessUi.online?.settings?.rated?"Classée Elo":"Amicale");
+    }else{
+      const preset=document.getElementById("chessTimePreset")?.selectedOptions?.[0]?.textContent;
+      if(preset)items.push(`Cadence ${preset}`);
+    }
+    if(chessUi.online?.side)items.push(`Vous : ${chessUi.online.side==="w"?"Blancs":"Noirs"}`);
+  }else if(chessUi.mode==="ai"){
+    items.push("Joueur contre IA");
+    const label=document.getElementById("chessAiLevel")?.selectedOptions?.[0]?.textContent||"IA";
+    items.push(label);
+    items.push(`Vous : ${chessUi.humanColor==="w"?"Blancs":"Noirs"}`);
+  }else{
+    items.push("2 joueurs sur le même écran");
+  }
+  el.innerHTML=items.map(item=>`<span>${String(item).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]))}</span>`).join("");
+}
+
+function chessCurrentResult() {
+  if(!chessUi)return null;
+  if(chessUi.mode==="online")return chessUi.online?.result?.over?chessUi.online.result:null;
+  const status=chessUi.game.status();
+  if(!status.over)return null;
+  return {
+    over:true,
+    type:status.type,
+    winner:status.type==="checkmate"?chessOpposite(chessUi.game.state.turn):null,
+    text:status.text
+  };
+}
+
+function chessRenderGameResult() {
+  const box=document.getElementById("chessGameResult");if(!box||!chessUi)return;
+  const result=chessCurrentResult();
+  if(!result){
+    box.hidden=true;return;
+  }
+
+  const title=document.getElementById("chessGameResultTitle");
+  const text=document.getElementById("chessGameResultText");
+  const again=document.getElementById("chessResultNew");
+  const home=document.getElementById("chessResultHome");
+  const winner=result.winner;
+
+  box.hidden=false;
+  if(title)title.textContent=winner==="w"||winner==="b"
+    ? chessWinnerTitle(winner)
+    : "Partie nulle";
+  if(text)text.textContent=result.text||"Partie terminée.";
+
+  if(again){
+    if(chessUi.mode==="online"){
+      again.textContent=chessUi.online?.rematchOffer&&!chessProposalIsIncoming(chessUi.online.rematchOffer)
+        ?"Revanche proposée…"
+        :"Proposer une revanche";
+      again.disabled=!chessOnlineHasTwoPlayers()||Boolean(chessUi.online?.rematchOffer);
+    }else{
+      again.textContent="Nouvelle partie";
+      again.disabled=false;
+    }
+  }
+  if(home)home.disabled=false;
+}
+
+function chessRestartFromResult() {
+  if(chessUi?.mode==="online"){
+    chessOfferRematchOnline();
+    chessRenderGameResult();
+    return;
+  }
+  newChessGame();
+}
+
+function chessBackHomeFromResult() {
+  window.StrathasardStockfish?.stop?.();
+  if(chessUi?.mode==="online")chessDisconnectOnlineRoom();
+  chessCancelMoveAnimation();
+  location.hash="#/accueil";
+}
+
+function chessAnimateOpponentMove(feedback) {
+  if(!feedback?.animate)return;
+  feedback.animate=false;
+  if(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)return;
+
+  const m=feedback.move;
+  const from=document.querySelector(`#chessBoard .chess-square[data-r="${m.fr}"][data-c="${m.fc}"]`);
+  const to=document.querySelector(`#chessBoard .chess-square[data-r="${m.tr}"][data-c="${m.tc}"]`);
+  if(!from||!to)return;
+  const fr=from.getBoundingClientRect(),tr=to.getBoundingClientRect();
+  if(!fr.width||!tr.width)return;
+
+  chessCancelMoveAnimation();
+  const targetPiece=to.querySelector(".chess-piece");
+  if(targetPiece)to.classList.add("chess-arriving");
+
+  const ghost=document.createElement("span");
+  ghost.className=`chess-move-ghost ${feedback.mover==="w"?"white-piece":"black-piece"}`;
+  ghost.setAttribute("aria-hidden","true");
+  ghost.textContent=CHESS_PIECES[feedback.piece]||CHESS_PIECES[feedback.mover==="w"?"P":"p"];
+  ghost.style.left=`${tr.left}px`;
+  ghost.style.top=`${tr.top}px`;
+  ghost.style.width=`${tr.width}px`;
+  ghost.style.height=`${tr.height}px`;
+  ghost.style.fontSize=`${Math.max(24,tr.width*.72)}px`;
+  document.body.appendChild(ghost);
+  chessMoveGhost=ghost;
+
+  const dx=fr.left-tr.left,dy=fr.top-tr.top;
+  if(typeof ghost.animate!=="function"){
+    to.classList.remove("chess-arriving");ghost.remove();chessMoveGhost=null;return;
+  }
+  chessMoveAnimation=ghost.animate([
+    {transform:`translate(${dx}px,${dy}px) scale(.96)`,opacity:.92},
+    {offset:.82,transform:"translate(0,0) scale(1.08)",opacity:1},
+    {transform:"translate(0,0) scale(1)",opacity:1}
+  ],{duration:520,easing:"cubic-bezier(.2,.72,.25,1)",fill:"forwards"});
+  chessMoveAnimation.onfinish=()=>{
+    to.classList.remove("chess-arriving");ghost.remove();
+    if(chessMoveGhost===ghost)chessMoveGhost=null;
+    chessMoveAnimation=null;
+  };
+  chessMoveAnimation.oncancel=()=>{
+    to.classList.remove("chess-arriving");ghost.remove();
+    if(chessMoveGhost===ghost)chessMoveGhost=null;
+    chessMoveAnimation=null;
+  };
+}
+
 function chessDisconnectOnlineRoom() {
   if (!chessUi?.online) return;
   try { chessUi.online.ws?.close(1000, "Déconnexion"); } catch {}
+  chessCancelMoveAnimation();
+  chessUi.moveFeedback=null;
+  chessUi.lastSeenMoveKey=null;
   chessUi.online = chessEmptyOnlineState();
   const panel=document.getElementById("chessClockPanel"); if(panel) panel.hidden=true;
   const ratingBox=document.getElementById("chessRatingResult"); if(ratingBox){ratingBox.hidden=true;ratingBox.innerHTML="";}
@@ -818,6 +1059,7 @@ function chessUpdateOnlineControls() {
   const twoPlayers = active && chessOnlineHasTwoPlayers();
   const over = Boolean(online?.result?.over);
   actions.hidden = !active;
+  document.getElementById("chessOnlineSettings")?.classList.toggle("connected",active);
 
   if (resign) {
     resign.hidden = over;
@@ -830,14 +1072,9 @@ function chessUpdateOnlineControls() {
       ? "Nulle proposée…"
       : "Proposer la nulle";
   }
-  if (rematch) {
-    rematch.hidden = !over;
-    rematch.disabled = !twoPlayers || Boolean(online?.rematchOffer);
-    rematch.textContent = online?.rematchOffer && !chessProposalIsIncoming(online.rematchOffer)
-      ? "Revanche proposée…"
-      : "Proposer une revanche";
-  }
+  if (rematch) rematch.hidden = true;
 
+  chessRenderGameResult();
   if (!active) chessHideOnlinePrompt();
 }
 
@@ -878,7 +1115,7 @@ function chessRespondToOnlineProposal(accept) {
   chessHideOnlinePrompt();
 }
 
-function chessApplyOnlineState(serialized) {
+function chessApplyOnlineState(serialized,{revealLatest=true}={}) {
   if (!serialized?.state || !chessUi) return;
   const game = new ChessGame();
   game.state = chessCloneState(serialized.state);
@@ -899,6 +1136,7 @@ function chessApplyOnlineState(serialized) {
   chessUi.candidateMoves = [];
   chessUi.pendingPromotion = null;
   hidePromotionPicker();
+  chessSyncMoveFeedback({animate:true,revealLatest});
   renderChessBoard();
   chessUpdateOnlineControls();
 }
@@ -928,7 +1166,7 @@ function chessConnectOnlineRoom(code) {
         chessUi.online.ratingUpdate = data.ratingUpdate || null;
         chessSetOnlineClock(data.clock || null);
         chessUi.orientation = data.side === "b" ? "b" : "w";
-        chessApplyOnlineState(data.game);
+        chessApplyOnlineState(data.game,{revealLatest:false});
         chessRenderRatingResult(chessUi.online.ratingUpdate);
         chessUpdateClockDisplay();
         const color = data.side === "b" ? "Noirs" : "Blancs";
@@ -944,7 +1182,7 @@ function chessConnectOnlineRoom(code) {
         if (data.ratings) chessUi.online.ratings = data.ratings;
         if (data.ratingUpdate !== undefined && data.ratingUpdate !== null) chessUi.online.ratingUpdate = data.ratingUpdate;
         if (data.clock) chessSetOnlineClock(data.clock);
-        chessApplyOnlineState(data.game);
+        chessApplyOnlineState(data.game,{revealLatest:true});
         if (data.ratingUpdate) chessRenderRatingResult(data.ratingUpdate);
         chessUpdateClockDisplay();
         if (data.game?.result?.over) {
@@ -1003,7 +1241,8 @@ function chessConnectOnlineRoom(code) {
         chessRenderRatingResult(null);
         chessHideOnlinePrompt();
         chessUi.orientation = data.side === "b" ? "b" : "w";
-        chessApplyOnlineState(data.game);
+        chessUi.moveFeedback=null;chessUi.lastSeenMoveKey=null;
+        chessApplyOnlineState(data.game,{revealLatest:false});
         const color = data.side === "b" ? "Noirs" : "Blancs";
         chessSetRoomStatus(`Revanche commencée — vous jouez maintenant les ${color}. ${chessPlayersStatus(data.players)}`);
         chessUpdateOnlineControls();
@@ -1047,6 +1286,8 @@ function initChess() {
     humanColor: "w",
     orientation: "w",
     thinking: false,
+    moveFeedback: null,
+    lastSeenMoveKey: null,
     online: chessEmptyOnlineState()
   };
 
@@ -1061,6 +1302,9 @@ function initChess() {
     chessUi.mode = e.target.value;
     document.getElementById("chessAiSettings").hidden = chessUi.mode !== "ai";
     document.getElementById("chessOnlineSettings").hidden = chessUi.mode !== "online";
+    chessCancelMoveAnimation();
+    chessUi.moveFeedback=null;
+    chessUi.lastSeenMoveKey=null;
     if (chessUi.mode === "online") {
       chessDisconnectOnlineRoom();
       chessUi.game = new ChessGame();
@@ -1074,7 +1318,7 @@ function initChess() {
     }
   });
 
-  document.getElementById("chessAiLevel").addEventListener("change", e => chessUi.aiLevel = e.target.value);
+  document.getElementById("chessAiLevel").addEventListener("change", e => {chessUi.aiLevel=e.target.value;chessRenderContext();});
   document.getElementById("chessSide").addEventListener("change", e => {
     chessUi.humanColor = e.target.value;
     chessUi.orientation = e.target.value;
@@ -1089,7 +1333,10 @@ function initChess() {
   document.getElementById("chessTimePreset")?.addEventListener("change", e => {
     const custom=document.getElementById("chessCustomTime");
     if(custom) custom.hidden=e.target.value!=="custom";
+    chessRenderContext();
   });
+  document.getElementById("chessInitialMinutes")?.addEventListener("input",chessRenderContext);
+  document.getElementById("chessIncrementSeconds")?.addEventListener("input",chessRenderContext);
   document.getElementById("createChessRoom")?.addEventListener("click", chessCreateOnlineRoom);
   document.getElementById("joinChessRoom")?.addEventListener("click", chessJoinOnlineRoom);
   document.getElementById("resignChessOnline")?.addEventListener("click", chessResignOnline);
@@ -1097,6 +1344,8 @@ function initChess() {
   document.getElementById("offerRematchChess")?.addEventListener("click", chessOfferRematchOnline);
   document.getElementById("acceptChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(true));
   document.getElementById("declineChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(false));
+  document.getElementById("chessResultNew")?.addEventListener("click", chessRestartFromResult);
+  document.getElementById("chessResultHome")?.addEventListener("click",chessBackHomeFromResult);
   document.getElementById("promotionPicker").addEventListener("click", e => {
     const piece = e.target.closest("button")?.dataset.promotion;
     if (piece) finishPromotion(piece);
@@ -1108,6 +1357,9 @@ function initChess() {
 
 function newChessGame() {
   window.StrathasardStockfish?.stop?.();
+  chessCancelMoveAnimation();
+  chessUi.moveFeedback=null;
+  chessUi.lastSeenMoveKey=null;
   if (chessUi.mode === "online") {
     chessDisconnectOnlineRoom();
     chessUi.game = new ChessGame();
@@ -1145,7 +1397,9 @@ function renderChessBoard() {
   const { rows, cols } = chessBoardOrder();
   const legalTargets = new Map();
   for (const move of chessUi.candidateMoves) legalTargets.set(`${move.tr},${move.tc}`, move);
-  const last = chessUi.game.history.at(-1)?.move;
+  const lastMeta=chessLatestMoveMeta();
+  const last=lastMeta?.move;
+  const opponentLast=Boolean(chessUi.moveFeedback&&lastMeta?.key===chessUi.moveFeedback.key);
 
   let html = "";
   rows.forEach((r, vr) => {
@@ -1157,12 +1411,13 @@ function renderChessBoard() {
       const squareColor = (r + c) % 2 ? "dark" : "light";
       const rankLabel = vc === 0 ? `<span class="coord rank">${8-r}</span>` : "";
       const fileLabel = vr === 7 ? `<span class="coord file">${"abcdefgh"[c]}</span>` : "";
-      const classes = ["chess-square", squareColor, selected ? "selected" : "", move ? "legal" : "", move?.capture ? "capture" : "", wasLast ? "last" : ""].filter(Boolean).join(" ");
+      const classes = ["chess-square", squareColor, selected ? "selected" : "", move ? "legal" : "", move?.capture ? "capture" : "", wasLast ? "last" : "", wasLast&&opponentLast ? "opponent-last" : ""].filter(Boolean).join(" ");
       html += `<button class="${classes}" data-r="${r}" data-c="${c}" aria-label="${chessSquareName(r,c)}${piece ? ` ${CHESS_PIECES[piece]}` : ""}">${rankLabel}${fileLabel}${piece ? `<span class="chess-piece ${chessColor(piece) === "w" ? "white-piece" : "black-piece"}">${CHESS_PIECES[piece]}</span>` : ""}<span class="move-dot"></span></button>`;
     });
   });
   board.innerHTML = html;
   board.querySelectorAll(".chess-square").forEach(btn => btn.addEventListener("click", onChessSquareClick));
+  requestAnimationFrame(()=>chessAnimateOpponentMove(chessUi.moveFeedback));
   renderChessInfo();
 }
 
@@ -1210,6 +1465,12 @@ function renderChessInfo() {
   }
   historyEl.innerHTML = rows.length ? rows.join("") : `<div class="history-empty">Les coups apparaîtront ici.</div>`;
   historyEl.scrollTop = historyEl.scrollHeight;
+  const count=document.getElementById("chessHistoryCount");
+  if(count)count.textContent=`${moves.length} coup${moves.length>1?"s":""}`;
+
+  chessRenderContext();
+  chessRenderMoveNotice();
+  chessRenderGameResult();
 
   document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
   if (chessUi.mode === "online") chessUpdateOnlineControls();
@@ -1294,6 +1555,7 @@ function playChessMove(move) {
   if (!chessUi.game.play(move)) return;
   chessUi.selected = null;
   chessUi.candidateMoves = [];
+  chessSyncMoveFeedback({animate:true,revealLatest:true});
   renderChessBoard();
   maybeChessAiTurn();
 }
@@ -1307,6 +1569,9 @@ function undoChessMove() {
   } else {
     chessUi.game.undo();
   }
+  chessCancelMoveAnimation();
+  chessUi.moveFeedback=null;
+  chessUi.lastSeenMoveKey=chessLatestMoveMeta()?.key||null;
   chessUi.selected = null;
   chessUi.candidateMoves = [];
   renderChessBoard();
@@ -1347,7 +1612,10 @@ function maybeChessAiTurn() {
       return;
     }
 
-    if (move) chessUi.game.play(move);
+    if (move) {
+      chessUi.game.play(move);
+      chessSyncMoveFeedback({animate:true,revealLatest:true});
+    }
     chessUi.thinking = false;
     renderChessBoard();
   }, 180);
