@@ -2289,20 +2289,6 @@ function renderChessPlay() {
             <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
           </div>
 
-          <div id="chessClockPanel" class="chess-clock-panel" hidden>
-            <div class="chess-clock-stack">
-              <div class="chess-clock-card black-clock" data-side="b">
-                <div><span id="chessBlackPlayer">Noirs</span><small id="chessBlackRating">Elo —</small></div>
-                <strong id="chessBlackClock">10:00</strong>
-              </div>
-              <div class="chess-clock-card white-clock" data-side="w">
-                <div><span id="chessWhitePlayer">Blancs</span><small id="chessWhiteRating">Elo —</small></div>
-                <strong id="chessWhiteClock">10:00</strong>
-              </div>
-            </div>
-            <div id="chessTimeMeta" class="chess-time-meta">10+5 · Rapide · classée</div>
-          </div>
-
           <div class="chess-board-wrap">
             <div id="chessBoard" class="chess-board" aria-label="Échiquier interactif"></div>
             <div id="promotionPicker" class="promotion-picker" hidden><strong>Promotion :</strong><button data-promotion="Q"></button><button data-promotion="R"></button><button data-promotion="B"></button><button data-promotion="N"></button></div>
@@ -2324,9 +2310,28 @@ function renderChessPlay() {
         </section>
 
         <aside class="chess-side-column">
-          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div><div id="chessRatingResult" class="rating-result" hidden></div><h3>Historique</h3><div id="chessHistory" class="chess-history"></div></section>
-          <section class="panel"><h3>Multijoueur en ligne</h3><p>Le créateur choisit sa couleur, la <strong>cadence</strong> et si la partie compte pour le <strong>classement Elo</strong>. Une cadence comme <strong>10+5</strong> signifie 10 minutes au départ et 5 secondes ajoutées après chaque coup joué.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une revanche acceptée inverse automatiquement les couleurs tout en conservant la même cadence.</p><p>La pendule et la légalité des coups sont contrôlées côté Cloudflare : fermer l’onglet n’arrête donc pas le temps.</p><div class="note"><strong>Classements :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre Elo, avec 1200 comme valeur de départ.</div></section>
-          <section class="panel"><h3>Les trois niveaux d’IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> compare les positions à courte profondeur et valorise matériel, centre et sécurité du roi.</p><p><strong>Difficile :</strong> utilise la même évaluation avec une recherche plus profonde et un élagage alpha-bêta.</p><div class="note">Cette IA est destinée à la démonstration. Elle n’a pas la force d’un moteur spécialisé comme Stockfish.</div></section>
+          <section class="panel chess-match-panel">
+            <div id="chessMatchContext" class="chess-match-context" aria-label="Informations de la partie"></div>
+            <div id="chessClockPanel" class="chess-clock-panel" hidden>
+              <div class="chess-dual-clock-readout" data-clock-role="readout" aria-label="Pendules Noir et Blanc"></div>
+              <div class="chess-time-meta" data-clock-role="meta"></div>
+            </div>
+            <div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div>
+            <div id="chessRatingResult" class="rating-result" hidden></div>
+            <div id="chessMoveNotice" class="chess-move-notice" role="status" aria-live="polite" hidden></div>
+            <div id="chessGameResult" class="chess-game-result" role="status" aria-live="polite" hidden>
+              <strong id="chessGameResultTitle"></strong>
+              <p id="chessGameResultText"></p>
+              <div class="chess-game-result-actions">
+                <button id="chessResultNew" class="btn small" type="button">Nouvelle partie</button>
+                <button id="chessResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
+              </div>
+            </div>
+            <div class="chess-history-head"><h3>Historique</h3><span id="chessHistoryCount">0 coup</span></div>
+            <div id="chessHistory" class="chess-history"></div>
+          </section>
+          <section class="panel chess-help-panel"><h3>Multijoueur en ligne</h3><p>Le créateur choisit sa couleur, la <strong>cadence</strong> et si la partie compte pour le <strong>classement Elo</strong>. Une cadence comme <strong>10+5</strong> signifie 10 minutes au départ et 5 secondes ajoutées après chaque coup joué.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une revanche acceptée inverse automatiquement les couleurs tout en conservant la même cadence.</p><p>La pendule et la légalité des coups sont contrôlées côté Cloudflare : fermer l’onglet n’arrête donc pas le temps.</p><div class="note"><strong>Classements :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre Elo, avec 1200 comme valeur de départ.</div></section>
+          <section class="panel chess-help-panel"><h3>Niveaux d’IA</h3><p><strong>IA Strathasard :</strong> trois niveaux pédagogiques.</p><p><strong>Stockfish :</strong> niveaux gradués d’environ 1320 Elo jusqu’à la force maximale.</p><div class="note">Le niveau choisi est maintenant rappelé dans le panneau d’informations de la partie.</div></section>
         </aside>
       </div>
     </div>
