@@ -3652,7 +3652,9 @@ main { min-height: calc(100vh - 160px); }
   border-radius:12px;
   background:#f7f3ea;
 }
-.lobby-player-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lobby-player-name{display:grid;min-width:0;line-height:1.2}
+.lobby-player-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lobby-player-name small{margin-top:2px;color:var(--muted);font-size:.7rem}
 .lobby-online-dot{width:10px;height:10px;border-radius:50%;background:#3d9b5d;box-shadow:0 0 0 3px rgba(61,155,93,.14)}
 .lobby-empty{grid-column:1/-1;margin:0;padding:8px 2px;color:var(--muted)}
 .global-game-invite{
