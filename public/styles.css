@@ -3201,3 +3201,201 @@ main { min-height: calc(100vh - 160px); }
 @media (prefers-reduced-motion:reduce){
   .draught-move-ghost{display:none!important}
 }
+
+
+/* ============================================================
+   V6.39 — Go : coup adverse, fin de partie et interface PC en 3 zones
+   ============================================================ */
+.go-point.opponent-last .go-stone{
+  outline:3px solid rgba(229,174,32,.92);
+  outline-offset:2px;
+  box-shadow:0 0 0 5px rgba(255,225,111,.34),0 3px 7px rgba(0,0,0,.28);
+}
+.go-point.go-arriving .go-stone{opacity:.08}
+.go-move-ghost{
+  position:fixed!important;
+  z-index:9999!important;
+  display:block;
+  margin:0;
+  pointer-events:none;
+  border-radius:50%;
+  transform-origin:center center;
+  filter:drop-shadow(0 8px 8px rgba(0,0,0,.28));
+}
+.go-move-notice{
+  margin:.5rem 0;
+  padding:.58rem .68rem;
+  border:1px solid #d9b45c;
+  border-radius:10px;
+  background:#fff7d6;
+  color:#60470e;
+  font-size:.86rem;
+  font-weight:800;
+  line-height:1.35;
+}
+.go-move-notice[hidden]{display:none!important}
+.go-game-result{
+  display:grid;
+  gap:.45rem;
+  margin:.6rem 0 0;
+  padding:.7rem .75rem;
+  border:1px solid #b8d3bd;
+  border-radius:12px;
+  background:#eef7ef;
+}
+.go-game-result[hidden]{display:none!important}
+.go-game-result>strong{color:#245b31;font-size:1rem}
+.go-game-result p{margin:0;color:#3d5742;font-size:.88rem;line-height:1.4}
+.go-game-result-actions{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.15rem}
+.go-game-result-actions .btn{flex:1 1 auto}
+.go-match-context{display:flex;gap:.35rem;flex-wrap:wrap;margin:0 0 .55rem}
+.go-match-context span{
+  display:inline-flex;
+  align-items:center;
+  min-height:26px;
+  padding:.25rem .48rem;
+  border-radius:999px;
+  background:#f1ece2;
+  color:#514b43;
+  font-size:.74rem;
+  font-weight:800;
+  line-height:1.15;
+}
+.go-history-head{display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin:0 0 .35rem}
+.go-history-head h3{margin:0}
+.go-history-head span{color:var(--muted);font-size:.78rem;font-weight:750}
+.go-info-column,.go-history-column{display:grid;gap:10px;min-width:0;align-self:start}
+.go-history-panel{min-width:0}
+.go-toolbar-wide{min-width:0}
+.go-match-panel .turn-box{margin:.45rem 0;padding:.55rem .65rem}
+.go-match-panel .go-score-grid{gap:.42rem;margin:.45rem 0}
+.go-match-panel .go-score-grid>div{padding:.5rem}
+.go-match-panel .go-score-grid span{font-size:.69rem;line-height:1.15}
+.go-match-panel .go-score-grid strong{font-size:.95rem}
+.go-match-panel .go-status{min-height:0;margin:.45rem 0 0;padding:.55rem .62rem;font-size:.81rem;line-height:1.35}
+.go-match-panel .rating-result{margin:.45rem 0;padding:.55rem .65rem}
+.go-match-panel .go-clock-panel{width:100%;margin:.45rem 0}
+.go-match-panel .go-clock-readout{grid-template-columns:1fr;gap:.4rem}
+.go-match-panel .go-clock-card{
+  min-height:0;
+  padding:.52rem .6rem;
+  gap:.35rem;
+  border-radius:10px;
+}
+.go-match-panel .go-clock-player{
+  grid-template-columns:16px minmax(0,1fr);
+  gap:.05rem .4rem;
+}
+.go-match-panel .go-clock-dot{width:15px;height:15px}
+.go-match-panel .go-clock-player>span:not(.go-clock-dot){font-size:.78rem}
+.go-match-panel .go-clock-player small{font-size:.68rem}
+.go-match-panel .go-clock-card strong{padding-top:.3rem;font-size:1.45rem}
+.go-match-panel .chess-time-meta{font-size:.7rem;line-height:1.2}
+.go-match-panel .go-actions{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:.5rem 0 0}
+.go-match-panel .go-actions .btn{min-width:0;width:100%}
+.go-match-panel .chess-online-actions{display:grid;grid-template-columns:1fr;gap:.4rem;margin-top:.5rem}
+.go-match-panel .chess-online-actions .btn{width:100%}
+.go-match-panel .online-decision{margin-top:.5rem;padding:.65rem}
+.go-match-panel .online-decision>div{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.45rem}
+.go-match-panel .online-decision .btn{width:100%}
+.go-online-settings.connected>label,
+.go-online-settings.connected>.custom-time-fields,
+.go-online-settings.connected>#createGoRoom,
+.go-online-settings.connected>#joinGoRoom{display:none!important}
+.go-online-settings.connected{flex:1 1 auto;min-width:0}
+.go-online-settings.connected .online-room-status{max-width:none}
+
+/* Grand écran : informations/pendules à gauche, goban au centre, historique à droite. */
+@media (min-width:1180px){
+  .go-play-page{
+    width:min(1580px,calc(100% - 24px));
+    padding-top:18px;
+    padding-bottom:36px;
+  }
+  .go-play-page .breadcrumb{margin-bottom:7px}
+  .go-play-page .section-head{margin-bottom:9px;align-items:center}
+  .go-play-page .section-head h1{margin:.1rem 0;font-size:clamp(1.5rem,2.3vw,2.05rem)}
+  .go-play-page .section-head .eyebrow{font-size:.7rem}
+  .go-play-page .section-head .section-lead{margin:.15rem 0 0;font-size:.86rem;line-height:1.35}
+  .go-play-layout{
+    display:grid;
+    grid-template-columns:minmax(220px,260px) minmax(520px,760px) minmax(250px,300px);
+    grid-template-rows:auto auto;
+    justify-content:center;
+    align-items:start;
+    gap:10px 14px;
+  }
+  .go-toolbar-wide{
+    grid-column:1/-1;
+    grid-row:1;
+    margin:0!important;
+    padding:9px 11px;
+  }
+  .go-play-page .go-toolbar{margin-bottom:0;gap:6px 9px}
+  .go-play-page .go-toolbar label{gap:2px;font-size:.72rem}
+  .go-play-page .go-toolbar select,
+  .go-play-page .go-toolbar input{min-height:32px;padding:5px 8px;font-size:.8rem}
+  .go-play-page .toolbar-group,.go-play-page .toolbar-actions{gap:6px}
+  .go-play-page .toolbar-actions .btn{min-height:32px;padding:5px 8px;font-size:.8rem}
+  .go-play-page .online-room-status{font-size:.75rem;line-height:1.25}
+  .go-info-column{grid-column:1;grid-row:2}
+  .go-play-page .go-shell{
+    grid-column:2;
+    grid-row:2;
+    display:block!important;
+    width:100%;
+    min-width:0;
+    padding:12px;
+    overflow:visible;
+  }
+  .go-history-column{grid-column:3;grid-row:2}
+  .go-match-panel,.go-history-panel{position:sticky;top:88px;padding:11px}
+  .go-play-page .go-board-frame{
+    width:min(100%,calc(100vh - 245px),760px);
+    max-width:760px;
+  }
+  .go-history{min-height:320px;max-height:calc(100vh - 210px);font-size:.84rem}
+  .go-history-row{grid-template-columns:32px 1fr 1fr;gap:4px;padding:5px 2px}
+  .go-help-panel{display:none}
+}
+
+/* PC plus étroit : goban à gauche, informations et historique empilés à droite. */
+@media (min-width:1051px) and (max-width:1179px){
+  .go-play-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 300px;
+    grid-template-rows:auto auto auto;
+    gap:10px 14px;
+  }
+  .go-toolbar-wide{grid-column:1/-1;grid-row:1;margin:0!important;padding:9px 11px}
+  .go-play-page .go-shell{grid-column:1;grid-row:2 / span 2;display:block!important;padding:12px;overflow:visible}
+  .go-info-column{grid-column:2;grid-row:2}
+  .go-history-column{grid-column:2;grid-row:3}
+  .go-match-panel,.go-history-panel{padding:11px}
+  .go-history{min-height:180px;max-height:300px}
+  .go-help-panel{display:none}
+}
+
+/* Tablette/mobile : le goban reste prioritaire. */
+@media (max-width:1050px){
+  .go-play-layout{grid-template-columns:1fr}
+  .go-toolbar-wide{margin:0 0 12px;order:1}
+  .go-play-page .go-shell{order:2;display:block!important}
+  .go-info-column{order:3}
+  .go-history-column{order:4}
+  .go-info-column,.go-history-column{width:100%}
+  .go-history-panel .go-history{max-height:320px}
+}
+@media (max-width:680px){
+  .go-game-result-actions{display:grid;grid-template-columns:1fr}
+  .go-game-result-actions .btn{width:100%}
+}
+@media (min-width:1180px) and (max-height:850px){
+  .go-play-page .section-head .section-lead{display:none}
+  .go-play-page .go-board-frame{width:min(100%,calc(100vh - 205px),700px)}
+  .go-history{max-height:calc(100vh - 180px);min-height:260px}
+  .go-match-panel,.go-history-panel{top:82px}
+}
+@media (prefers-reduced-motion:reduce){
+  .go-move-ghost{display:none!important}
+}
