@@ -68,7 +68,7 @@ function dealRound(scores=[0,0],round=1,lastRound=null,target=100){
     state:{
       target,round,scores:[Number(scores[0]||0),Number(scores[1]||0)],
       hands,boneyard:set,chain:[first],turn:1-starter.side,starter:starter.side,
-      passCount:0,lastRound
+      passCount:0,lastRound,awaitingNextRound:false
     },
     result:null,
     history:[{type:"round_start",round,starter:starter.side,tile:{...tile}}]
@@ -89,19 +89,31 @@ function finishRound(game,winner,reason){
   }
   const summary={round:s.round,winner,reason,points,pips,scores:[...s.scores]};
   game.history.push({type:"round_end",...clone(summary)});
+  s.lastRound=summary;
+  s.turn=null;
+  s.awaitingNextRound=true;
+
   if((winner===0||winner===1)&&s.scores[winner]>=s.target){
+    s.awaitingNextRound=false;
     game.result={over:true,type:"score",winner,scores:[...s.scores],target:s.target,lastRound:summary};
-    s.lastRound=summary;
-    return game;
   }
-  const next=dealRound(s.scores,s.round+1,summary,s.target);
-  next.history=[...game.history,...next.history];
-  return next;
+  return game;
+}
+
+export function advanceDominoRound(game){
+  const current=clone(game);
+  if(current?.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(!current?.state?.awaitingNextRound)return{ok:false,error:"La manche n’est pas terminée."};
+  const s=current.state;
+  const next=dealRound(s.scores,s.round+1,s.lastRound,s.target);
+  next.history=[...(current.history||[]),...next.history];
+  return{ok:true,state:next};
 }
 
 export function playServerDominoPlay(game,side,tileId,placement){
   let next=clone(game); side=Number(side);
   if(next.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(next.state?.awaitingNextRound)return{ok:false,error:"La manche est terminée. Lancez la manche suivante."};
   if(side!==0&&side!==1)return{ok:false,error:"Joueur invalide."};
   if(Number(next.state.turn)!==side)return{ok:false,error:"Ce n’est pas votre tour."};
   const hand=next.state.hands[side]||[];
@@ -128,6 +140,7 @@ export function playServerDominoPlay(game,side,tileId,placement){
 export function playServerDominoDraw(game,side){
   let next=clone(game); side=Number(side);
   if(next.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(next.state?.awaitingNextRound)return{ok:false,error:"La manche est terminée. Lancez la manche suivante."};
   if(Number(next.state.turn)!==side)return{ok:false,error:"Ce n’est pas votre tour."};
   if(dominoPlayableTiles(next,side).length)return{ok:false,error:"Vous avez déjà un domino jouable."};
 
