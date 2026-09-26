@@ -500,6 +500,8 @@ function draughtChooseAiMove(game, level, aiSide) {
 // Interface utilisateur — local, IA et multijoueur Cloudflare.
 // ------------------------------------------------------------
 let draughtUi = null;
+let draughtMoveGhost = null;
+let draughtMoveAnimation = null;
 
 const DRAUGHT_RATING_LABELS={bullet:"Bullet",blitz:"Blitz",rapid:"Rapide",classical:"Classique"};
 
@@ -514,6 +516,211 @@ function draughtEmptyOnlineState(){
 function draughtGameKey(){ return draughtUi?.variant==="english"?"checkers-english":"checkers-international"; }
 function draughtPlayerForSide(side){ return Number(side)===0?draughtUi?.online?.players?.black:draughtUi?.online?.players?.white; }
 function draughtRatingForSide(side){ return Number(side)===0?draughtUi?.online?.ratings?.side0:draughtUi?.online?.ratings?.side1; }
+
+function draughtLatestMoveMeta(game=draughtUi?.game){
+  const index=(game?.history?.length||0)-1;
+  if(index<0)return null;
+  const entry=game.history[index],move=entry?.move;
+  if(!move)return null;
+  const mover=Number(entry.state?.turn ?? move.piece?.side);
+  const path=Array.isArray(move.path)?move.path:[move.from,move.to].filter(Boolean);
+  return{
+    index,entry,move,mover,path,
+    key:`${index}:${mover}:${path.map(p=>p.join(",")).join(">")}`
+  };
+}
+
+function draughtPlayerLabel(side){
+  side=Number(side);
+  const cfg=draughtUi?.game?.config;
+  if(draughtUi?.mode==="online")return draughtPlayerForSide(side)?.username||cfg?.sideNames?.[side]||`Joueur ${side+1}`;
+  if(draughtUi?.mode==="ai")return side===Number(draughtUi.humanSide)?"Vous":"IA";
+  return cfg?.sideNames?.[side]||`Joueur ${side+1}`;
+}
+
+function draughtMoveSentence(feedback){
+  const cfg=draughtUi.game.config,side=Number(feedback.mover);
+  const notation=feedback.notation||draughtMoveNotation(cfg,feedback.move);
+  const captures=feedback.move?.captures?.length||0;
+  let actor;
+  if(draughtUi.mode==="local")actor=cfg.sideNames[side];
+  else if(draughtUi.mode==="ai")actor=side===Number(draughtUi.humanSide)?"Vous avez":"L’IA a";
+  else actor=`${draughtPlayerLabel(side)} a`;
+  const verb=draughtUi.mode==="local"?"ont joué":"joué";
+  return `${actor} ${verb} ${notation}${captures?` et capturé ${captures} pièce${captures>1?"s":""}`:""}.`;
+}
+
+function draughtWinnerTitle(side){
+  side=Number(side);
+  const cfg=draughtUi.game.config;
+  if(draughtUi.mode==="local")return `${cfg.sideNames[side]} gagnent la partie !`;
+  if(draughtUi.mode==="ai")return side===Number(draughtUi.humanSide)?"Vous gagnez la partie !":"L’IA gagne la partie !";
+  return `${draughtPlayerLabel(side)} gagne la partie !`;
+}
+
+function draughtIsOpponentMove(side){
+  side=Number(side);
+  if(draughtUi.mode==="online")return (draughtUi.online.side===0||draughtUi.online.side===1)&&side!==Number(draughtUi.online.side);
+  if(draughtUi.mode==="ai")return side!==Number(draughtUi.humanSide);
+  return draughtUi.mode==="local";
+}
+
+function draughtCancelMoveAnimation(){
+  try{draughtMoveAnimation?.cancel();}catch{}
+  draughtMoveAnimation=null;
+  draughtMoveGhost?.remove();
+  draughtMoveGhost=null;
+  document.querySelectorAll(".draught-square.draught-arriving").forEach(el=>el.classList.remove("draught-arriving"));
+}
+
+function draughtSyncMoveFeedback({animate=true,revealLatest=true}={}){
+  const latest=draughtLatestMoveMeta();
+  if(!latest){
+    draughtUi.lastSeenMoveKey=null;
+    draughtUi.moveFeedback=null;
+    return;
+  }
+  if(latest.key===draughtUi.lastSeenMoveKey)return;
+  draughtUi.lastSeenMoveKey=latest.key;
+  draughtCancelMoveAnimation();
+  if(!revealLatest||!draughtIsOpponentMove(latest.mover)){
+    draughtUi.moveFeedback=null;
+    return;
+  }
+  const [tr,tc]=latest.move.to||latest.path.at(-1);
+  const finalPiece=draughtUi.game.state.board?.[tr]?.[tc]||latest.move.piece||{side:latest.mover,king:false};
+  draughtUi.moveFeedback={
+    key:latest.key,index:latest.index,mover:latest.mover,
+    move:latest.move,path:latest.path.map(p=>[...p]),
+    notation:latest.entry.notation||draughtMoveNotation(draughtUi.game.config,latest.move),
+    piece:{...finalPiece},animate:Boolean(animate)
+  };
+}
+
+function draughtRenderMoveNotice(){
+  const el=document.getElementById("draughtMoveNotice");if(!el)return;
+  const feedback=draughtUi?.moveFeedback;
+  if(!feedback){el.hidden=true;el.textContent="";return;}
+  el.hidden=false;
+  el.textContent=draughtMoveSentence(feedback);
+}
+
+function draughtRenderContext(){
+  const el=document.getElementById("draughtMatchContext");if(!el||!draughtUi)return;
+  const cfg=draughtUi.game.config,items=[cfg.shortTitle];
+  if(draughtUi.mode==="online"){
+    items.push("En ligne");
+    const tc=draughtUi.online?.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60,inc=Number(tc.incrementSeconds||0),cat=draughtUi.online.settings?.ratingCategory;
+      items.push(`Cadence ${Number.isInteger(min)?min:min.toFixed(1)}+${inc}${cat?` · ${DRAUGHT_RATING_LABELS[cat]||cat}`:""}`);
+      items.push(draughtUi.online.settings?.rated?"Classée Elo":"Amicale");
+    }else{
+      const preset=document.getElementById("draughtTimePreset")?.selectedOptions?.[0]?.textContent;
+      if(preset)items.push(`Cadence ${preset}`);
+    }
+    if(draughtUi.online.side===0||draughtUi.online.side===1)items.push(`Vous : ${cfg.sideNames[Number(draughtUi.online.side)]}`);
+  }else if(draughtUi.mode==="ai"){
+    items.push("Joueur contre IA");
+    const level=document.getElementById("draughtAiLevel")?.selectedOptions?.[0]?.textContent||"IA";
+    items.push(`IA : ${level}`);
+    items.push(`Vous : ${cfg.sideNames[Number(draughtUi.humanSide)]}`);
+  }else items.push("2 joueurs sur le même écran");
+  el.innerHTML=items.map(item=>`<span>${draughtEscape(item)}</span>`).join("");
+}
+
+function draughtCurrentResult(){
+  if(!draughtUi)return null;
+  if(draughtUi.mode==="online")return draughtUi.online?.result?.over?draughtUi.online.result:null;
+  const status=draughtUi.game.status();
+  return status.over?{...status,over:true}:null;
+}
+
+function draughtRenderGameResult(){
+  const box=document.getElementById("draughtGameResult");if(!box||!draughtUi)return;
+  const result=draughtCurrentResult();
+  if(!result){box.hidden=true;return;}
+  const title=document.getElementById("draughtGameResultTitle");
+  const text=document.getElementById("draughtGameResultText");
+  const again=document.getElementById("draughtResultNew");
+  const home=document.getElementById("draughtResultHome");
+  box.hidden=false;
+  if(title)title.textContent=result.winner===0||result.winner===1?draughtWinnerTitle(result.winner):"Partie nulle";
+  if(text)text.textContent=result.text||"Partie terminée.";
+  if(again){
+    if(draughtUi.mode==="online"){
+      again.textContent=draughtUi.online?.rematchOffer?"Revanche proposée…":"Proposer une revanche";
+      again.disabled=!draughtOnlineHasTwoPlayers()||Boolean(draughtUi.online?.rematchOffer);
+    }else{
+      again.textContent="Nouvelle partie";again.disabled=false;
+    }
+  }
+  if(home)home.disabled=false;
+}
+
+function draughtRestartFromResult(){
+  if(draughtUi?.mode==="online"){
+    draughtSendOnlineAction("rematch_offer");
+    draughtRenderGameResult();
+    return;
+  }
+  newDraughtGame();
+}
+
+function draughtBackHomeFromResult(){
+  if(draughtUi?.mode==="online")draughtDisconnectOnline();
+  draughtCancelMoveAnimation();
+  location.hash="#/accueil";
+}
+
+function draughtAnimateOpponentMove(feedback){
+  if(!feedback?.animate)return;
+  feedback.animate=false;
+  if(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)return;
+  const path=feedback.path||[];
+  if(path.length<2)return;
+  const squares=path.map(([r,c])=>document.querySelector(`#draughtBoard .draught-square[data-r="${r}"][data-c="${c}"]`));
+  if(squares.some(x=>!x))return;
+  const rects=squares.map(x=>x.getBoundingClientRect()),target=squares.at(-1),tr=rects.at(-1);
+  if(!tr.width)return;
+
+  draughtCancelMoveAnimation();
+  target.classList.add("draught-arriving");
+  const cfg=draughtUi.game.config;
+  const ghost=document.createElement("span");
+  ghost.className=`draught-move-ghost draught-piece ${cfg.pieceClass[Number(feedback.mover)]} ${feedback.move?.piece?.king?"king":""}`;
+  ghost.innerHTML=`<span class="disc-core">${feedback.move?.piece?.king?"♛":""}</span>`;
+  ghost.setAttribute("aria-hidden","true");
+  ghost.style.left=`${tr.left+tr.width*.14}px`;
+  ghost.style.top=`${tr.top+tr.height*.14}px`;
+  ghost.style.width=`${tr.width*.72}px`;
+  ghost.style.height=`${tr.height*.72}px`;
+  document.body.appendChild(ghost);
+  draughtMoveGhost=ghost;
+
+  const keyframes=rects.map((rect,i)=>({
+    offset:i/(rects.length-1),
+    transform:`translate(${rect.left-tr.left}px,${rect.top-tr.top}px) scale(${i===rects.length-1?1:0.98})`,
+    opacity:1
+  }));
+  if(typeof ghost.animate!=="function"){
+    target.classList.remove("draught-arriving");ghost.remove();draughtMoveGhost=null;return;
+  }
+  draughtMoveAnimation=ghost.animate(keyframes,{
+    duration:Math.max(500,(path.length-1)*300),
+    easing:"cubic-bezier(.2,.72,.25,1)",fill:"forwards"
+  });
+  draughtMoveAnimation.onfinish=()=>{
+    target.classList.remove("draught-arriving");ghost.remove();
+    if(draughtMoveGhost===ghost)draughtMoveGhost=null;
+    draughtMoveAnimation=null;
+  };
+  draughtMoveAnimation.oncancel=()=>{
+    target.classList.remove("draught-arriving");ghost.remove();
+    if(draughtMoveGhost===ghost)draughtMoveGhost=null;
+    draughtMoveAnimation=null;
+  };
+}
 
 function initDraughts(variant = "international") {
   if(draughtUi?.online?.ws){ try{draughtUi.online.ws.close();}catch{} }
@@ -532,6 +739,8 @@ function initDraughts(variant = "international") {
     orientation: cfg.firstSide,
     thinking: false,
     variant,
+    moveFeedback:null,
+    lastSeenMoveKey:null,
     online:draughtEmptyOnlineState()
   };
 
@@ -548,13 +757,15 @@ function initDraughts(variant = "international") {
     newDraughtGame();
     if(draughtUi.mode==="online") draughtRefreshOnlineLoginStatus();
   });
-  document.getElementById("draughtAiLevel")?.addEventListener("change", e => draughtUi.aiLevel = e.target.value);
+  document.getElementById("draughtAiLevel")?.addEventListener("change", e => {draughtUi.aiLevel=e.target.value;draughtRenderContext();});
   document.getElementById("draughtSide")?.addEventListener("change", e => {
     draughtUi.humanSide = Number(e.target.value);
     draughtUi.orientation = draughtUi.humanSide;
     newDraughtGame();
   });
-  document.getElementById("draughtTimePreset")?.addEventListener("change",draughtUpdateCustomTimeVisibility);
+  document.getElementById("draughtTimePreset")?.addEventListener("change",()=>{draughtUpdateCustomTimeVisibility();draughtRenderContext();});
+  document.getElementById("draughtInitialMinutes")?.addEventListener("input",draughtRenderContext);
+  document.getElementById("draughtIncrementSeconds")?.addEventListener("input",draughtRenderContext);
   document.getElementById("createDraughtRoom")?.addEventListener("click",draughtCreateOnlineRoom);
   document.getElementById("joinDraughtRoom")?.addEventListener("click",draughtJoinOnlineRoom);
   document.getElementById("draughtRoomCode")?.addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,6));
@@ -570,6 +781,8 @@ function initDraughts(variant = "international") {
   document.getElementById("offerRematchDraught")?.addEventListener("click",()=>draughtSendOnlineAction("rematch_offer"));
   document.getElementById("acceptDraughtProposal")?.addEventListener("click",()=>draughtRespondToOnlineProposal(true));
   document.getElementById("declineDraughtProposal")?.addEventListener("click",()=>draughtRespondToOnlineProposal(false));
+  document.getElementById("draughtResultNew")?.addEventListener("click",draughtRestartFromResult);
+  document.getElementById("draughtResultHome")?.addEventListener("click",draughtBackHomeFromResult);
 
   draughtUpdateCustomTimeVisibility();
   newDraughtGame();
@@ -577,6 +790,9 @@ function initDraughts(variant = "international") {
 
 function newDraughtGame() {
   if(!draughtUi) return;
+  draughtCancelMoveAnimation();
+  draughtUi.moveFeedback=null;
+  draughtUi.lastSeenMoveKey=null;
   if(draughtUi.mode==="online"){
     draughtUi.selected=null; draughtUi.candidateMoves=[]; draughtUi.thinking=false;
     hideDraughtPathPicker();
@@ -618,7 +834,9 @@ function renderDraughtBoard() {
     if (!targets.has(key)) targets.set(key, []);
     targets.get(key).push(move);
   }
-  const last = game.history.at(-1)?.move;
+  const lastMeta=draughtLatestMoveMeta(game);
+  const last=lastMeta?.move;
+  const opponentLast=Boolean(draughtUi.moveFeedback&&lastMeta?.key===draughtUi.moveFeedback.key);
 
   let html = "";
   rows.forEach((r, vr) => {
@@ -630,7 +848,8 @@ function renderDraughtBoard() {
       const wasLast = last && (last.path.some(p => p[0] === r && p[1] === c));
       const classes = [
         "draught-square", playable ? "dark" : "light", selected ? "selected" : "",
-        moves.length ? "legal" : "", moves.some(m => m.captures.length) ? "capture" : "", wasLast ? "last" : ""
+        moves.length ? "legal" : "", moves.some(m => m.captures.length) ? "capture" : "", wasLast ? "last" : "",
+        wasLast&&opponentLast ? "opponent-last" : ""
       ].filter(Boolean).join(" ");
       const number = playable ? draughtSquareNumber(cfg, r, c) : null;
       const showNumber = playable && ((cfg.size === 10 && (vr === 0 || vr === cfg.size - 1)) || (cfg.size === 8 && (vr === 0 || vr === cfg.size - 1)));
@@ -641,6 +860,7 @@ function renderDraughtBoard() {
 
   boardEl.innerHTML = html;
   boardEl.querySelectorAll(".draught-square.dark").forEach(btn => btn.addEventListener("click", onDraughtSquareClick));
+  requestAnimationFrame(()=>draughtAnimateOpponentMove(draughtUi.moveFeedback));
   renderDraughtInfo();
 }
 
@@ -674,6 +894,12 @@ function renderDraughtInfo() {
   const items = game.history.map((item, i) => `<div class="draught-history-row"><span>${i + 1}.</span><span>${item.notation||draughtMoveNotation(cfg,item.move)}</span></div>`);
   historyEl.innerHTML = items.length ? items.join("") : `<div class="history-empty">Les coups apparaîtront ici.</div>`;
   historyEl.scrollTop = historyEl.scrollHeight;
+  const count=document.getElementById("draughtHistoryCount");
+  if(count)count.textContent=`${game.history.length} coup${game.history.length>1?"s":""}`;
+
+  draughtRenderContext();
+  draughtRenderMoveNotice();
+  draughtRenderGameResult();
 
   const undo = document.getElementById("undoDraught");
   if (undo) undo.disabled = draughtUi.mode==="online" || draughtUi.thinking || !game.history.length;
@@ -748,6 +974,7 @@ function playDraughtMove(move) {
   if (!draughtUi.game.play(move)) return;
   draughtUi.selected = null;
   draughtUi.candidateMoves = [];
+  draughtSyncMoveFeedback({animate:true,revealLatest:true});
   renderDraughtBoard();
   maybeDraughtAiTurn();
 }
@@ -761,6 +988,9 @@ function undoDraughtMove() {
     game.undo();
     if (game.state.turn !== draughtUi.humanSide && game.history.length) game.undo();
   } else game.undo();
+  draughtCancelMoveAnimation();
+  draughtUi.moveFeedback=null;
+  draughtUi.lastSeenMoveKey=draughtLatestMoveMeta()?.key||null;
   draughtUi.selected = null;
   draughtUi.candidateMoves = [];
   renderDraughtBoard();
@@ -773,7 +1003,10 @@ function maybeDraughtAiTurn() {
   window.setTimeout(() => {
     const aiSide = draughtUi.game.state.turn;
     const move = draughtChooseAiMove(draughtUi.game, draughtUi.aiLevel, aiSide);
-    if (move) draughtUi.game.play(move);
+    if (move) {
+      draughtUi.game.play(move);
+      draughtSyncMoveFeedback({animate:true,revealLatest:true});
+    }
     draughtUi.thinking = false;
     renderDraughtBoard();
   }, 140);
@@ -869,6 +1102,9 @@ async function draughtJoinOnlineRoom(){
 
 function draughtDisconnectOnline(){
   if(!draughtUi?.online) return;
+  draughtCancelMoveAnimation();
+  draughtUi.moveFeedback=null;
+  draughtUi.lastSeenMoveKey=null;
   try{draughtUi.online.ws?.close();}catch{}
   if(draughtUi.online.clockTimer) clearInterval(draughtUi.online.clockTimer);
   draughtUi.online=draughtEmptyOnlineState();
@@ -895,7 +1131,7 @@ function draughtConnectOnline(code){
   draughtUi.online.clockTimer=setInterval(()=>draughtUpdateClockDisplay(),250);
 }
 
-function draughtApplyServerGame(serverGame){
+function draughtApplyServerGame(serverGame,{revealLatest=true}={}){
   if(!serverGame?.state) return;
   draughtUi.game.state=draughtUi.game.cloneState(serverGame.state);
   draughtUi.game.history=Array.isArray(serverGame.history)?serverGame.history.map(item=>({
@@ -904,6 +1140,7 @@ function draughtApplyServerGame(serverGame){
   draughtUi.game.positionHistory=Array.isArray(serverGame.positionHistory)?[...serverGame.positionHistory]:[];
   draughtUi.online.result=serverGame.result||null;
   draughtUi.selected=null; draughtUi.candidateMoves=[];
+  draughtSyncMoveFeedback({animate:true,revealLatest});
 }
 
 function draughtSetOnlineClock(clock){ draughtUi.online.clock=clock?{...clock,clientReceivedAt:Date.now()}:null; }
@@ -922,7 +1159,7 @@ function draughtHandleOnlineMessage(data){
     draughtUi.online.drawOffer=data.drawOffer||null;
     draughtUi.online.rematchOffer=data.rematchOffer||null;
     draughtSetOnlineClock(data.clock||null);
-    draughtApplyServerGame(data.game);
+    draughtApplyServerGame(data.game,{revealLatest:false});
     draughtSetRoomStatus(`Salon ${draughtUi.online.code||""} connecté.`);
     renderDraughtBoard();
     draughtHandleIncomingOffers();
@@ -934,7 +1171,7 @@ function draughtHandleOnlineMessage(data){
     if(data.ratings) draughtUi.online.ratings=data.ratings;
     if(data.ratingUpdate!==undefined) draughtUi.online.ratingUpdate=data.ratingUpdate;
     if(data.clock) draughtSetOnlineClock(data.clock);
-    draughtApplyServerGame(data.game);
+    draughtApplyServerGame(data.game,{revealLatest:true});
     renderDraughtBoard();
     return;
   }
@@ -960,10 +1197,11 @@ function draughtHandleOnlineMessage(data){
   if(data.type==="rematch_offer"){
     draughtUi.online.rematchOffer=data.offer||null;
     if(Number(data.offer?.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des camps.`);
+    draughtUpdateOnlineControls();
     return;
   }
   if(data.type==="rematch_declined"){
-    draughtUi.online.rematchOffer=null; draughtHideOnlinePrompt(); draughtSetRoomStatus("La revanche a été refusée."); return;
+    draughtUi.online.rematchOffer=null; draughtHideOnlinePrompt(); draughtSetRoomStatus("La revanche a été refusée."); draughtUpdateOnlineControls(); return;
   }
   if(data.type==="rematch_started"){
     draughtUi.online.side=Number(data.side);
@@ -972,7 +1210,8 @@ function draughtHandleOnlineMessage(data){
     draughtUi.online.settings=data.settings||draughtUi.online.settings;
     draughtUi.online.ratings=data.ratings||null;
     draughtUi.online.ratingUpdate=null; draughtUi.online.drawOffer=null; draughtUi.online.rematchOffer=null;
-    draughtSetOnlineClock(data.clock||null); draughtApplyServerGame(data.game); draughtHideOnlinePrompt();
+    draughtUi.moveFeedback=null;draughtUi.lastSeenMoveKey=null;
+    draughtSetOnlineClock(data.clock||null); draughtApplyServerGame(data.game,{revealLatest:false}); draughtHideOnlinePrompt();
     draughtSetRoomStatus("Revanche démarrée : les camps ont été inversés."); renderDraughtBoard(); return;
   }
   if(data.type==="error"){ draughtSetRoomStatus(data.message||"Erreur de partie.",true); }
@@ -1013,12 +1252,14 @@ function draughtUpdateOnlineControls(){
   const box=document.getElementById("draughtOnlineActions"); if(!box||!draughtUi) return;
   const online=draughtUi.mode==="online"&&draughtUi.online.connected;
   box.hidden=!online;
-  if(!online) return;
+  document.getElementById("draughtOnlineSettings")?.classList.toggle("connected",online);
+  if(!online){draughtRenderGameResult();return;}
   const over=Boolean(draughtUi.online.result?.over),two=draughtOnlineHasTwoPlayers();
   const resign=document.getElementById("resignDraughtOnline"),draw=document.getElementById("offerDrawDraught"),rematch=document.getElementById("offerRematchDraught");
   if(resign) resign.disabled=!two||over;
   if(draw) draw.disabled=!two||over||Boolean(draughtUi.online.drawOffer);
-  if(rematch){ rematch.hidden=!over; rematch.disabled=!two||Boolean(draughtUi.online.rematchOffer); }
+  if(rematch) rematch.hidden=true;
+  draughtRenderGameResult();
 }
 
 function draughtOnlineClockValues(){

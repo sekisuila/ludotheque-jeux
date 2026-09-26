@@ -2106,70 +2106,89 @@ function renderDraughtsPlay(variant) {
       </div>
 
       <div class="draught-play-layout">
+        <div class="chess-toolbar draught-toolbar-wide panel">
+          <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+          <div id="draughtAiSettings" class="toolbar-group" hidden>
+            <label><span>Niveau IA</span><select id="draughtAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
+            <label><span>Votre camp</span><select id="draughtSide">${cfg.sideNames.map((name, i) => `<option value="${i}" ${i === cfg.firstSide ? "selected" : ""}>${name}</option>`).join("")}</select></label>
+          </div>
+          <div id="draughtOnlineSettings" class="toolbar-group draught-online-settings">
+            <label><span>Camp si vous créez</span><select id="draughtCreatorSide"><option value="random" selected>Aléatoire</option>${cfg.sideNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("")}</select></label>
+            <label><span>Cadence</span><select id="draughtTimePreset">
+              <option value="60,0">1+0 — Bullet</option>
+              <option value="180,2">3+2 — Blitz</option>
+              <option value="300,0">5+0 — Blitz</option>
+              <option value="600,5" selected>10+5 — Rapide</option>
+              <option value="900,10">15+10 — Rapide</option>
+              <option value="1800,0">30+0 — Classique</option>
+              <option value="custom">Personnalisée…</option>
+            </select></label>
+            <span id="draughtCustomTime" class="custom-time-fields" hidden>
+              <label><span>Minutes</span><input id="draughtInitialMinutes" type="number" min="1" max="180" value="10"></label>
+              <label><span>+ secondes/coup</span><input id="draughtIncrementSeconds" type="number" min="0" max="60" value="5"></label>
+            </span>
+            <label class="inline-check"><input id="draughtRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+            <button id="createDraughtRoom" class="btn small">Créer un salon</button>
+            <label><span>Code du salon</span><input id="draughtRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+            <button id="joinDraughtRoom" class="btn outline small">Rejoindre</button>
+            <span id="draughtRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
+          </div>
+          <div class="toolbar-actions"><button id="newDraught" class="btn small">Nouvelle partie</button><button id="undoDraught" class="btn outline small">Annuler</button><button id="flipDraught" class="btn outline small">↻ Plateau</button></div>
+        </div>
+
+        <aside class="draught-info-column">
+          <section class="panel draught-match-panel">
+            <div id="draughtMatchContext" class="draught-match-context" aria-label="Informations de la partie"></div>
+            <div id="draughtClockPanel" class="draught-clock-panel" hidden>
+              <div id="draughtClockReadout" class="draught-clock-readout" aria-label="Pendules des deux joueurs"></div>
+              <div id="draughtTimeMeta" class="chess-time-meta"></div>
+            </div>
+            <div class="turn-box"><span>Trait</span><strong id="draughtTurn">${cfg.sideNames[cfg.firstSide]}</strong></div>
+            <div id="draughtRatingResult" class="rating-result" hidden></div>
+            <div class="piece-count-grid"><div><span id="draughtLabel0">${cfg.sideNames[0]}</span><strong id="draughtCount0">${cfg.piecesPerSide}</strong></div><div><span id="draughtLabel1">${cfg.sideNames[1]}</span><strong id="draughtCount1">${cfg.piecesPerSide}</strong></div></div>
+            <div id="draughtStatus" class="status draught-status"></div>
+            <div id="draughtMoveNotice" class="draught-move-notice" role="status" aria-live="polite" hidden></div>
+            <div id="draughtOnlineActions" class="chess-online-actions" hidden>
+              <button id="resignDraughtOnline" class="btn danger small">Abandonner</button>
+              <button id="offerDrawDraught" class="btn outline small">Proposer la nulle</button>
+              <button id="offerRematchDraught" class="btn small" hidden>Proposer une revanche</button>
+            </div>
+            <div id="draughtOnlinePrompt" class="online-decision" hidden>
+              <strong id="draughtOnlinePromptTitle"></strong>
+              <span id="draughtOnlinePromptText"></span>
+              <div class="online-decision-actions"><button id="acceptDraughtProposal" class="btn small">Accepter</button><button id="declineDraughtProposal" class="btn outline small">Refuser</button></div>
+            </div>
+            <div id="draughtGameResult" class="draught-game-result" role="status" aria-live="polite" hidden>
+              <strong id="draughtGameResultTitle"></strong>
+              <p id="draughtGameResultText"></p>
+              <div class="draught-game-result-actions">
+                <button id="draughtResultNew" class="btn small" type="button">Nouvelle partie</button>
+                <button id="draughtResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
+              </div>
+            </div>
+          </section>
+        </aside>
+
         <section class="game-shell draught-shell">
-          <div class="chess-toolbar">
-            <label><span>Mode</span><select id="draughtMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
-            <div id="draughtAiSettings" class="toolbar-group" hidden>
-              <label><span>Niveau IA</span><select id="draughtAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
-              <label><span>Votre camp</span><select id="draughtSide">${cfg.sideNames.map((name, i) => `<option value="${i}" ${i === cfg.firstSide ? "selected" : ""}>${name}</option>`).join("")}</select></label>
-            </div>
-            <div id="draughtOnlineSettings" class="toolbar-group draught-online-settings">
-              <label><span>Camp si vous créez</span><select id="draughtCreatorSide"><option value="random" selected>Aléatoire</option>${cfg.sideNames.map((name,i)=>`<option value="${i}">${name}</option>`).join("")}</select></label>
-              <label><span>Cadence</span><select id="draughtTimePreset">
-                <option value="60,0">1+0 — Bullet</option>
-                <option value="180,2">3+2 — Blitz</option>
-                <option value="300,0">5+0 — Blitz</option>
-                <option value="600,5" selected>10+5 — Rapide</option>
-                <option value="900,10">15+10 — Rapide</option>
-                <option value="1800,0">30+0 — Classique</option>
-                <option value="custom">Personnalisée…</option>
-              </select></label>
-              <span id="draughtCustomTime" class="custom-time-fields" hidden>
-                <label><span>Minutes</span><input id="draughtInitialMinutes" type="number" min="1" max="180" value="10"></label>
-                <label><span>+ secondes/coup</span><input id="draughtIncrementSeconds" type="number" min="0" max="60" value="5"></label>
-              </span>
-              <label class="inline-check"><input id="draughtRated" type="checkbox" checked><span>Partie classée Elo</span></label>
-              <button id="createDraughtRoom" class="btn small">Créer un salon</button>
-              <label><span>Code du salon</span><input id="draughtRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
-              <button id="joinDraughtRoom" class="btn outline small">Rejoindre</button>
-              <span id="draughtRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
-            </div>
-            <div class="toolbar-actions"><button id="newDraught" class="btn small">Nouvelle partie</button><button id="undoDraught" class="btn outline small">Annuler</button><button id="flipDraught" class="btn outline small">↻ Plateau</button></div>
-          </div>
-
-          <div id="draughtClockPanel" class="draught-clock-panel" hidden>
-            <div id="draughtClockReadout" class="draught-clock-readout" aria-label="Pendules des deux joueurs"></div>
-            <div id="draughtTimeMeta" class="chess-time-meta"></div>
-          </div>
-
           <div class="draught-board-wrap">
             <div id="draughtBoard" class="draughts-board" aria-label="Damier interactif ${cfg.shortTitle}"></div>
             <div id="draughtPathPicker" class="draught-path-picker" hidden></div>
           </div>
-          <div id="draughtStatus" class="status draught-status"></div>
-          <div id="draughtOnlineActions" class="chess-online-actions" hidden>
-            <button id="resignDraughtOnline" class="btn danger small">Abandonner</button>
-            <button id="offerDrawDraught" class="btn outline small">Proposer la nulle</button>
-            <button id="offerRematchDraught" class="btn small" hidden>Proposer une revanche</button>
-          </div>
-          <div id="draughtOnlinePrompt" class="online-decision" hidden>
-            <strong id="draughtOnlinePromptTitle"></strong>
-            <span id="draughtOnlinePromptText"></span>
-            <div class="online-decision-actions"><button id="acceptDraughtProposal" class="btn small">Accepter</button><button id="declineDraughtProposal" class="btn outline small">Refuser</button></div>
-          </div>
         </section>
 
-        <aside class="draught-side-column">
-          <section class="panel"><div class="turn-box"><span>Trait</span><strong id="draughtTurn">${cfg.sideNames[cfg.firstSide]}</strong></div><div id="draughtRatingResult" class="rating-result" hidden></div><div class="piece-count-grid"><div><span id="draughtLabel0">${cfg.sideNames[0]}</span><strong id="draughtCount0">${cfg.piecesPerSide}</strong></div><div><span id="draughtLabel1">${cfg.sideNames[1]}</span><strong id="draughtCount1">${cfg.piecesPerSide}</strong></div></div><h3>Historique</h3><div id="draughtHistory" class="draught-history"></div></section>
-          <section class="panel"><h3>Multijoueur en ligne</h3><p>Créez un salon privé ou rejoignez un code. Le créateur choisit son camp, la cadence et si la partie compte pour le classement Elo.</p><p>La pendule et la légalité des déplacements sont contrôlées côté Cloudflare. Les prises obligatoires et les rafles sont donc vérifiées par le serveur.</p><p>Abandon, proposition de nulle et revanche avec inversion des camps sont disponibles comme aux Échecs.</p><div class="note"><strong>Elo :</strong> les Dames ${isInternational?"internationales":"anglaises"} possèdent leurs propres classements Bullet, Blitz, Rapide et Classique.</div></section>
-          <section class="panel"><h3>Règles actives</h3>${isInternational ? `<p>✓ Pions : prise avant et arrière</p><p>✓ Rafle maximale obligatoire</p><p>✓ Dames volantes</p><p>✓ Promotion seulement à la fin du coup</p>` : `<p>✓ Pions : prise vers l’avant</p><p>✓ Toute prise est obligatoire</p><p>✓ Choix libre entre plusieurs rafles</p><p>✓ Dame : une case en diagonale</p>`}<div class="note"><strong>Conseil :</strong> cliquez sur une pièce. Seuls les coups légalement autorisés sont proposés. Pour une rafle, cliquez sur sa case d’arrivée finale.</div></section>
+        <aside class="draught-history-column">
+          <section class="panel draught-history-panel">
+            <div class="draught-history-head"><h3>Historique</h3><span id="draughtHistoryCount">0 coup</span></div>
+            <div id="draughtHistory" class="draught-history"></div>
+          </section>
+          <section class="panel draught-help-panel"><h3>Multijoueur en ligne</h3><p>Créez un salon privé ou rejoignez un code. Le créateur choisit son camp, la cadence et si la partie compte pour le classement Elo.</p><p>La pendule et la légalité des déplacements sont contrôlées côté Cloudflare. Les prises obligatoires et les rafles sont vérifiées par le serveur.</p><p>Abandon, proposition de nulle et revanche avec inversion des camps sont disponibles comme aux Échecs.</p><div class="note"><strong>Elo :</strong> les Dames ${isInternational?"internationales":"anglaises"} possèdent leurs propres classements Bullet, Blitz, Rapide et Classique.</div></section>
+          <section class="panel draught-help-panel"><h3>Règles actives</h3>${isInternational ? `<p>✓ Pions : prise avant et arrière</p><p>✓ Rafle maximale obligatoire</p><p>✓ Dames volantes</p><p>✓ Promotion seulement à la fin du coup</p>` : `<p>✓ Pions : prise vers l’avant</p><p>✓ Toute prise est obligatoire</p><p>✓ Choix libre entre plusieurs rafles</p><p>✓ Dame : une case en diagonale</p>`}<div class="note"><strong>Conseil :</strong> cliquez sur une pièce. Seuls les coups légalement autorisés sont proposés. Pour une rafle, cliquez sur sa case d’arrivée finale.</div></section>
         </aside>
       </div>
     </div>
   `;
   initDraughts(variant);
 }
-
 
 function renderGoPlay() {
   app.innerHTML = `
