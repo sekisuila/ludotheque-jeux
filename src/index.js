@@ -702,6 +702,152 @@ async function joinRoom(request,env,user){
   return json(payloadForSlot(joinSlot));
 }
 
+const LOBBY_ONLINE_MS=45000;
+const LOBBY_INVITE_MS=120000;
+
+async function lobbyHeartbeat(request,env,user){
+  const body=await readJson(request);
+  const page=String(body?.page||"").slice(0,120);
+  const game=validRoomGame(body?.game)?body.game:null;
+  const now=Date.now();
+  await env.DB.prepare(`
+    INSERT INTO online_presence(user_id,last_seen,page,game) VALUES(?,?,?,?)
+    ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen,page=excluded.page,game=excluded.game
+  `).bind(user.id,now,page,game).run();
+  return json({ok:true,now});
+}
+
+async function lobbySnapshot(env,user){
+  const now=Date.now(),onlineSince=now-LOBBY_ONLINE_MS;
+  await env.DB.prepare("UPDATE game_invites SET status='expired',responded_at=? WHERE status='pending' AND expires_at<=?")
+    .bind(now,now).run();
+
+  const {results:online=[]}=await env.DB.prepare(`
+    SELECT u.id,u.username,p.last_seen,p.page,p.game
+    FROM online_presence p JOIN users u ON u.id=p.user_id
+    WHERE p.last_seen>=? AND p.user_id<>? AND u.deleted_at IS NULL
+    ORDER BY u.username COLLATE NOCASE ASC
+    LIMIT 50
+  `).bind(onlineSince,user.id).all();
+
+  const {results:incoming=[]}=await env.DB.prepare(`
+    SELECT i.id,i.game,i.room_code,i.created_at,i.expires_at,u.username AS inviter_username
+    FROM game_invites i JOIN users u ON u.id=i.inviter_id
+    WHERE i.invitee_id=? AND i.status='pending' AND i.expires_at>?
+    ORDER BY i.created_at DESC LIMIT 10
+  `).bind(user.id,now).all();
+
+  const {results:outgoing=[]}=await env.DB.prepare(`
+    SELECT i.id,i.game,i.room_code,i.status,i.created_at,i.expires_at,i.responded_at,u.username AS invitee_username
+    FROM game_invites i JOIN users u ON u.id=i.invitee_id
+    WHERE i.inviter_id=? AND i.created_at>=?
+    ORDER BY i.created_at DESC LIMIT 10
+  `).bind(user.id,now-10*60*1000).all();
+
+  return json({
+    now,
+    online:online.map(r=>({id:r.id,username:r.username,lastSeen:Number(r.last_seen),page:r.page||"",game:r.game||null})),
+    incoming:incoming.map(r=>({id:r.id,game:r.game,roomCode:r.room_code,createdAt:Number(r.created_at),expiresAt:Number(r.expires_at),inviterUsername:r.inviter_username})),
+    outgoing:outgoing.map(r=>({id:r.id,game:r.game,roomCode:r.room_code,status:r.status,createdAt:Number(r.created_at),expiresAt:Number(r.expires_at),respondedAt:r.responded_at==null?null:Number(r.responded_at),inviteeUsername:r.invitee_username}))
+  });
+}
+
+async function createDirectInvite(request,env,user){
+  const body=await readJson(request);
+  const inviteeId=String(body?.inviteeId||"").trim();
+  const game=validRoomGame(body?.game)?body.game:null;
+  if(!game) return json({error:"Jeu invalide."},400);
+  if(!inviteeId||inviteeId===user.id) return json({error:"Joueur invité invalide."},400);
+
+  const now=Date.now();
+  const target=await env.DB.prepare(`
+    SELECT u.id,u.username,p.last_seen
+    FROM users u JOIN online_presence p ON p.user_id=u.id
+    WHERE u.id=? AND u.deleted_at IS NULL
+  `).bind(inviteeId).first();
+  if(!target || Number(target.last_seen)<now-LOBBY_ONLINE_MS) return json({error:"Ce joueur n’est plus en ligne."},409);
+
+  // Une nouvelle invitation remplace l'éventuelle précédente entre les mêmes joueurs.
+  const {results:oldInvites=[]}=await env.DB.prepare(`
+    SELECT id,room_code FROM game_invites
+    WHERE inviter_id=? AND invitee_id=? AND status='pending'
+  `).bind(user.id,inviteeId).all();
+  for(const old of oldInvites){
+    await env.DB.prepare("UPDATE game_invites SET status='cancelled',responded_at=? WHERE id=? AND status='pending'").bind(now,old.id).run();
+    await env.DB.prepare("UPDATE rooms SET status='finished',updated_at=CURRENT_TIMESTAMP WHERE code=? AND status='waiting'").bind(old.room_code).run();
+  }
+
+  const roomRequest=new Request("https://strathasard.local/api/rooms",{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({
+      game,
+      creatorColor:"random",
+      creatorSide:"random",
+      initialSeconds:600,
+      incrementSeconds:5,
+      rated:true,
+      goSize:19,
+      goKomi:7.5,
+      goScoring:"area"
+    })
+  });
+  const roomResponse=await createRoom(roomRequest,env,user);
+  if(!roomResponse.ok) return roomResponse;
+  const room=await roomResponse.json();
+
+  const id=crypto.randomUUID();
+  const expiresAt=now+LOBBY_INVITE_MS;
+  await env.DB.prepare(`
+    INSERT INTO game_invites(id,inviter_id,invitee_id,game,room_code,status,created_at,expires_at)
+    VALUES(?,?,?,?,?,'pending',?,?)
+  `).bind(id,user.id,inviteeId,game,room.code,now,expiresAt).run();
+
+  return json({
+    invite:{id,game,roomCode:room.code,inviteeUsername:target.username,createdAt:now,expiresAt},
+    room
+  },201);
+}
+
+async function respondDirectInvite(request,env,user,id){
+  const body=await readJson(request);
+  const accept=body?.accept===true;
+  const now=Date.now();
+  const invite=await env.DB.prepare(`
+    SELECT i.*,u.username AS inviter_username
+    FROM game_invites i JOIN users u ON u.id=i.inviter_id
+    WHERE i.id=? AND i.invitee_id=?
+  `).bind(id,user.id).first();
+  if(!invite) return json({error:"Invitation introuvable."},404);
+  if(invite.status!=="pending") return json({error:"Cette invitation n’est plus disponible."},409);
+  if(Number(invite.expires_at)<=now){
+    await env.DB.prepare("UPDATE game_invites SET status='expired',responded_at=? WHERE id=?").bind(now,id).run();
+    await env.DB.prepare("UPDATE rooms SET status='finished',updated_at=CURRENT_TIMESTAMP WHERE code=? AND status='waiting'").bind(invite.room_code).run();
+    return json({error:"Cette invitation a expiré."},409);
+  }
+
+  if(!accept){
+    await env.DB.prepare("UPDATE game_invites SET status='declined',responded_at=? WHERE id=? AND status='pending'").bind(now,id).run();
+    await env.DB.prepare("UPDATE rooms SET status='finished',updated_at=CURRENT_TIMESTAMP WHERE code=? AND status='waiting'").bind(invite.room_code).run();
+    return json({ok:true,accepted:false});
+  }
+
+  const joinRequest=new Request("https://strathasard.local/api/rooms/join",{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({code:invite.room_code})
+  });
+  const joinResponse=await joinRoom(joinRequest,env,user);
+  if(!joinResponse.ok) return joinResponse;
+  const room=await joinResponse.json();
+  await env.DB.prepare("UPDATE game_invites SET status='accepted',responded_at=? WHERE id=? AND status='pending'").bind(now,id).run();
+  return json({
+    ok:true,accepted:true,
+    invite:{id,game:invite.game,roomCode:invite.room_code,inviterUsername:invite.inviter_username},
+    room
+  });
+}
+
 async function roomInfo(env,user,code){
   const room=await env.DB.prepare(`SELECT r.code,r.game,r.status,r.created_at,r.updated_at,
     r.time_initial_seconds,r.time_increment_seconds,r.rated,r.rating_category,r.go_size,r.go_komi,r.go_scoring,
@@ -1161,6 +1307,11 @@ async function api(request,env){
   const dominoGameMatch=p.match(/^\/api\/dominos\/games\/([0-9a-f-]{36})$/i); if(dominoGameMatch&&request.method==="GET") return dominoGameById(env,user,dominoGameMatch[1]);
   if(p==="/api/abalone/games"&&request.method==="GET") return listAbaloneGames(env,user);
   const abaloneGameMatch=p.match(/^\/api\/abalone\/games\/([0-9a-f-]{36})$/i); if(abaloneGameMatch&&request.method==="GET") return abaloneGameById(env,user,abaloneGameMatch[1]);
+  if(p==="/api/lobby/heartbeat"&&request.method==="POST") return lobbyHeartbeat(request,env,user);
+  if(p==="/api/lobby"&&request.method==="GET") return lobbySnapshot(env,user);
+  if(p==="/api/invites"&&request.method==="POST") return createDirectInvite(request,env,user);
+  const inviteRespondMatch=p.match(/^\/api\/invites\/([0-9a-f-]{36})\/respond$/i);
+  if(inviteRespondMatch&&request.method==="POST") return respondDirectInvite(request,env,user,inviteRespondMatch[1]);
   if(p==="/api/rooms"&&request.method==="POST") return createRoom(request,env,user);
   if(p==="/api/rooms/join"&&request.method==="POST") return joinRoom(request,env,user);
   const roomMatch=p.match(/^\/api\/rooms\/([A-Z2-9]{6})$/i); if(roomMatch&&request.method==="GET") return roomInfo(env,user,roomMatch[1].toUpperCase());
