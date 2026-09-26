@@ -261,6 +261,11 @@
     get: async id => (await request(`/api/chess/games/${encodeURIComponent(id)}`)).game
   };
 
+  const chessAiRating = {
+    mine: async () => (await request("/api/ratings/chess-ai/me")).rating,
+    record: async payload => request("/api/chess/ai-result", { method:"POST", body:payload })
+  };
+
   const checkersRatings = {
     mine: async (variant = "international") => (await request(`/api/ratings/checkers/me?variant=${encodeURIComponent(variant)}`)).ratings,
     leaderboard: async (variant = "international", category = "rapid", limit = 30) =>
@@ -564,7 +569,7 @@
   window.LudoOnline = {
     state, request, me, register, login, logout,
     changePassword, generateRecoveryKey, resetWithRecovery, requestPasswordReset, resetPasswordWithEmail, verifyEmail, setEmail, resendVerification, deleteAccount, security,
-    saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, dominoRatings, dominoGames, rooms, lobby, invites, updateNav
+    saves, ratings, chessGames, chessAiRating, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, dominoRatings, dominoGames, rooms, lobby, invites, updateNav
   };
   window.addEventListener("DOMContentLoaded", () => me().then(user=>{if(user)startLobbyPresence();}).catch(() => updateNav()));
   window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.user){lobbyHeartbeat().catch(()=>{});lobbySnapshot().catch(()=>{});}});

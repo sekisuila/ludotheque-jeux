@@ -818,6 +818,7 @@ function chessRenderContext() {
     items.push("Joueur contre IA");
     const label=document.getElementById("chessAiLevel")?.selectedOptions?.[0]?.textContent||"IA";
     items.push(label);
+    if(chessLevelUsesStockfish(chessUi.aiRatedLevel||chessUi.aiLevel)&&chessUi.aiRating?.rating!=null) items.push(`Elo IA ${chessUi.aiRating.rating}`);
     items.push(`Vous : ${chessUi.humanColor==="w"?"Blancs":"Noirs"}`);
   }else{
     items.push("2 joueurs sur le même écran");
@@ -1288,6 +1289,14 @@ function initChess() {
     thinking: false,
     moveFeedback: null,
     lastSeenMoveKey: null,
+    aiRating:null,
+    aiRatingUpdate:null,
+    aiRatingEligible:false,
+    aiRatingSubmitted:false,
+    aiRatingSubmitting:false,
+    aiRatingInvalidReason:"",
+    aiRatedLevel:null,
+    aiGameId:null,
     online: chessEmptyOnlineState()
   };
 
@@ -1318,7 +1327,22 @@ function initChess() {
     }
   });
 
-  document.getElementById("chessAiLevel").addEventListener("change", e => {chessUi.aiLevel=e.target.value;chessRenderContext();});
+  document.getElementById("chessAiLevel").addEventListener("change", e => {
+    const previous=chessUi.aiLevel;
+    chessUi.aiLevel=e.target.value;
+    if(chessUi.mode==="ai"){
+      if(!chessUi.game.history.length&&!chessUi.thinking){
+        chessUi.aiRatedLevel=chessUi.aiLevel;
+        chessUi.aiRatingEligible=chessLevelUsesStockfish(chessUi.aiRatedLevel);
+        chessUi.aiRatingInvalidReason="";
+      }else if(previous!==chessUi.aiLevel){
+        chessUi.aiRatingEligible=false;
+        chessUi.aiRatingInvalidReason="Niveau IA changé en cours de partie : cette partie ne comptera pas pour l’Elo IA.";
+      }
+    }
+    chessRenderContext();
+    chessRenderAiRatingPanel();
+  });
   document.getElementById("chessSide").addEventListener("change", e => {
     chessUi.humanColor = e.target.value;
     chessUi.orientation = e.target.value;
@@ -1361,6 +1385,13 @@ function newChessGame() {
   chessCancelMoveAnimation();
   chessUi.moveFeedback=null;
   chessUi.lastSeenMoveKey=null;
+  chessUi.aiGameId=crypto.randomUUID();
+  chessUi.aiRatedLevel=chessUi.aiLevel;
+  chessUi.aiRatingEligible=chessUi.mode==="ai"&&chessLevelUsesStockfish(chessUi.aiRatedLevel);
+  chessUi.aiRatingSubmitted=false;
+  chessUi.aiRatingSubmitting=false;
+  chessUi.aiRatingUpdate=null;
+  chessUi.aiRatingInvalidReason="";
   if (chessUi.mode === "online") {
     chessDisconnectOnlineRoom();
     chessUi.game = new ChessGame();
@@ -1383,6 +1414,7 @@ function newChessGame() {
   else chessUi.orientation = chessUi.humanColor;
   hidePromotionPicker();
   renderChessBoard();
+  chessRefreshAiRating();
   maybeChessAiTurn();
 }
 
@@ -1472,8 +1504,10 @@ function renderChessInfo() {
   chessRenderContext();
   chessRenderMoveNotice();
   chessRenderGameResult();
+  chessRenderAiRatingPanel();
+  chessMaybeSubmitAiRating(localStatus);
 
-  document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
+  document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || localStatus.over || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
   if (chessUi.mode === "online") chessUpdateOnlineControls();
 }
 
@@ -1564,6 +1598,10 @@ function playChessMove(move) {
 function undoChessMove() {
   if (chessUi.mode === "online" || chessUi.thinking) return;
   if (chessUi.mode === "ai") {
+    if(chessLevelUsesStockfish(chessUi.aiRatedLevel)&&chessUi.game.history.length){
+      chessUi.aiRatingEligible=false;
+      chessUi.aiRatingInvalidReason="Un coup a été annulé : cette partie ne comptera pas pour l’Elo IA.";
+    }
     if (chessUi.game.history.length < 2) return;
     chessUi.game.undo();
     if (chessUi.game.state.turn !== chessUi.humanColor && chessUi.game.history.length) chessUi.game.undo();
@@ -1576,6 +1614,122 @@ function undoChessMove() {
   chessUi.selected = null;
   chessUi.candidateMoves = [];
   renderChessBoard();
+}
+
+function chessStockfishElo(level){
+  const raw=String(level||"");
+  if(raw==="sf-max")return 3190;
+  const match=raw.match(/^sf-(\d+)$/);
+  return match?Number(match[1]):null;
+}
+
+async function chessRefreshAiRating(){
+  if(!chessUi||chessUi.mode!=="ai")return;
+  chessRenderAiRatingPanel();
+  try{
+    const user=await LudoOnline?.me?.();
+    if(!user){chessUi.aiRating=null;chessRenderAiRatingPanel();return;}
+    if(!LudoOnline?.chessAiRating)return;
+    chessUi.aiRating=await LudoOnline.chessAiRating.mine();
+    chessRenderContext();
+    chessRenderAiRatingPanel();
+  }catch(error){
+    console.warn("Elo Stockfish indisponible :",error);
+  }
+}
+
+function chessRenderAiRatingPanel(){
+  const panel=document.getElementById("chessAiRatingPanel");
+  if(!panel||!chessUi)return;
+  const ratedLevel=chessUi.aiRatedLevel||chessUi.aiLevel;
+  const visible=chessUi.mode==="ai"&&chessLevelUsesStockfish(ratedLevel);
+  panel.hidden=!visible;
+  if(!visible)return;
+
+  const value=document.getElementById("chessAiRatingValue");
+  const record=document.getElementById("chessAiRatingRecord");
+  const update=document.getElementById("chessAiRatingUpdate");
+  const rating=chessUi.aiRating;
+
+  if(value)value.textContent=rating?.rating??"—";
+  if(record){
+    record.textContent=rating
+      ? `${rating.games} partie${rating.games>1?"s":""} · ${rating.wins} V · ${rating.draws} N · ${rating.losses} D`
+      : "Connectez-vous pour enregistrer votre Elo IA.";
+  }
+
+  if(!update)return;
+  if(chessUi.aiRatingUpdate?.error){
+    update.hidden=false;
+    update.textContent=chessUi.aiRatingUpdate.error;
+  }else if(chessUi.aiRatingUpdate?.rated){
+    const u=chessUi.aiRatingUpdate;
+    update.hidden=false;
+    update.textContent=`Stockfish ${u.engineElo} · Elo ${u.before} → ${u.after} (${u.delta>=0?"+":""}${u.delta})`;
+  }else if(chessUi.aiRatingInvalidReason&&chessUi.game.history.length){
+    update.hidden=false;
+    update.textContent=chessUi.aiRatingInvalidReason;
+  }else if(chessUi.aiRatingSubmitting){
+    update.hidden=false;
+    update.textContent="Mise à jour de l’Elo IA…";
+  }else{
+    update.hidden=true;
+    update.textContent="";
+  }
+}
+
+async function chessMaybeSubmitAiRating(status){
+  if(!chessUi||chessUi.mode!=="ai"||!status?.over)return;
+  if(chessUi.aiRatingSubmitted||chessUi.aiRatingSubmitting)return;
+  if(!chessLevelUsesStockfish(chessUi.aiRatedLevel))return;
+  if(!chessUi.aiRatingEligible){
+    chessRenderAiRatingPanel();
+    return;
+  }
+  chessUi.aiRatingSubmitting=true;
+  chessRenderAiRatingPanel();
+  const submittedGameId=chessUi.aiGameId;
+  const submittedLevel=chessUi.aiRatedLevel;
+  const submittedColor=chessUi.humanColor;
+  const submittedReason=status.type;
+  const submittedMoveCount=chessUi.game.history.length;
+  let submittedResult="draw";
+  if(status.type==="checkmate"){
+    const winner=chessOpposite(chessUi.game.state.turn);
+    submittedResult=winner===submittedColor?"win":"loss";
+  }
+
+  const user=await LudoOnline?.me?.().catch(()=>null);
+  if(!user||!LudoOnline?.chessAiRating){
+    if(chessUi.aiGameId===submittedGameId)chessUi.aiRatingSubmitting=false;
+    chessRenderAiRatingPanel();
+    return;
+  }
+
+  try{
+    const data=await LudoOnline.chessAiRating.record({
+      clientGameId:submittedGameId,
+      engineLevel:submittedLevel,
+      playerColor:submittedColor,
+      result:submittedResult,
+      reason:submittedReason,
+      moveCount:submittedMoveCount
+    });
+    chessUi.aiRating=data.rating||chessUi.aiRating;
+    if(chessUi.aiGameId===submittedGameId){
+      chessUi.aiRatingSubmitted=true;
+      chessUi.aiRatingUpdate=data.update||null;
+      chessRenderContext();
+    }
+  }catch(error){
+    if(chessUi.aiGameId===submittedGameId){
+      chessUi.aiRatingSubmitted=true;
+      chessUi.aiRatingUpdate={error:`Elo IA non enregistré : ${error.message}`};
+    }
+  }finally{
+    if(chessUi.aiGameId===submittedGameId)chessUi.aiRatingSubmitting=false;
+    chessRenderAiRatingPanel();
+  }
 }
 
 function chessLevelUsesStockfish(level) {
@@ -1595,13 +1749,23 @@ function maybeChessAiTurn() {
     let move = null;
 
     try {
-      if (chessLevelUsesStockfish(levelAtStart) && window.StrathasardStockfish) {
-        move = await window.StrathasardStockfish.chooseMove(gameAtStart, levelAtStart);
+      if (chessLevelUsesStockfish(levelAtStart)) {
+        if(window.StrathasardStockfish){
+          move = await window.StrathasardStockfish.chooseMove(gameAtStart, levelAtStart);
+        }else{
+          chessUi.aiRatingEligible=false;
+          chessUi.aiRatingInvalidReason="Stockfish n’a pas pu être chargé : cette partie ne comptera pas pour l’Elo IA.";
+          move = chessChooseAiMove(gameAtStart, "hard");
+        }
       } else {
         move = chessChooseAiMove(gameAtStart, levelAtStart);
       }
     } catch (error) {
       console.warn("Stockfish indisponible, repli sur l’IA Strathasard :", error);
+      if(chessLevelUsesStockfish(levelAtStart)){
+        chessUi.aiRatingEligible=false;
+        chessUi.aiRatingInvalidReason="Stockfish a été indisponible pendant la partie : l’Elo IA ne sera pas modifié.";
+      }
       move = chessChooseAiMove(gameAtStart, "hard");
     }
 

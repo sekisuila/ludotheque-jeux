@@ -3698,3 +3698,51 @@ main { min-height: calc(100vh - 160px); }
   .online-players-list{grid-template-columns:1fr}
   .global-game-invite{right:14px;bottom:14px}
 }
+
+
+/* ============================================================
+   ÉCHECS — Elo personnel contre Stockfish
+   ============================================================ */
+.chess-ai-rating-panel{
+  display:grid;
+  gap:.3rem;
+  margin:.5rem 0;
+  padding:.58rem .65rem;
+  border:1px solid #d8cba8;
+  border-radius:12px;
+  background:#fbf5e7;
+}
+.chess-ai-rating-panel[hidden]{display:none!important}
+.chess-ai-rating-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:.7rem;
+}
+.chess-ai-rating-head span{
+  color:#685f4d;
+  font-size:.76rem;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+.chess-ai-rating-head strong{
+  font-size:1.35rem;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.chess-ai-rating-panel>small{
+  color:var(--muted);
+  font-size:.72rem;
+}
+.chess-ai-rating-update{
+  margin-top:.15rem;
+  padding:.38rem .48rem;
+  border-radius:8px;
+  background:#fffdf8;
+  color:#514b43;
+  font-size:.76rem;
+  font-weight:800;
+  line-height:1.3;
+}
+.chess-ai-rating-update[hidden]{display:none!important}
