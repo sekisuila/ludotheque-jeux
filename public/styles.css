@@ -3181,7 +3181,10 @@ main { min-height: calc(100vh - 160px); }
 
 @media (max-width:1050px){
   .draught-play-layout{grid-template-columns:1fr}
-  .draught-toolbar-wide{margin:0 0 12px}
+  .draught-toolbar-wide{margin:0 0 12px;order:1}
+  .draughts-play-page .draught-shell{order:2}
+  .draught-info-column{order:3}
+  .draught-history-column{order:4}
   .draught-info-column,.draught-history-column{width:100%}
   .draught-history-panel .draught-history{max-height:320px}
 }
