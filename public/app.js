@@ -2892,6 +2892,7 @@ function initAwale() {
   renderAwale();
   awaleUi.clockTimer=setInterval(()=>{ if(!document.getElementById("awaleBoard")){ clearInterval(awaleUi.clockTimer); return; } awaleUpdateClockDisplay(); },250);
   LudoOnline?.me?.().then(user=>{ if(!user) awaleOnlineStatus("Connectez-vous dans Compte pour créer ou rejoindre un salon."); }).catch(()=>{});
+  LudoOnline?.invites?.autoJoin?.("awale","awaleRoomCode",awaleJoinRoom);
 }
 
 function awaleSetMode(mode){
