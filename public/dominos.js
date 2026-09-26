@@ -390,7 +390,7 @@
     const settings=document.getElementById("dominoOnlineSettings"),actions=document.getElementById("dominoOnlineActions"),rematch=document.getElementById("rematchDomino"),rating=document.getElementById("dominoRatingResult");
     if(settings)settings.hidden=ui.mode!=="online";
     if(actions)actions.hidden=ui.mode!=="online"||!ui.online.connected||!ui.online.players.black||!ui.online.players.white;
-    if(rematch)rematch.hidden=!g.result?.over;
+    if(rematch)rematch.hidden=true;
     if(rating){
       const up=ui.online.ratingUpdate;
       if(ui.mode==="online"&&up?.rated){const mine=mySide()===0?up.player0:up.player1;rating.hidden=false;rating.textContent=`Elo : ${mine.before} → ${mine.after} (${mine.delta>=0?"+":""}${mine.delta})`;}
@@ -457,7 +457,7 @@
     const next=localPlay(g,side,tile.id,where);if(next)ui.game=next;
     syncMoveFeedbackFromGame(ui.game);
     render();
-    if(ui.mode==="ai"&&!ui.game.result?.over&&ui.game.state.turn===1)scheduleAi();
+    if(ui.mode==="ai"&&!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)scheduleAi();
   }
   function drawOrPass(){
     const g=game();if(!canAct(g))return;ui.selected=null;
