@@ -2670,10 +2670,17 @@ main { min-height: calc(100vh - 160px); }
 .domino-opponent{padding:.75rem;border:1px dashed var(--line);border-radius:14px;margin-bottom:.9rem}
 .domino-opponent-head,.domino-hand-title{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:.55rem}
 .domino-back-row,.domino-hand-row{display:flex;gap:.35rem;flex-wrap:wrap;justify-content:center}
+.domino-move-notice{margin:-.25rem 0 .8rem;padding:.65rem .8rem;border:1px solid #d9b45c;border-radius:11px;background:#fff7d6;color:#60470e;font-weight:850;text-align:center;box-shadow:0 3px 10px rgba(91,66,7,.08)}
+.domino-move-notice[hidden]{display:none!important}
 .domino-table{background:linear-gradient(145deg,#edf6ef,#e4efe7);border:1px solid var(--line);border-radius:18px;padding:.75rem;min-height:180px;display:flex;flex-direction:column;justify-content:center}
 .domino-board{position:relative;display:block;width:100%;min-height:110px;overflow:visible}
-.domino-board-piece{position:absolute;width:56px;height:30px;transform-origin:center center;transition:left .16s ease,top .16s ease,transform .16s ease;z-index:1}
+.domino-board-piece{position:absolute;width:56px;height:30px;transform-origin:center center;transition:left .16s ease,top .16s ease,transform .16s ease,opacity .12s ease;z-index:1}
 .domino-board-piece .domino-tile.small{position:absolute;inset:0;margin:0;transform:none}
+.domino-board-piece.domino-last-opponent{z-index:3}
+.domino-board-piece.domino-last-opponent .domino-tile{background:#ffe89a;border-color:#9a6b00;box-shadow:0 0 0 3px rgba(216,164,27,.30),0 4px 10px rgba(86,61,0,.20)}
+.domino-board-piece.domino-arriving{opacity:.12}
+.domino-move-ghost{position:fixed;width:56px;height:30px;z-index:9999;pointer-events:none;transform-origin:center center;filter:drop-shadow(0 8px 8px rgba(0,0,0,.28))}
+.domino-move-ghost .domino-tile.small{position:absolute;inset:0;margin:0;background:#ffe89a;border-color:#9a6b00}
 .domino-ends{text-align:center;color:var(--muted);font-size:.9rem;margin-top:.65rem}
 .domino-hand{margin-top:1rem;padding:.8rem;border:1px solid var(--line);border-radius:14px;background:var(--surface,white)}
 .domino-hand-button{border:0;background:transparent;padding:.18rem;border-radius:10px;cursor:pointer}
@@ -2695,5 +2702,6 @@ main { min-height: calc(100vh - 160px); }
 .domino-back-mark{font-weight:900;font-size:.85rem;letter-spacing:.05em}
 .domino-back .domino-divider{display:none}
 .domino-help p{margin:.75rem 0}
+@media(prefers-reduced-motion:reduce){.domino-board-piece{transition:none}.domino-move-ghost{display:none!important}}
 @media(max-width:960px){.domino-layout{grid-template-columns:1fr}.domino-score{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.domino-score{gap:.4rem}.domino-score>div{padding:.55rem}.domino-tile{width:62px;height:34px}.domino-table{padding:.55rem;overflow:hidden}.domino-actions .btn{flex:1 1 30%}}
