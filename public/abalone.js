@@ -972,6 +972,9 @@ function loadSelectedAbaloneGame() {
   abaloneUi.selected = [];
   abaloneUi.candidateMoves = [];
   abaloneUi.thinking = false;
+  abClearMoveAnimation();
+  abaloneUi.moveFeedback = null;
+  abaloneUi.lastSeenActionKey = abLatestMoveInfo()?.key || null;
 
   const mode = document.getElementById("abaloneMode");
   const level = document.getElementById("abaloneAiLevel");
@@ -1064,7 +1067,9 @@ async function abLoadOnlineGame() {
     document.getElementById("abaloneAiSettings").hidden = true;
     document.getElementById("abaloneOnlineSettings").hidden = true;
     abaloneUi.game = abDeserializeGame(save.state);
-    abaloneUi.selected = []; abaloneUi.candidateMoves = []; renderAbalone();
+    abaloneUi.selected = []; abaloneUi.candidateMoves = [];
+    abClearMoveAnimation(); abaloneUi.moveFeedback=null; abaloneUi.lastSeenActionKey=abLatestMoveInfo()?.key||null;
+    renderAbalone();
     if (status) status.textContent = `« ${save.name} » chargée depuis D1.`;
   } catch (e) { if (status) status.textContent = e.message; }
 }
