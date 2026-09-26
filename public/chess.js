@@ -1749,8 +1749,14 @@ function maybeChessAiTurn() {
     let move = null;
 
     try {
-      if (chessLevelUsesStockfish(levelAtStart) && window.StrathasardStockfish) {
-        move = await window.StrathasardStockfish.chooseMove(gameAtStart, levelAtStart);
+      if (chessLevelUsesStockfish(levelAtStart)) {
+        if(window.StrathasardStockfish){
+          move = await window.StrathasardStockfish.chooseMove(gameAtStart, levelAtStart);
+        }else{
+          chessUi.aiRatingEligible=false;
+          chessUi.aiRatingInvalidReason="Stockfish n’a pas pu être chargé : cette partie ne comptera pas pour l’Elo IA.";
+          move = chessChooseAiMove(gameAtStart, "hard");
+        }
       } else {
         move = chessChooseAiMove(gameAtStart, levelAtStart);
       }
