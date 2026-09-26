@@ -512,36 +512,37 @@ function abaloneRuleDiagram(stones = [], targets = [], arrow = null, compact = f
 
 function renderAbalonePlay() {
   app.innerHTML = `
-    <div class="page abalone-play-page">
+    <div class="page abalone-play-page abalone-compact-page">
       <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>Abalone</span></div>
-      <div class="section-head">
+      <div class="section-head abalone-page-head">
         <div><div class="eyebrow">Jeu interactif</div><h1>Abalone</h1><p class="section-lead">Sélectionnez une à trois billes adjacentes et alignées, puis choisissez une direction légale. Le moteur gère automatiquement les Sumitos et les éjections.</p></div>
         <a class="btn outline small" href="#/jeu/abalone">Voir les règles</a>
       </div>
 
-      <div class="abalone-play-layout">
-        <section class="game-shell abalone-shell">
-          <div class="go-toolbar abalone-toolbar">
-            <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
-            <div id="abaloneAiSettings" class="toolbar-group" hidden>
-              <label><span>Niveau IA</span><select id="abaloneAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label>
-              <label><span>Votre couleur</span><select id="abaloneSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
-            </div>
-            <div id="abaloneOnlineSettings" class="toolbar-group abalone-online-settings">
-              <label><span>Couleur si vous créez</span><select id="abaloneCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noirs</option><option value="white">Blancs</option></select></label>
-              <label><span>Cadence</span><select id="abaloneTimePreset">
-                <option value="60,0">1+0 — Bullet</option><option value="180,2">3+2 — Blitz</option><option value="300,0">5+0 — Blitz</option><option value="600,5" selected>10+5 — Rapide</option><option value="900,10">15+10 — Rapide</option><option value="1800,0">30+0 — Classique</option><option value="custom">Personnalisée…</option>
-              </select></label>
-              <span id="abaloneCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="abaloneInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="abaloneIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
-              <label class="inline-check"><input id="abaloneRated" type="checkbox" checked><span>Partie classée Elo</span></label>
-              <button id="createAbaloneRoom" class="btn small">Créer un salon</button>
-              <label><span>Code du salon</span><input id="abaloneRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
-              <button id="joinAbaloneRoom" class="btn outline small">Rejoindre</button>
-              <span id="abaloneRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
-            </div>
-            <div class="toolbar-actions"><button id="newAbalone" class="btn small">Nouvelle partie</button><button id="undoAbalone" class="btn outline small">Annuler</button></div>
+      <section class="game-shell abalone-shell abalone-compact-shell">
+        <div class="go-toolbar abalone-toolbar">
+          <label><span>Mode</span><select id="abaloneMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+          <div id="abaloneAiSettings" class="toolbar-group" hidden>
+            <label><span>Niveau IA</span><select id="abaloneAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option><option value="expert">Expert</option></select></label>
+            <label><span>Votre couleur</span><select id="abaloneSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
           </div>
+          <div id="abaloneOnlineSettings" class="toolbar-group abalone-online-settings">
+            <label><span>Couleur si vous créez</span><select id="abaloneCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noirs</option><option value="white">Blancs</option></select></label>
+            <label><span>Cadence</span><select id="abaloneTimePreset">
+              <option value="60,0">1+0 — Bullet</option><option value="180,2">3+2 — Blitz</option><option value="300,0">5+0 — Blitz</option><option value="600,5" selected>10+5 — Rapide</option><option value="900,10">15+10 — Rapide</option><option value="1800,0">30+0 — Classique</option><option value="custom">Personnalisée…</option>
+            </select></label>
+            <span id="abaloneCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="abaloneInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="abaloneIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
+            <label class="inline-check"><input id="abaloneRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+            <button id="createAbaloneRoom" class="btn small">Créer un salon</button>
+            <label><span>Code du salon</span><input id="abaloneRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+            <button id="joinAbaloneRoom" class="btn outline small">Rejoindre</button>
+            <span id="abaloneRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
+          </div>
+          <div class="toolbar-actions"><button id="newAbalone" class="btn small">Nouvelle partie</button><button id="undoAbalone" class="btn outline small">Annuler</button></div>
+        </div>
 
+        <details class="abalone-save-details">
+          <summary>Sauvegardes locales et en ligne</summary>
           <div class="abalone-savebar">
             <label><span>Nom (facultatif)</span><input id="abaloneSaveName" type="text" maxlength="40" placeholder="Ex. Partie Expert 1"></label>
             <button id="saveAbalone" class="btn small">Sauvegarder</button>
@@ -558,55 +559,79 @@ function renderAbalonePlay() {
             <button id="deleteAbaloneOnline" class="btn ghost small">Supprimer</button>
             <small id="abaloneOnlineSaveStatus" class="abalone-save-status">Connexion requise.</small>
           </div>
+        </details>
 
-          <div class="abalone-stage">
-            <div class="abalone-board-wrap">
-              <div id="abaloneBoard" class="abalone-board" aria-label="Plateau Abalone interactif"></div>
-            </div>
+        <div id="abaloneMatchContext" class="abalone-match-context"></div>
+
+        <div class="abalone-stage abalone-three-column">
+          <aside class="abalone-info-rail">
+            <section class="abalone-info-card">
+              <div class="turn-box"><span>Trait</span><strong id="abaloneTurn">Noir</strong></div>
+              <div class="abalone-score-grid">
+                <div><span>Noir — éjections</span><strong id="abaloneEjectBlack">0 / 6</strong></div>
+                <div><span>Blanc — éjections</span><strong id="abaloneEjectWhite">0 / 6</strong></div>
+              </div>
+            </section>
+
             <div id="abaloneClockPanel" class="abalone-clock-panel" hidden>
               <div id="abaloneClockReadout" class="abalone-clock-readout"></div>
               <div id="abaloneTimeMeta" class="chess-time-meta"></div>
-              <div id="abaloneOnlineActions" class="chess-online-actions" hidden>
-                <button id="resignAbaloneOnline" class="btn danger small">Abandonner</button>
-                <button id="offerDrawAbalone" class="btn outline small">Proposer la nulle</button>
-                <button id="offerRematchAbalone" class="btn small" hidden>Proposer une revanche</button>
+            </div>
+
+            <div id="abaloneOnlineActions" class="chess-online-actions abalone-online-actions" hidden>
+              <button id="resignAbaloneOnline" class="btn danger small">Abandonner</button>
+              <button id="offerDrawAbalone" class="btn outline small">Proposer la nulle</button>
+              <button id="offerRematchAbalone" class="btn small" hidden>Proposer une revanche</button>
+            </div>
+            <div id="abaloneOnlinePrompt" class="online-decision" hidden><strong id="abaloneOnlinePromptTitle"></strong><span id="abaloneOnlinePromptText"></span><div class="online-decision-actions"><button id="acceptAbaloneProposal" class="btn small">Accepter</button><button id="declineAbaloneProposal" class="btn outline small">Refuser</button></div></div>
+            <div id="abaloneRatingResult" class="rating-result" hidden></div>
+
+            <section class="abalone-info-card abalone-evaluation-card">
+              <h3>Évaluation</h3>
+              <div class="abalone-evaluation" aria-label="Évaluation stratégique de la position">
+                <div class="abalone-eval-card black"><div><span>Noir</span><strong id="abaloneEvalBlack">50.0 / 100</strong></div><div class="abalone-eval-track"><i id="abaloneEvalBlackBar" style="width:50%"></i></div></div>
+                <div class="abalone-eval-card white"><div><span>Blanc</span><strong id="abaloneEvalWhite">50.0 / 100</strong></div><div class="abalone-eval-track"><i id="abaloneEvalWhiteBar" style="width:50%"></i></div></div>
+                <small id="abaloneEvalRaw">Score stratégique brut : 0 pour Noir</small>
               </div>
-              <div id="abaloneOnlinePrompt" class="online-decision" hidden><strong id="abaloneOnlinePromptTitle"></strong><span id="abaloneOnlinePromptText"></span><div class="online-decision-actions"><button id="acceptAbaloneProposal" class="btn small">Accepter</button><button id="declineAbaloneProposal" class="btn outline small">Refuser</button></div></div>
-              <div id="abaloneRatingResult" class="rating-result" hidden></div>
+            </section>
+          </aside>
+
+          <div class="abalone-board-column">
+            <div class="abalone-board-wrap">
+              <div id="abaloneBoard" class="abalone-board" aria-label="Plateau Abalone interactif"></div>
             </div>
+
+            <div class="abalone-move-controls" aria-label="Directions de déplacement">
+              <div class="abalone-dir-pad">
+                <button data-ab-dir="4" aria-label="Nord-ouest">↖</button><span></span><button data-ab-dir="5" aria-label="Nord-est">↗</button>
+                <button data-ab-dir="3" aria-label="Ouest">←</button><strong>Directions</strong><button data-ab-dir="0" aria-label="Est">→</button>
+                <button data-ab-dir="2" aria-label="Sud-ouest">↙</button><span></span><button data-ab-dir="1" aria-label="Sud-est">↘</button>
+              </div>
+              <p>Sélectionnez 1 à 3 billes alignées, puis cliquez sur une cible verte ou utilisez les flèches.</p>
+            </div>
+            <div id="abaloneMoveNotice" class="abalone-move-notice" hidden></div>
+            <div id="abaloneStatus" class="status abalone-status"></div>
+
+            <section id="abaloneGameResult" class="abalone-game-result" hidden>
+              <div><span class="eyebrow">Fin de partie</span><h2 id="abaloneGameResultTitle">Partie terminée</h2><p id="abaloneGameResultText"></p></div>
+              <div class="abalone-result-actions"><button id="abaloneResultNew" class="btn" type="button">Nouvelle partie</button><button id="abaloneResultHome" class="btn outline" type="button">Retour à l’accueil</button></div>
+            </section>
           </div>
 
-          <div class="abalone-move-controls" aria-label="Directions de déplacement">
-            <div class="abalone-dir-pad">
-              <button data-ab-dir="4" aria-label="Nord-ouest">↖</button><span></span><button data-ab-dir="5" aria-label="Nord-est">↗</button>
-              <button data-ab-dir="3" aria-label="Ouest">←</button><strong>Directions</strong><button data-ab-dir="0" aria-label="Est">→</button>
-              <button data-ab-dir="2" aria-label="Sud-ouest">↙</button><span></span><button data-ab-dir="1" aria-label="Sud-est">↘</button>
-            </div>
-            <p>Sélection : cliquez successivement sur 1, 2 ou 3 billes de votre couleur. Recliquez sur une bille sélectionnée pour la retirer du groupe.</p>
-          </div>
-          <div id="abaloneStatus" class="status abalone-status"></div>
-        </section>
-
-        <aside class="abalone-side-column">
-          <section class="panel">
-            <div class="turn-box"><span>Trait</span><strong id="abaloneTurn">Noir</strong></div>
-            <div class="abalone-score-grid">
-              <div><span>Noir — billes éjectées</span><strong id="abaloneEjectBlack">0 / 6</strong></div>
-              <div><span>Blanc — billes éjectées</span><strong id="abaloneEjectWhite">0 / 6</strong></div>
-            </div>
-            <h3>Évaluation de la position</h3>
-            <div class="abalone-evaluation" aria-label="Évaluation stratégique de la position">
-              <div class="abalone-eval-card black"><div><span>Noir</span><strong id="abaloneEvalBlack">50.0 / 100</strong></div><div class="abalone-eval-track"><i id="abaloneEvalBlackBar" style="width:50%"></i></div></div>
-              <div class="abalone-eval-card white"><div><span>Blanc</span><strong id="abaloneEvalWhite">50.0 / 100</strong></div><div class="abalone-eval-track"><i id="abaloneEvalWhiteBar" style="width:50%"></i></div></div>
-              <small id="abaloneEvalRaw">Score stratégique brut : 0 pour Noir</small>
-              <p class="evaluation-help">Indice Expert : 50/50 indique une position équilibrée. Ce n’est pas une probabilité de victoire, mais une note heuristique calculée à partir des éjections, du centre, de la cohésion, de la mobilité et des menaces.</p>
-            </div>
-            <h3>Historique et évaluations</h3><div id="abaloneHistory" class="abalone-history"></div>
-          </section>
-          <section class="panel"><h3>Multijoueur en ligne</h3><p>Créez un salon privé ou rejoignez un code. Le créateur choisit sa couleur, la cadence et si la partie est classée Elo.</p><p>La pendule et tous les déplacements, Sumitos et éjections sont validés côté serveur.</p><div class="note"><strong>Elo :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre classement, à partir de 1200.</div></section><section class="panel"><h3>Règles gérées</h3><p>✓ 1 à 3 billes par mouvement</p><p>✓ Déplacement en ligne</p><p>✓ Déplacement latéral</p><p>✓ Sumito 2–1, 3–1 et 3–2</p><p>✓ Blocage des forces égales</p><p>✓ Éjection et victoire à 6</p><div class="note"><strong>Astuce :</strong> les cases vertes montrent les destinations possibles. Les billes adverses bordées de rouge sont celles qu’un Sumito sélectionné peut pousser.</div></section>
-          <section class="panel"><h3>Les quatre IA</h3><p><strong>Facile :</strong> choisit un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> valorise le centre, la cohésion et les poussées.</p><p><strong>Difficile :</strong> examine aussi les meilleures réponses immédiates de l’adversaire.</p><p><strong>Expert :</strong> utilise un barème stratégique non linéaire (billes éjectées, centre, cohésion, mobilité, isolement, danger au bord et menaces de Sumito) puis une recherche Minimax avec élagage alpha-bêta sur plusieurs demi-coups.</p><div class="note">Le niveau Expert privilégie fortement la 5e bille éjectée : il comprend ainsi qu’une position à 5–0 est beaucoup plus proche de la victoire qu’une simple progression linéaire ne le laisserait penser.</div></section>
-        </aside>
-      </div>
+          <aside class="abalone-history-panel">
+            <div class="abalone-history-head"><h3>Historique</h3><span id="abaloneHistoryCount">0 coup</span></div>
+            <div id="abaloneHistory" class="abalone-history"></div>
+            <details class="abalone-history-eval-help">
+              <summary>Comprendre l’évaluation</summary>
+              <p>L’indice Expert combine les éjections, le centre, la cohésion, la mobilité et les menaces. Il ne s’agit pas d’une probabilité de victoire.</p>
+            </details>
+            <details class="abalone-rules-reminder">
+              <summary>Rappel rapide</summary>
+              <p>Un Sumito permet à une ligne plus nombreuse de pousser 1 ou 2 billes adverses. La partie est gagnée après 6 éjections.</p>
+            </details>
+          </aside>
+        </div>
+      </section>
     </div>
   `;
   initAbalone();
