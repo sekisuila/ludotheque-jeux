@@ -1034,6 +1034,7 @@ function chessUpdateOnlineControls() {
   const twoPlayers = active && chessOnlineHasTwoPlayers();
   const over = Boolean(online?.result?.over);
   actions.hidden = !active;
+  document.getElementById("chessOnlineSettings")?.classList.toggle("connected",active);
 
   if (resign) {
     resign.hidden = over;
