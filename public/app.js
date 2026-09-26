@@ -2554,6 +2554,17 @@ function renderDominoPlay(){
             <div id="dominoBoard" class="domino-board" aria-label="Chaîne de dominos"></div>
             <div id="dominoEnds" class="domino-ends"></div>
           </div>
+          <div id="dominoRoundResult" class="domino-round-result" role="status" aria-live="polite" hidden>
+            <div>
+              <strong id="dominoRoundResultTitle"></strong>
+              <p id="dominoRoundResultText"></p>
+            </div>
+            <div class="domino-round-result-actions">
+              <button id="dominoNextRound" class="btn" type="button">Manche suivante</button>
+              <button id="dominoRestartGame" class="btn" type="button" hidden>Nouvelle partie</button>
+              <button id="dominoBackHome" class="btn outline" type="button" hidden>Retour à l’accueil</button>
+            </div>
+          </div>
           <div id="dominoHand" class="domino-hand"></div>
           <div class="domino-actions">
             <button id="dominoPlayLeft" class="btn outline" type="button">Poser à gauche</button>

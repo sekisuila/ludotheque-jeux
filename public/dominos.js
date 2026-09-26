@@ -72,12 +72,18 @@
     }
     const summary={round:s.round,winner,reason,points,pips:tot,scores:[...s.scores]};
     g.history.push({type:"round_end",...clone(summary)});
+    s.lastRound=summary;
+    s.roundPending=true;
     if((winner===0||winner===1)&&s.scores[winner]>=s.target){
       g.result={over:true,type:"score",winner,scores:[...s.scores],target:s.target,lastRound:summary};
-      s.lastRound=summary;return g;
     }
-    const next=dealRound(s.scores,s.round+1,summary);
-    next.history=[...g.history,...next.history];return next;
+    return g;
+  }
+  function advanceLocalRound(g){
+    if(!g?.state?.roundPending||g?.result?.over)return g;
+    const s=g.state,next=dealRound(s.scores,Number(s.round||1)+1,s.lastRound);
+    next.history=[...(g.history||[]),...next.history];
+    return next;
   }
   function localPlay(g,side,tileId,where){
     const hand=g.state.hands[side],tile=hand.find(t=>t.id===tileId);if(!tile)return false;
@@ -112,7 +118,7 @@
     if(ui.mode==="ai")return["Vous","IA"];
     return["Joueur 1","Joueur 2"];
   }
-  function canAct(g){if(g.result?.over)return false;if(ui.mode==="online")return ui.online.connected&&Number(g.state.turn)===mySide()&&ui.online.players.black&&ui.online.players.white;if(ui.mode==="ai")return Number(g.state.turn)===0;return true;}
+  function canAct(g){if(g.result?.over||g.state?.roundPending)return false;if(ui.mode==="online")return ui.online.connected&&Number(g.state.turn)===mySide()&&ui.online.players.black&&ui.online.players.white;if(ui.mode==="ai")return Number(g.state.turn)===0;return true;}
   function handForView(g){
     if(ui.mode==="online")return g.state.hands?.[mySide()]||[];
     if(ui.mode==="ai")return g.state.hands[0]||[];
@@ -372,6 +378,7 @@
   function setStatus(t){const el=document.getElementById("dominoStatus");if(el)el.textContent=t||"";}
   function renderStatus(g){
     if(g.result?.over){setStatus(`${names()[g.result.winner]} gagne la partie ${g.state.scores[0]}–${g.state.scores[1]}.`);return;}
+    if(g.state?.roundPending){setStatus("Manche terminée. Consultez le résultat puis passez à la manche suivante.");return;}
     if(ui.mode==="online"&&(!ui.online.players.black||!ui.online.players.white)){setStatus("Salon créé. En attente du deuxième joueur…");return;}
     const n=names(),turnName=n[g.state.turn];
     if(ui.mode==="online"&&g.state.turn!==mySide()){setStatus(`${turnName} joue.`);return;}
@@ -383,7 +390,7 @@
     const settings=document.getElementById("dominoOnlineSettings"),actions=document.getElementById("dominoOnlineActions"),rematch=document.getElementById("rematchDomino"),rating=document.getElementById("dominoRatingResult");
     if(settings)settings.hidden=ui.mode!=="online";
     if(actions)actions.hidden=ui.mode!=="online"||!ui.online.connected||!ui.online.players.black||!ui.online.players.white;
-    if(rematch)rematch.hidden=!g.result?.over;
+    if(rematch)rematch.hidden=true;
     if(rating){
       const up=ui.online.ratingUpdate;
       if(ui.mode==="online"&&up?.rated){const mine=mySide()===0?up.player0:up.player1;rating.hidden=false;rating.textContent=`Elo : ${mine.before} → ${mine.after} (${mine.delta>=0?"+":""}${mine.delta})`;}
@@ -396,9 +403,48 @@
     }
     const ai=document.getElementById("dominoAiSettings");if(ai)ai.hidden=ui.mode!=="ai";
   }
+  function renderRoundResult(g){
+    const box=document.getElementById("dominoRoundResult");if(!box)return;
+    const summary=g.result?.lastRound||g.state?.lastRound||null;
+    const visible=Boolean(g.result?.over||(summary&&g.state?.roundPending));
+    box.hidden=!visible;
+    if(!visible)return;
+
+    const n=names(),winner=summary?.winner;
+    const title=document.getElementById("dominoRoundResultTitle");
+    const text=document.getElementById("dominoRoundResultText");
+    const next=document.getElementById("dominoNextRound");
+    const restart=document.getElementById("dominoRestartGame");
+    const home=document.getElementById("dominoBackHome");
+
+    if(g.result?.over){
+      if(title)title.textContent=`${n[g.result.winner]||"Un joueur"} gagne la partie !`;
+      if(text){
+        if(summary){
+          text.textContent=winner===null
+            ? `La manche ${summary.round} se termine sur une égalité. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`
+            : `${n[winner]} gagne la manche ${summary.round} et marque ${summary.points} point${summary.points>1?"s":""}. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+        }else{
+          text.textContent=g.result.text||`Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+        }
+      }
+      if(next)next.hidden=true;
+      if(restart){restart.hidden=false;restart.textContent=ui.mode==="online"?"Proposer une nouvelle partie":"Nouvelle partie";}
+      if(home)home.hidden=false;
+      return;
+    }
+
+    if(title)title.textContent=`Fin de la manche ${summary.round}`;
+    if(text)text.textContent=winner===null
+      ? `Égalité : aucun point marqué. Score : ${g.state.scores[0]}–${g.state.scores[1]}.`
+      : `${n[winner]} gagne la manche et marque ${summary.points} point${summary.points>1?"s":""}. Score : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+    if(next){next.hidden=false;next.disabled=ui.mode==="online"&&!ui.online.connected;}
+    if(restart)restart.hidden=true;
+    if(home)home.hidden=true;
+  }
   function render(){
     if(!ui)return;const g=game();
-    renderScore(g);renderOpponent(g);renderMoveNotice();renderBoard(g);renderHand(g);renderActions(g);renderStatus(g);renderOnline(g);
+    renderScore(g);renderOpponent(g);renderMoveNotice();renderBoard(g);renderHand(g);renderActions(g);renderStatus(g);renderOnline(g);renderRoundResult(g);
   }
 
   function cancelAi(){clearTimeout(aiTimer);aiTimer=null;}
@@ -417,13 +463,34 @@
     const next=localPlay(g,side,tile.id,where);if(next)ui.game=next;
     syncMoveFeedbackFromGame(ui.game);
     render();
-    if(ui.mode==="ai"&&!ui.game.result?.over&&ui.game.state.turn===1)scheduleAi();
+    if(ui.mode==="ai"&&!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)scheduleAi();
   }
   function drawOrPass(){
     const g=game();if(!canAct(g))return;ui.selected=null;
     if(ui.mode==="online"){ui.online.ws?.send(JSON.stringify({type:"domino_draw"}));return;}
-    const side=ui.mode==="ai"?0:g.state.turn;ui.game=localDraw(g,side);render();
-    if(ui.mode==="ai"&&!ui.game.result?.over&&ui.game.state.turn===1)scheduleAi();
+    const side=ui.mode==="ai"?0:g.state.turn;ui.game=localDraw(g,side);
+    syncMoveFeedbackFromGame(ui.game);
+    render();
+    if(ui.mode==="ai"&&!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)scheduleAi();
+  }
+  function nextRound(){
+    const g=game();if(g.result?.over||!g.state?.roundPending)return;
+    cancelAi();cancelDominoMoveAnimation();ui.moveFeedback=null;ui.lastSeenPlayKey=null;ui.selected=null;
+    if(ui.mode==="online"){
+      ui.online.ws?.send(JSON.stringify({type:"domino_next_round"}));
+      return;
+    }
+    ui.game=advanceLocalRound(g);
+    render();
+    if(ui.mode==="ai"&&!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)scheduleAi();
+  }
+  function restartFromResult(){
+    if(ui.mode==="online"){
+      ui.online.ws?.send(JSON.stringify({type:"rematch_offer"}));
+      onlineStatus("Proposition de nouvelle partie envoyée à votre adversaire.");
+      return;
+    }
+    resetLocal();
   }
 
   function aiScoreMove(g,tile,where,level){
@@ -455,17 +522,17 @@
   function scheduleAi(){
     cancelAi();
     const step=()=>{
-      if(!ui||ui.mode!=="ai"||ui.game.result?.over||ui.game.state.turn!==1)return;
+      if(!ui||ui.mode!=="ai"||ui.game.result?.over||ui.game.state?.roundPending||ui.game.state.turn!==1)return;
       const move=chooseAiMove(ui.game);
       if(move){
         ui.game=localPlay(ui.game,1,move.tile.id,move.where);
         syncMoveFeedbackFromGame(ui.game);
         render();
-        if(!ui.game.result?.over&&ui.game.state.turn===1)aiTimer=setTimeout(step,550);
+        if(!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)aiTimer=setTimeout(step,550);
         return;
       }
       ui.game=localDraw(ui.game,1);render();
-      if(!ui.game.result?.over&&ui.game.state.turn===1)aiTimer=setTimeout(step,550);
+      if(!ui.game.result?.over&&!ui.game.state?.roundPending&&ui.game.state.turn===1)aiTimer=setTimeout(step,550);
     };
     aiTimer=setTimeout(step,600);
   }
@@ -536,6 +603,9 @@
     document.getElementById("dominoPlayLeft")?.addEventListener("click",()=>play("left"));
     document.getElementById("dominoPlayRight")?.addEventListener("click",()=>play("right"));
     document.getElementById("dominoDraw")?.addEventListener("click",drawOrPass);
+    document.getElementById("dominoNextRound")?.addEventListener("click",nextRound);
+    document.getElementById("dominoRestartGame")?.addEventListener("click",restartFromResult);
+    document.getElementById("dominoBackHome")?.addEventListener("click",()=>{location.hash="#/accueil";});
     document.getElementById("createDominoRoom")?.addEventListener("click",createRoom);
     document.getElementById("joinDominoRoom")?.addEventListener("click",joinRoom);
     document.getElementById("resignDomino")?.addEventListener("click",()=>{if(confirm("Abandonner cette partie ?"))ui.online.ws?.send(JSON.stringify({type:"resign"}));});

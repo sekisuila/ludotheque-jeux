@@ -89,19 +89,28 @@ function finishRound(game,winner,reason){
   }
   const summary={round:s.round,winner,reason,points,pips,scores:[...s.scores]};
   game.history.push({type:"round_end",...clone(summary)});
+  s.lastRound=summary;
+  s.roundPending=true;
   if((winner===0||winner===1)&&s.scores[winner]>=s.target){
     game.result={over:true,type:"score",winner,scores:[...s.scores],target:s.target,lastRound:summary};
-    s.lastRound=summary;
-    return game;
   }
-  const next=dealRound(s.scores,s.round+1,summary,s.target);
-  next.history=[...game.history,...next.history];
-  return next;
+  return game;
+}
+
+export function advanceServerDominoRound(game){
+  const current=clone(game);
+  if(current?.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(!current?.state?.roundPending)return{ok:false,error:"La manche en cours n’est pas terminée."};
+  const s=current.state;
+  const next=dealRound(s.scores,Number(s.round||1)+1,s.lastRound,s.target);
+  next.history=[...(current.history||[]),...next.history];
+  return{ok:true,state:next};
 }
 
 export function playServerDominoPlay(game,side,tileId,placement){
   let next=clone(game); side=Number(side);
   if(next.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(next.state?.roundPending)return{ok:false,error:"La manche est terminée. Passez à la manche suivante."};
   if(side!==0&&side!==1)return{ok:false,error:"Joueur invalide."};
   if(Number(next.state.turn)!==side)return{ok:false,error:"Ce n’est pas votre tour."};
   const hand=next.state.hands[side]||[];
@@ -128,6 +137,7 @@ export function playServerDominoPlay(game,side,tileId,placement){
 export function playServerDominoDraw(game,side){
   let next=clone(game); side=Number(side);
   if(next.result?.over)return{ok:false,error:"La partie est terminée."};
+  if(next.state?.roundPending)return{ok:false,error:"La manche est terminée. Passez à la manche suivante."};
   if(Number(next.state.turn)!==side)return{ok:false,error:"Ce n’est pas votre tour."};
   if(dominoPlayableTiles(next,side).length)return{ok:false,error:"Vous avez déjà un domino jouable."};
 
