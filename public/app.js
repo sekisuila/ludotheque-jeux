@@ -2085,6 +2085,23 @@ function renderPlay(id) {
   app.innerHTML = `
     <div class="page">
       <div class="section-head"><div><div class="eyebrow">Jeux interactifs</div><h1>Choisissez un jeu</h1><p class="section-lead">Ces versions fonctionnent entièrement dans votre navigateur et peuvent être testées localement.</p></div></div>
+      <section class="online-lobby-panel">
+        <div class="online-lobby-head">
+          <div><div class="eyebrow">Multijoueur direct</div><h2>Joueurs en ligne</h2><p>Choisissez un jeu puis invitez directement un joueur connecté. Aucun code de salon à saisir.</p></div>
+          <label><span>Jeu proposé</span><select id="lobbyGameSelect">
+            <option value="chess">Échecs</option>
+            <option value="checkers-international">Dames françaises / internationales</option>
+            <option value="checkers-english">Dames anglaises</option>
+            <option value="go">Go</option>
+            <option value="awale">Awélé</option>
+            <option value="abalone">Abalone</option>
+            <option value="yams">Yams</option>
+            <option value="421">421</option>
+            <option value="dominos">Dominos</option>
+          </select></label>
+        </div>
+        <div id="onlinePlayersList" class="online-players-list"><p class="lobby-empty">Recherche des joueurs connectés…</p></div>
+      </section>
       <div class="play-cards">
         <article class="play-card"><div class="visual">${illustration("chess", false)}</div><div><span class="tag">Jouable</span><h2>Échecs</h2><p>Deux joueurs sur le même écran ou partie contre une IA à trois niveaux. Toutes les règles essentielles sont prises en compte.</p><a class="btn" href="#/jouer/echecs">Jouer aux Échecs</a></div></article>
         <article class="play-card"><div class="visual">${illustration("checkers", false)}</div><div><span class="tag">Jouable</span><h2>Dames</h2><p>Deux moteurs distincts : dames françaises/internationales 10 × 10 et dames anglaises 8 × 8, chacune jouable à deux ou contre l’IA.</p><a class="btn" href="#/jouer/dames">Choisir une variante</a></div></article>
@@ -2097,6 +2114,7 @@ function renderPlay(id) {
       </div>
     </div>
   `;
+  LudoOnline?.lobby?.mount?.("onlinePlayersList","lobbyGameSelect");
 }
 
 
@@ -2874,6 +2892,7 @@ function initAwale() {
   renderAwale();
   awaleUi.clockTimer=setInterval(()=>{ if(!document.getElementById("awaleBoard")){ clearInterval(awaleUi.clockTimer); return; } awaleUpdateClockDisplay(); },250);
   LudoOnline?.me?.().then(user=>{ if(!user) awaleOnlineStatus("Connectez-vous dans Compte pour créer ou rejoindre un salon."); }).catch(()=>{});
+  LudoOnline?.invites?.autoJoin?.("awale","awaleRoomCode",awaleJoinRoom);
 }
 
 function awaleSetMode(mode){

@@ -805,6 +805,7 @@ function initGo() {
   document.getElementById("goResultNew")?.addEventListener("click",goRestartFromResult);
   document.getElementById("goResultHome")?.addEventListener("click",goBackHomeFromResult);
   newGoGame();
+  LudoOnline?.invites?.autoJoin?.("go","goRoomCode",goJoinOnlineRoom);
 }
 
 function newGoGame() {

@@ -1353,6 +1353,7 @@ function initChess() {
 
   chessStartClockTicker();
   newChessGame();
+  LudoOnline?.invites?.autoJoin?.("chess","chessRoomCode",chessJoinOnlineRoom);
 }
 
 function newChessGame() {

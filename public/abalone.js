@@ -1334,6 +1334,7 @@ function initAbalone() {
   document.getElementById("abaloneResultHome")?.addEventListener("click",abBackHomeFromResult);
   document.querySelectorAll("[data-ab-dir]").forEach(btn => btn.addEventListener("click", () => playSelectedAbaloneDirection(Number(btn.dataset.abDir))));
   refreshAbaloneSaveList(); abRefreshOnlineAccountState(); renderAbalone();
+  LudoOnline?.invites?.autoJoin?.("abalone","abaloneRoomCode",abJoinOnlineRoom);
 }
 
 function newAbaloneGame() {

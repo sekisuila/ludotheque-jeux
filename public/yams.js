@@ -224,5 +224,6 @@
     document.getElementById("acceptYamsProposal")?.addEventListener("click",()=>{ui.online.ws?.send(JSON.stringify({type:"rematch_response",accept:true}));hidePrompt();});
     document.getElementById("declineYamsProposal")?.addEventListener("click",()=>{ui.online.ws?.send(JSON.stringify({type:"rematch_response",accept:false}));hidePrompt();});
     render();
+    LudoOnline?.invites?.autoJoin?.("yams","yamsRoomCode",joinRoom);
   };
 })();

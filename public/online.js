@@ -2,7 +2,34 @@
 // LUDOTHÈQUE EN LIGNE — client API Cloudflare Worker
 // ============================================================
 (() => {
-  const state = { user: null, loaded: false };
+  const state = { user: null, loaded: false, lobby: { snapshot:null, mountedListId:null, mountedGameSelectId:null } };
+  let lobbyHeartbeatTimer=null;
+  let lobbyPollTimer=null;
+  let shownInviteId=null;
+  const notifiedOutgoing=new Set();
+
+  const LOBBY_GAME_LABELS={
+    chess:"Échecs",
+    "checkers-international":"Dames françaises / internationales",
+    "checkers-english":"Dames anglaises",
+    go:"Go",
+    awale:"Awélé",
+    abalone:"Abalone",
+    yams:"Yams",
+    "421":"421",
+    dominos:"Dominos"
+  };
+  const LOBBY_GAME_ROUTES={
+    chess:"#/jouer/echecs",
+    "checkers-international":"#/jouer/dames-internationales",
+    "checkers-english":"#/jouer/dames-anglaises",
+    go:"#/jouer/go",
+    awale:"#/jouer/awale",
+    abalone:"#/jouer/abalone",
+    yams:"#/jouer/yams",
+    "421":"#/jouer/421",
+    dominos:"#/jouer/dominos"
+  };
 
   async function request(path, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -39,15 +66,15 @@
 
   async function register(username, email, password, turnstileToken = "") {
     const data = await request("/api/auth/register", { method: "POST", body: { username, email, password, turnstileToken } });
-    state.user = data.user; state.loaded = true; updateNav(); return data;
+    state.user = data.user; state.loaded = true; updateNav(); startLobbyPresence(); return data;
   }
   async function login(username, password, turnstileToken = "") {
     const data = await request("/api/auth/login", { method: "POST", body: { username, password, turnstileToken } });
-    state.user = data.user; state.loaded = true; updateNav(); return state.user;
+    state.user = data.user; state.loaded = true; updateNav(); startLobbyPresence(); return state.user;
   }
   async function logout() {
     await request("/api/auth/logout", { method: "POST" });
-    state.user = null; state.loaded = true; updateNav();
+    state.user = null; state.loaded = true; updateNav(); stopLobbyPresence(); hideInvitePrompt(); renderLobbyMount();
   }
 
   async function changePassword(currentPassword, newPassword) {
@@ -309,6 +336,213 @@
     get: async id => (await request(`/api/dominos/games/${encodeURIComponent(id)}`)).game
   };
 
+  function lobbyCurrentGame(){
+    const h=location.hash||"";
+    if(h.includes("/jouer/echecs"))return"chess";
+    if(h.includes("/jouer/dames-internationales"))return"checkers-international";
+    if(h.includes("/jouer/dames-anglaises"))return"checkers-english";
+    if(h.includes("/jouer/go"))return"go";
+    if(h.includes("/jouer/awale"))return"awale";
+    if(h.includes("/jouer/abalone"))return"abalone";
+    if(h.includes("/jouer/yams"))return"yams";
+    if(h.includes("/jouer/421"))return"421";
+    if(h.includes("/jouer/dominos"))return"dominos";
+    return null;
+  }
+
+  async function lobbyHeartbeat(){
+    if(!state.user)return null;
+    return request("/api/lobby/heartbeat",{method:"POST",body:{page:location.hash||"#/accueil",game:lobbyCurrentGame()}});
+  }
+
+  async function lobbySnapshot(){
+    if(!state.user)return {online:[],incoming:[],outgoing:[]};
+    const data=await request("/api/lobby");
+    state.lobby.snapshot=data;
+    renderLobbyMount();
+    showPendingInvite(data.incoming?.[0]||null);
+    notifyOutgoing(data.outgoing||[]);
+    return data;
+  }
+
+  function pendingRoomKey(){return"strathasard_pending_room_v1";}
+
+  function setPendingRoom(game,code){
+    sessionStorage.setItem(pendingRoomKey(),JSON.stringify({game,code,createdAt:Date.now()}));
+  }
+
+  function consumePendingRoom(game){
+    let value=null;
+    try{value=JSON.parse(sessionStorage.getItem(pendingRoomKey())||"null");}catch{}
+    if(!value||value.game!==game||!value.code)return null;
+    sessionStorage.removeItem(pendingRoomKey());
+    return value;
+  }
+
+  function routeForGame(game){return LOBBY_GAME_ROUTES[game]||"#/jouer";}
+
+  function navigateToGame(game){
+    const route=routeForGame(game);
+    if(location.hash===route) location.reload();
+    else location.hash=route;
+  }
+
+  async function createInvite(inviteeId,game){
+    const data=await request("/api/invites",{method:"POST",body:{inviteeId,game}});
+    setPendingRoom(data.room.game,data.room.code);
+    navigateToGame(data.room.game);
+    return data;
+  }
+
+  async function respondInvite(id,accept){
+    const data=await request(`/api/invites/${encodeURIComponent(id)}/respond`,{method:"POST",body:{accept:Boolean(accept)}});
+    if(data.accepted&&data.room){
+      setPendingRoom(data.room.game,data.room.code);
+      navigateToGame(data.room.game);
+    }
+    return data;
+  }
+
+  function ensureInvitePrompt(){
+    let box=document.getElementById("globalGameInvite");
+    if(box)return box;
+    box=document.createElement("section");
+    box.id="globalGameInvite";
+    box.className="global-game-invite";
+    box.hidden=true;
+    box.innerHTML=`<div><span class="global-invite-kicker">Invitation à jouer</span><strong id="globalGameInviteTitle"></strong><span id="globalGameInviteText"></span></div><div class="global-invite-actions"><button id="globalGameInviteAccept" class="btn small" type="button">Accepter</button><button id="globalGameInviteDecline" class="btn outline small" type="button">Refuser</button></div>`;
+    document.body.appendChild(box);
+    return box;
+  }
+
+  function hideInvitePrompt(){
+    const box=document.getElementById("globalGameInvite");
+    if(box)box.hidden=true;
+    shownInviteId=null;
+  }
+
+  function showPendingInvite(invite){
+    if(!invite){if(shownInviteId)hideInvitePrompt();return;}
+    if(shownInviteId===invite.id)return;
+    shownInviteId=invite.id;
+    const box=ensureInvitePrompt();
+    document.getElementById("globalGameInviteTitle").textContent=`${invite.inviterUsername} vous invite à jouer`;
+    document.getElementById("globalGameInviteText").textContent=`${LOBBY_GAME_LABELS[invite.game]||invite.game} — accepter vous conduira directement dans la partie.`;
+    box.hidden=false;
+    const accept=document.getElementById("globalGameInviteAccept");
+    const decline=document.getElementById("globalGameInviteDecline");
+    accept.onclick=async()=>{
+      accept.disabled=decline.disabled=true;
+      try{await respondInvite(invite.id,true);hideInvitePrompt();}
+      catch(e){document.getElementById("globalGameInviteText").textContent=e.message;}
+      finally{accept.disabled=decline.disabled=false;}
+    };
+    decline.onclick=async()=>{
+      accept.disabled=decline.disabled=true;
+      try{await respondInvite(invite.id,false);hideInvitePrompt();await lobbySnapshot();}
+      catch(e){document.getElementById("globalGameInviteText").textContent=e.message;}
+      finally{accept.disabled=decline.disabled=false;}
+    };
+  }
+
+  function showLobbyToast(text){
+    let box=document.getElementById("globalLobbyToast");
+    if(!box){
+      box=document.createElement("div");
+      box.id="globalLobbyToast";
+      box.className="global-lobby-toast";
+      document.body.appendChild(box);
+    }
+    box.textContent=text;
+    box.hidden=false;
+    clearTimeout(showLobbyToast.timer);
+    showLobbyToast.timer=setTimeout(()=>{box.hidden=true;},4500);
+  }
+
+  function notifyOutgoing(outgoing){
+    for(const invite of outgoing){
+      if((invite.status==="declined"||invite.status==="expired")&&!notifiedOutgoing.has(invite.id)){
+        notifiedOutgoing.add(invite.id);
+        showLobbyToast(invite.status==="declined"
+          ? `${invite.inviteeUsername} a refusé votre invitation à ${LOBBY_GAME_LABELS[invite.game]||invite.game}.`
+          : `L’invitation envoyée à ${invite.inviteeUsername} a expiré.`);
+      }
+    }
+  }
+
+  function renderLobbyMount(){
+    const list=document.getElementById(state.lobby.mountedListId||"");
+    if(!list)return;
+    if(!state.user){
+      list.innerHTML='<p class="lobby-empty">Connectez-vous pour voir les joueurs présents et les inviter.</p>';
+      return;
+    }
+    const players=state.lobby.snapshot?.online||[];
+    if(!players.length){
+      list.innerHTML='<p class="lobby-empty">Aucun autre joueur n’est en ligne pour le moment.</p>';
+      return;
+    }
+    list.innerHTML=players.map(p=>{
+      const safeName=String(p.username).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const current=p.game?`<small>${LOBBY_GAME_LABELS[p.game]||"Jeu en ligne"}</small>`:"";
+      return `<div class="lobby-player-row"><span class="lobby-online-dot" aria-hidden="true"></span><span class="lobby-player-name"><strong>${safeName}</strong>${current}</span><button class="btn small" type="button" data-lobby-invite="${p.id}">Inviter</button></div>`;
+    }).join("");
+    list.querySelectorAll("[data-lobby-invite]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const select=document.getElementById(state.lobby.mountedGameSelectId||"");
+      const game=select?.value||"chess";
+      btn.disabled=true;btn.textContent="Invitation…";
+      try{await createInvite(btn.dataset.lobbyInvite,game);}
+      catch(e){btn.disabled=false;btn.textContent="Inviter";showLobbyToast(e.message);}
+    }));
+  }
+
+  function mountLobby(listId,gameSelectId){
+    state.lobby.mountedListId=listId;
+    state.lobby.mountedGameSelectId=gameSelectId;
+    renderLobbyMount();
+    if(state.user)lobbySnapshot().catch(()=>{});
+  }
+
+  function startLobbyPresence(){
+    if(!state.user)return;
+    if(lobbyHeartbeatTimer||lobbyPollTimer)return;
+    lobbyHeartbeat().catch(()=>{});
+    lobbySnapshot().catch(()=>{});
+    lobbyHeartbeatTimer=setInterval(()=>lobbyHeartbeat().catch(()=>{}),15000);
+    lobbyPollTimer=setInterval(()=>lobbySnapshot().catch(()=>{}),4000);
+  }
+
+  function stopLobbyPresence(){
+    if(lobbyHeartbeatTimer)clearInterval(lobbyHeartbeatTimer);
+    if(lobbyPollTimer)clearInterval(lobbyPollTimer);
+    lobbyHeartbeatTimer=lobbyPollTimer=null;
+    state.lobby.snapshot=null;
+  }
+
+  function autoJoinPending(game,inputId,joinFn){
+    const pending=consumePendingRoom(game);
+    if(!pending)return false;
+    const input=document.getElementById(inputId);
+    if(input)input.value=pending.code;
+    setTimeout(()=>Promise.resolve(joinFn()).catch(e=>showLobbyToast(e.message)),0);
+    return true;
+  }
+
+  const lobby={
+    heartbeat:lobbyHeartbeat,
+    snapshot:lobbySnapshot,
+    mount:mountLobby,
+    createInvite,
+    respondInvite,
+    gameLabels:LOBBY_GAME_LABELS
+  };
+  const invites={
+    setPendingRoom,
+    consumePendingRoom,
+    autoJoin: autoJoinPending,
+    respond:respondInvite
+  };
+
   const rooms = {
     create: async (game = "abalone", options = {}) => request("/api/rooms", { method: "POST", body: { game, ...options } }),
     join: async code => request("/api/rooms/join", { method: "POST", body: { code } }),
@@ -330,7 +564,8 @@
   window.LudoOnline = {
     state, request, me, register, login, logout,
     changePassword, generateRecoveryKey, resetWithRecovery, requestPasswordReset, resetPasswordWithEmail, verifyEmail, setEmail, resendVerification, deleteAccount, security,
-    saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, dominoRatings, dominoGames, rooms, updateNav
+    saves, ratings, chessGames, checkersRatings, checkersGames, goRatings, goGames, awaleRatings, awaleGames, abaloneRatings, abaloneGames, yamsRatings, yamsGames, game421Ratings, game421Games, dominoRatings, dominoGames, rooms, lobby, invites, updateNav
   };
-  window.addEventListener("DOMContentLoaded", () => me().catch(() => updateNav()));
+  window.addEventListener("DOMContentLoaded", () => me().then(user=>{if(user)startLobbyPresence();}).catch(() => updateNav()));
+  window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.user){lobbyHeartbeat().catch(()=>{});lobbySnapshot().catch(()=>{});}});
 })();
