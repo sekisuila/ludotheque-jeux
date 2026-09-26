@@ -2682,6 +2682,12 @@ main { min-height: calc(100vh - 160px); }
 .domino-move-ghost{position:fixed;width:56px;height:30px;z-index:9999;pointer-events:none;transform-origin:center center;filter:drop-shadow(0 8px 8px rgba(0,0,0,.28))}
 .domino-move-ghost .domino-tile.small{position:absolute;inset:0;margin:0;background:#ffe89a;border-color:#9a6b00}
 .domino-ends{text-align:center;color:var(--muted);font-size:.9rem;margin-top:.65rem}
+.domino-round-result{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:.9rem 0 0;padding:.9rem 1rem;border:1px solid #b8d3bd;border-radius:14px;background:#eef7ef;box-shadow:0 4px 12px rgba(46,91,54,.08)}
+.domino-round-result[hidden]{display:none!important}
+.domino-round-result strong{display:block;font-size:1.08rem;color:#245b31}
+.domino-round-result p{margin:.25rem 0 0;color:#3d5742}
+.domino-round-result-actions{display:flex;gap:.55rem;flex-wrap:wrap;justify-content:flex-end}
+.domino-round-result-actions [hidden]{display:none!important}
 .domino-hand{margin-top:1rem;padding:.8rem;border:1px solid var(--line);border-radius:14px;background:var(--surface,white)}
 .domino-hand-button{border:0;background:transparent;padding:.18rem;border-radius:10px;cursor:pointer}
 .domino-hand-button:disabled{cursor:default;opacity:.65}
@@ -2704,4 +2710,4 @@ main { min-height: calc(100vh - 160px); }
 .domino-help p{margin:.75rem 0}
 @media(prefers-reduced-motion:reduce){.domino-board-piece{transition:none}.domino-move-ghost{display:none!important}}
 @media(max-width:960px){.domino-layout{grid-template-columns:1fr}.domino-score{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:620px){.domino-score{gap:.4rem}.domino-score>div{padding:.55rem}.domino-tile{width:62px;height:34px}.domino-table{padding:.55rem;overflow:hidden}.domino-actions .btn{flex:1 1 30%}}
+@media(max-width:620px){.domino-score{gap:.4rem}.domino-score>div{padding:.55rem}.domino-tile{width:62px;height:34px}.domino-table{padding:.55rem;overflow:hidden}.domino-round-result{align-items:stretch;flex-direction:column}.domino-round-result-actions{justify-content:stretch}.domino-round-result-actions .btn{flex:1 1 100%}.domino-actions .btn{flex:1 1 30%}}
