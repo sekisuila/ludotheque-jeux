@@ -2200,50 +2200,67 @@ function renderGoPlay() {
       </div>
 
       <div class="go-play-layout">
-        <section class="game-shell go-shell">
-          <div class="go-toolbar">
-            <label><span>Goban</span><select id="goSize"><option value="19" selected>19 × 19</option><option value="13">13 × 13</option><option value="9">9 × 9</option></select></label>
-            <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
-            <div id="goAiSettings" class="toolbar-group" hidden>
-              <label><span>Niveau IA</span><select id="goAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
-              <label><span>Votre couleur</span><select id="goSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
-            </div>
-            <div id="goOnlineSettings" class="toolbar-group go-online-settings">
-              <label><span>Couleur si vous créez</span><select id="goCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noir</option><option value="white">Blanc</option></select></label>
-              <label><span>Cadence</span><select id="goTimePreset"><option value="1+0">1+0</option><option value="3+2">3+2</option><option value="5+0">5+0</option><option value="10+5" selected>10+5</option><option value="15+10">15+10</option><option value="30+0">30+0</option><option value="custom">Personnalisée</option></select></label>
-              <span id="goCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="goInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="goIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
-              <label class="inline-check"><input id="goRated" type="checkbox" checked><span>Partie classée Elo</span></label>
-              <button id="createGoRoom" class="btn small" type="button">Créer un salon</button>
-              <label><span>Code du salon</span><input id="goRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
-              <button id="joinGoRoom" class="btn outline small" type="button">Rejoindre</button>
-              <span id="goRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
-            </div>
-            <label><span>Komi</span><select id="goKomi"><option value="7.5" selected>7,5</option><option value="6.5">6,5</option><option value="0">0</option></select></label>
-            <label><span>Score</span><select id="goScoring"><option value="area" selected>Aire</option><option value="territory">Territoire</option></select></label>
-            <div class="toolbar-actions"><button id="newGo" class="btn small">Nouvelle partie</button><button id="undoGo" class="btn outline small">Annuler</button></div>
+        <div class="go-toolbar go-toolbar-wide panel">
+          <label><span>Goban</span><select id="goSize"><option value="19" selected>19 × 19</option><option value="13">13 × 13</option><option value="9">9 × 9</option></select></label>
+          <label><span>Mode</span><select id="goMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
+          <div id="goAiSettings" class="toolbar-group" hidden>
+            <label><span>Niveau IA</span><select id="goAiLevel"><option value="easy">Facile</option><option value="medium" selected>Intermédiaire</option><option value="hard">Difficile</option></select></label>
+            <label><span>Votre couleur</span><select id="goSide"><option value="1" selected>Noir</option><option value="2">Blanc</option></select></label>
           </div>
+          <div id="goOnlineSettings" class="toolbar-group go-online-settings">
+            <label><span>Couleur si vous créez</span><select id="goCreatorColor"><option value="random" selected>Aléatoire</option><option value="black">Noir</option><option value="white">Blanc</option></select></label>
+            <label><span>Cadence</span><select id="goTimePreset"><option value="1+0">1+0</option><option value="3+2">3+2</option><option value="5+0">5+0</option><option value="10+5" selected>10+5</option><option value="15+10">15+10</option><option value="30+0">30+0</option><option value="custom">Personnalisée</option></select></label>
+            <span id="goCustomTime" class="custom-time-fields" hidden><label><span>Minutes</span><input id="goInitialMinutes" type="number" min="1" max="180" value="10"></label><label><span>+ secondes/coup</span><input id="goIncrementSeconds" type="number" min="0" max="60" value="5"></label></span>
+            <label class="inline-check"><input id="goRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+            <button id="createGoRoom" class="btn small" type="button">Créer un salon</button>
+            <label><span>Code du salon</span><input id="goRoomCode" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+            <button id="joinGoRoom" class="btn outline small" type="button">Rejoindre</button>
+            <span id="goRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
+          </div>
+          <label><span>Komi</span><select id="goKomi"><option value="7.5" selected>7,5</option><option value="6.5">6,5</option><option value="0">0</option></select></label>
+          <label><span>Score</span><select id="goScoring"><option value="area" selected>Aire</option><option value="territory">Territoire</option></select></label>
+          <div class="toolbar-actions"><button id="newGo" class="btn small">Nouvelle partie</button><button id="undoGo" class="btn outline small">Annuler</button></div>
+        </div>
 
-          <div id="goClockPanel" class="go-clock-panel" hidden><div id="goClockReadout" class="go-clock-readout"></div><div id="goTimeMeta" class="chess-time-meta"></div></div>
-          <div class="go-board-frame"><div id="goBoard" class="go-board" aria-label="Goban interactif"></div></div>
-          <div class="go-actions"><button id="passGo" class="btn outline">Passer</button><button id="resignGo" class="btn danger">Abandonner</button></div>
-          <div id="goStatus" class="status go-status"></div>
-          <div id="goOnlineActions" class="chess-online-actions" hidden><button id="offerDrawGo" class="btn outline small">Proposer nulle</button><button id="offerRematchGo" class="btn small" hidden>Proposer revanche</button></div>
-          <div id="goOnlinePrompt" class="online-decision" hidden><strong id="goOnlinePromptTitle"></strong><span id="goOnlinePromptText"></span><div><button id="acceptGoProposal" class="btn small">Accepter</button><button id="declineGoProposal" class="btn outline small">Refuser</button></div></div>
-        </section>
-
-        <aside class="go-side-column">
-          <section class="panel">
-            <div class="turn-box"><span>Trait</span><strong id="goTurn">Noir</strong></div><div id="goRatingResult" class="rating-result" hidden></div>
+        <aside class="go-info-column">
+          <section class="panel go-match-panel">
+            <div id="goMatchContext" class="go-match-context" aria-label="Informations de la partie"></div>
+            <div id="goClockPanel" class="go-clock-panel" hidden><div id="goClockReadout" class="go-clock-readout"></div><div id="goTimeMeta" class="chess-time-meta"></div></div>
+            <div class="turn-box"><span>Trait</span><strong id="goTurn">Noir</strong></div>
+            <div id="goRatingResult" class="rating-result" hidden></div>
             <div class="go-score-grid">
               <div><span>Noir — prises</span><strong id="goCaptBlack">0</strong></div>
               <div><span>Blanc — prises</span><strong id="goCaptWhite">0</strong></div>
               <div><span>Noir — score estimé</span><strong id="goScoreBlack">0</strong></div>
               <div><span>Blanc — score estimé</span><strong id="goScoreWhite">7.5</strong></div>
             </div>
-            <h3>Historique</h3><div id="goHistory" class="go-history"></div>
+            <div id="goStatus" class="status go-status"></div>
+            <div id="goMoveNotice" class="go-move-notice" role="status" aria-live="polite" hidden></div>
+            <div class="go-actions"><button id="passGo" class="btn outline">Passer</button><button id="resignGo" class="btn danger">Abandonner</button></div>
+            <div id="goOnlineActions" class="chess-online-actions" hidden><button id="offerDrawGo" class="btn outline small">Proposer nulle</button><button id="offerRematchGo" class="btn small" hidden>Proposer revanche</button></div>
+            <div id="goOnlinePrompt" class="online-decision" hidden><strong id="goOnlinePromptTitle"></strong><span id="goOnlinePromptText"></span><div><button id="acceptGoProposal" class="btn small">Accepter</button><button id="declineGoProposal" class="btn outline small">Refuser</button></div></div>
+            <div id="goGameResult" class="go-game-result" role="status" aria-live="polite" hidden>
+              <strong id="goGameResultTitle"></strong>
+              <p id="goGameResultText"></p>
+              <div class="go-game-result-actions">
+                <button id="goResultNew" class="btn small" type="button">Nouvelle partie</button>
+                <button id="goResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
+              </div>
+            </div>
           </section>
-          <section class="panel"><h3>Règles gérées</h3><p>✓ Groupes et libertés</p><p>✓ Captures automatiques</p><p>✓ Suicide interdit</p><p>✓ Ko simple</p><p>✓ Deux passes = fin</p><p>✓ Komi réglable</p><div class="note"><strong>Score :</strong> pour éviter une adjudication complexe des groupes morts, capturez les pierres contestées avant les deux passes.</div></section>
-          <section class="panel"><h3>Les trois IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> privilégie captures, libertés, connexions et bons points d’ouverture.</p><p><strong>Difficile :</strong> compare en plus les meilleures réponses immédiates de l’adversaire.</p><div class="note">Cette IA est pédagogique. Un futur moteur spécialisé comme <strong>KataGo</strong> serait l’équivalent, pour le Go, de ce que Stockfish représente aux Échecs.</div></section>
+        </aside>
+
+        <section class="game-shell go-shell">
+          <div class="go-board-frame"><div id="goBoard" class="go-board" aria-label="Goban interactif"></div></div>
+        </section>
+
+        <aside class="go-history-column">
+          <section class="panel go-history-panel">
+            <div class="go-history-head"><h3>Historique</h3><span id="goHistoryCount">0 coup</span></div>
+            <div id="goHistory" class="go-history"></div>
+          </section>
+          <section class="panel go-help-panel"><h3>Règles gérées</h3><p>✓ Groupes et libertés</p><p>✓ Captures automatiques</p><p>✓ Suicide interdit</p><p>✓ Ko simple</p><p>✓ Deux passes = fin</p><p>✓ Komi réglable</p><div class="note"><strong>Score :</strong> pour éviter une adjudication complexe des groupes morts, capturez les pierres contestées avant les deux passes.</div></section>
+          <section class="panel go-help-panel"><h3>Les trois IA</h3><p><strong>Facile :</strong> joue un coup légal au hasard.</p><p><strong>Intermédiaire :</strong> privilégie captures, libertés, connexions et bons points d’ouverture.</p><p><strong>Difficile :</strong> compare en plus les meilleures réponses immédiates de l’adversaire.</p><div class="note">Cette IA est pédagogique. Un futur moteur spécialisé comme <strong>KataGo</strong> serait l’équivalent, pour le Go, de ce que Stockfish représente aux Échecs.</div></section>
         </aside>
       </div>
     </div>
