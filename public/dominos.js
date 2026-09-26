@@ -613,5 +613,6 @@
     document.getElementById("acceptDomino")?.addEventListener("click",()=>{ui.online.ws?.send(JSON.stringify({type:"rematch_response",accept:true}));hidePrompt();});
     document.getElementById("declineDomino")?.addEventListener("click",()=>{ui.online.ws?.send(JSON.stringify({type:"rematch_response",accept:false}));hidePrompt();});
     render();
+    LudoOnline?.invites?.autoJoin?.("dominos","dominoRoomCode",joinRoom);
   };
 })();
