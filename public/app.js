@@ -2242,8 +2242,7 @@ function renderChessPlay() {
       </div>
 
       <div class="chess-play-layout">
-        <section class="game-shell chess-shell">
-          <div class="chess-toolbar">
+        <div class="chess-toolbar chess-toolbar-wide panel">
             <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
             <div id="chessAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="chessAiLevel">
@@ -2286,30 +2285,17 @@ function renderChessPlay() {
               <button id="joinChessRoom" class="btn outline small">Rejoindre</button>
               <span id="chessRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
-            <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
-          </div>
+          <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
+        </div>
 
+        <section class="game-shell chess-shell">
           <div class="chess-board-wrap">
             <div id="chessBoard" class="chess-board" aria-label="Échiquier interactif"></div>
             <div id="promotionPicker" class="promotion-picker" hidden><strong>Promotion :</strong><button data-promotion="Q"></button><button data-promotion="R"></button><button data-promotion="B"></button><button data-promotion="N"></button></div>
           </div>
-          <div id="chessStatus" class="status chess-status"></div>
-          <div id="chessOnlineActions" class="chess-online-actions" hidden>
-            <button id="resignChessOnline" class="btn danger small">Abandonner</button>
-            <button id="offerDrawChess" class="btn outline small">Proposer la nulle</button>
-            <button id="offerRematchChess" class="btn small" hidden>Proposer une revanche</button>
-          </div>
-          <div id="chessOnlinePrompt" class="online-decision" hidden>
-            <strong id="chessOnlinePromptTitle"></strong>
-            <span id="chessOnlinePromptText"></span>
-            <div class="online-decision-actions">
-              <button id="acceptChessProposal" class="btn small">Accepter</button>
-              <button id="declineChessProposal" class="btn outline small">Refuser</button>
-            </div>
-          </div>
         </section>
 
-        <aside class="chess-side-column">
+        <aside class="chess-info-column">
           <section class="panel chess-match-panel">
             <div id="chessMatchContext" class="chess-match-context" aria-label="Informations de la partie"></div>
             <div id="chessClockPanel" class="chess-clock-panel" hidden>
@@ -2317,8 +2303,22 @@ function renderChessPlay() {
               <div class="chess-time-meta" data-clock-role="meta"></div>
             </div>
             <div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div>
+            <div id="chessStatus" class="status chess-status"></div>
             <div id="chessRatingResult" class="rating-result" hidden></div>
             <div id="chessMoveNotice" class="chess-move-notice" role="status" aria-live="polite" hidden></div>
+            <div id="chessOnlineActions" class="chess-online-actions" hidden>
+              <button id="resignChessOnline" class="btn danger small">Abandonner</button>
+              <button id="offerDrawChess" class="btn outline small">Proposer la nulle</button>
+              <button id="offerRematchChess" class="btn small" hidden>Proposer une revanche</button>
+            </div>
+            <div id="chessOnlinePrompt" class="online-decision" hidden>
+              <strong id="chessOnlinePromptTitle"></strong>
+              <span id="chessOnlinePromptText"></span>
+              <div class="online-decision-actions">
+                <button id="acceptChessProposal" class="btn small">Accepter</button>
+                <button id="declineChessProposal" class="btn outline small">Refuser</button>
+              </div>
+            </div>
             <div id="chessGameResult" class="chess-game-result" role="status" aria-live="polite" hidden>
               <strong id="chessGameResultTitle"></strong>
               <p id="chessGameResultText"></p>
@@ -2327,6 +2327,11 @@ function renderChessPlay() {
                 <button id="chessResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
               </div>
             </div>
+          </section>
+        </aside>
+
+        <aside class="chess-history-column">
+          <section class="panel chess-history-panel">
             <div class="chess-history-head"><h3>Historique</h3><span id="chessHistoryCount">0 coup</span></div>
             <div id="chessHistory" class="chess-history"></div>
           </section>
