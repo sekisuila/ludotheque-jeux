@@ -177,5 +177,6 @@
     document.getElementById("accept421")?.addEventListener("click",()=>{const p=document.getElementById("game421Prompt");ui.online.ws?.send(JSON.stringify({type:p?.dataset.kind==="draw"?"draw_response":"rematch_response",accept:true}));hidePrompt();});
     document.getElementById("decline421")?.addEventListener("click",()=>{const p=document.getElementById("game421Prompt");ui.online.ws?.send(JSON.stringify({type:p?.dataset.kind==="draw"?"draw_response":"rematch_response",accept:false}));hidePrompt();});
     render();
+    LudoOnline?.invites?.autoJoin?.("421","game421RoomCode",joinRoom);
   };
 })();
