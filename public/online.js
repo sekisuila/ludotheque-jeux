@@ -482,7 +482,11 @@
       list.innerHTML='<p class="lobby-empty">Aucun autre joueur n’est en ligne pour le moment.</p>';
       return;
     }
-    list.innerHTML=players.map(p=>`<div class="lobby-player-row"><span class="lobby-online-dot" aria-hidden="true"></span><strong>${String(p.username).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]))}</strong><button class="btn small" type="button" data-lobby-invite="${p.id}">Inviter</button></div>`).join("");
+    list.innerHTML=players.map(p=>{
+      const safeName=String(p.username).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const current=p.game?`<small>${LOBBY_GAME_LABELS[p.game]||"Jeu en ligne"}</small>`:"";
+      return `<div class="lobby-player-row"><span class="lobby-online-dot" aria-hidden="true"></span><span class="lobby-player-name"><strong>${safeName}</strong>${current}</span><button class="btn small" type="button" data-lobby-invite="${p.id}">Inviter</button></div>`;
+    }).join("");
     list.querySelectorAll("[data-lobby-invite]").forEach(btn=>btn.addEventListener("click",async()=>{
       const select=document.getElementById(state.lobby.mountedGameSelectId||"");
       const game=select?.value||"chess";
