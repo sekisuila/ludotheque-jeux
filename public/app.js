@@ -2384,6 +2384,11 @@ function renderChessPlay() {
             <div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div>
             <div id="chessStatus" class="status chess-status"></div>
             <div id="chessRatingResult" class="rating-result" hidden></div>
+            <div id="chessAiRatingPanel" class="chess-ai-rating-panel" hidden>
+              <div class="chess-ai-rating-head"><span>Elo contre Stockfish</span><strong id="chessAiRatingValue">1200</strong></div>
+              <small id="chessAiRatingRecord">0 partie · 0 V · 0 N · 0 D</small>
+              <div id="chessAiRatingUpdate" class="chess-ai-rating-update" hidden></div>
+            </div>
             <div id="chessMoveNotice" class="chess-move-notice" role="status" aria-live="polite" hidden></div>
             <div id="chessOnlineActions" class="chess-online-actions" hidden>
               <button id="resignChessOnline" class="btn danger small">Abandonner</button>
@@ -2415,7 +2420,7 @@ function renderChessPlay() {
             <div id="chessHistory" class="chess-history"></div>
           </section>
           <section class="panel chess-help-panel"><h3>Multijoueur en ligne</h3><p>Le créateur choisit sa couleur, la <strong>cadence</strong> et si la partie compte pour le <strong>classement Elo</strong>. Une cadence comme <strong>10+5</strong> signifie 10 minutes au départ et 5 secondes ajoutées après chaque coup joué.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une revanche acceptée inverse automatiquement les couleurs tout en conservant la même cadence.</p><p>La pendule et la légalité des coups sont contrôlées côté Cloudflare : fermer l’onglet n’arrête donc pas le temps.</p><div class="note"><strong>Classements :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre Elo, avec 1200 comme valeur de départ.</div></section>
-          <section class="panel chess-help-panel"><h3>Niveaux d’IA</h3><p><strong>IA Strathasard :</strong> trois niveaux pédagogiques.</p><p><strong>Stockfish :</strong> niveaux gradués d’environ 1320 Elo jusqu’à la force maximale.</p><div class="note">Le niveau choisi est maintenant rappelé dans le panneau d’informations de la partie.</div></section>
+          <section class="panel chess-help-panel"><h3>Niveaux d’IA</h3><p><strong>IA Strathasard :</strong> trois niveaux pédagogiques.</p><p><strong>Stockfish :</strong> niveaux gradués d’environ 1320 Elo jusqu’à la force maximale.</p><div class="note">Les parties terminées contre Stockfish alimentent un <strong>Elo IA personnel</strong>, séparé de l’Elo multijoueur. Une partie avec annulation de coup, changement de niveau en cours de partie ou repli sur l’IA interne ne compte pas.</div></section>
         </aside>
       </div>
     </div>
