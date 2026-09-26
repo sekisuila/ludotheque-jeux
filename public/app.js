@@ -2293,20 +2293,6 @@ function renderChessPlay() {
             <div id="chessBoard" class="chess-board" aria-label="Échiquier interactif"></div>
             <div id="promotionPicker" class="promotion-picker" hidden><strong>Promotion :</strong><button data-promotion="Q"></button><button data-promotion="R"></button><button data-promotion="B"></button><button data-promotion="N"></button></div>
           </div>
-          <div id="chessStatus" class="status chess-status"></div>
-          <div id="chessOnlineActions" class="chess-online-actions" hidden>
-            <button id="resignChessOnline" class="btn danger small">Abandonner</button>
-            <button id="offerDrawChess" class="btn outline small">Proposer la nulle</button>
-            <button id="offerRematchChess" class="btn small" hidden>Proposer une revanche</button>
-          </div>
-          <div id="chessOnlinePrompt" class="online-decision" hidden>
-            <strong id="chessOnlinePromptTitle"></strong>
-            <span id="chessOnlinePromptText"></span>
-            <div class="online-decision-actions">
-              <button id="acceptChessProposal" class="btn small">Accepter</button>
-              <button id="declineChessProposal" class="btn outline small">Refuser</button>
-            </div>
-          </div>
         </section>
 
         <aside class="chess-info-column">
@@ -2317,8 +2303,22 @@ function renderChessPlay() {
               <div class="chess-time-meta" data-clock-role="meta"></div>
             </div>
             <div class="turn-box"><span>Trait</span><strong id="chessTurn">Blancs</strong></div>
+            <div id="chessStatus" class="status chess-status"></div>
             <div id="chessRatingResult" class="rating-result" hidden></div>
             <div id="chessMoveNotice" class="chess-move-notice" role="status" aria-live="polite" hidden></div>
+            <div id="chessOnlineActions" class="chess-online-actions" hidden>
+              <button id="resignChessOnline" class="btn danger small">Abandonner</button>
+              <button id="offerDrawChess" class="btn outline small">Proposer la nulle</button>
+              <button id="offerRematchChess" class="btn small" hidden>Proposer une revanche</button>
+            </div>
+            <div id="chessOnlinePrompt" class="online-decision" hidden>
+              <strong id="chessOnlinePromptTitle"></strong>
+              <span id="chessOnlinePromptText"></span>
+              <div class="online-decision-actions">
+                <button id="acceptChessProposal" class="btn small">Accepter</button>
+                <button id="declineChessProposal" class="btn outline small">Refuser</button>
+              </div>
+            </div>
             <div id="chessGameResult" class="chess-game-result" role="status" aria-live="polite" hidden>
               <strong id="chessGameResultTitle"></strong>
               <p id="chessGameResultText"></p>
