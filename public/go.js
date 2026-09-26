@@ -243,7 +243,11 @@ class GoGame {
     this.turn = goOther(player);
     if (this.passes >= 2) {
       this.over = true;
-      this.result = this.score();
+      this.result = { ...this.score(), endedBy: "passes" };
+      const margin = Number(this.result.margin || 0);
+      this.result.text = this.result.winner
+        ? `Deux passes consécutives : ${this.result.winner === GO_BLACK ? "Noir" : "Blanc"} gagne de ${margin.toFixed(1).replace(".0", "")} point${margin > 1 ? "s" : ""}.`
+        : "Deux passes consécutives : partie nulle.";
     }
     return true;
   }
@@ -351,6 +355,59 @@ class GoGame {
 // ------------------------------------------------------------
 // IA légère : elle n'a pas vocation à remplacer KataGo.
 // ------------------------------------------------------------
+function goEmptyRegionInfo(board, size, r, c) {
+  const start = goIndex(size, r, c);
+  if (!goInside(size, r, c) || board[start] !== GO_EMPTY) {
+    return { size: 0, borders: new Set() };
+  }
+
+  const stack = [[r, c]];
+  const seen = new Set([start]);
+  const borders = new Set();
+  let regionSize = 0;
+
+  while (stack.length) {
+    const [rr, cc] = stack.pop();
+    regionSize += 1;
+
+    for (const [nr, nc] of goNeighbors(size, rr, cc)) {
+      const idx = goIndex(size, nr, nc);
+      const value = board[idx];
+      if (value === GO_EMPTY) {
+        if (!seen.has(idx)) {
+          seen.add(idx);
+          stack.push([nr, nc]);
+        }
+      } else {
+        borders.add(value);
+      }
+    }
+  }
+
+  return { size: regionSize, borders };
+}
+
+function goIsClearlyWastefulMove(game, move) {
+  const player = game.turn;
+  const opponent = goOther(player);
+  const sim = goSimulateMove(game.board, game.size, player, move.r, move.c, game.koForbiddenHash());
+  if (!sim.legal || sim.captured > 0) return false;
+
+  const region = goEmptyRegionInfo(game.board, game.size, move.r, move.c);
+
+  // Remplir un territoire déjà complètement entouré par ses propres pierres
+  // n'apporte rien en score par aire, et coûte même un point en score territoire.
+  if (region.borders.size === 1 && region.borders.has(player)) return true;
+
+  // Évite aussi les petites invasions manifestement condamnées chez l'adversaire.
+  const smallOpponentRegion = region.borders.size === 1
+    && region.borders.has(opponent)
+    && region.size <= Math.max(5, Math.floor(game.size / 2));
+
+  if (smallOpponentRegion && sim.liberties <= 2) return true;
+  return false;
+}
+
 function goMoveHeuristic(board, size, player, r, c, koHash = null) {
   const sim = goSimulateMove(board, size, player, r, c, koHash);
   if (!sim.legal) return -Infinity;
@@ -383,6 +440,20 @@ function goMoveHeuristic(board, size, player, r, c, koHash = null) {
   const looksLikeOwnEye = neighbors.length > 1 && neighbors.every(([nr, nc]) => board[goIndex(size, nr, nc)] === player);
   if (looksLikeOwnEye && sim.captured === 0) score -= 10;
 
+  const region = goEmptyRegionInfo(board, size, r, c);
+  if (sim.captured === 0 && region.borders.size === 1 && region.borders.has(player)) {
+    score -= 14;
+  }
+  if (
+    sim.captured === 0
+    && region.borders.size === 1
+    && region.borders.has(goOther(player))
+    && region.size <= Math.max(5, Math.floor(size / 2))
+    && sim.liberties <= 2
+  ) {
+    score -= 8;
+  }
+
   return score;
 }
 
@@ -390,14 +461,25 @@ function goChooseAiMove(game, level = "medium") {
   const legal = game.legalMoves();
   if (!legal.length) return { type: "pass" };
 
+  const playedStones = game.moves.filter(move => move.type === "move").length;
+  const endgameStarted = playedStones >= Math.max(10, game.size * 2);
+  const meaningful = endgameStarted
+    ? legal.filter(move => !goIsClearlyWastefulMove(game, move))
+    : legal;
+  const candidates = meaningful.length ? meaningful : legal;
+
+  // Lorsque tous les coups restants consistent à remplir son propre territoire
+  // ou à faire une petite invasion manifestement condamnée, l'IA passe.
+  if (endgameStarted && !meaningful.length) return { type: "pass" };
+
   if (level === "easy") {
-    const pick = legal[Math.floor(Math.random() * legal.length)];
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
     return { type: "move", r: pick.r, c: pick.c };
   }
 
   const player = game.turn;
   const koHash = game.koForbiddenHash();
-  const ranked = legal.map(move => ({
+  const ranked = candidates.map(move => ({
     r: move.r,
     c: move.c,
     score: goMoveHeuristic(game.board, game.size, player, move.r, move.c, koHash) + Math.random() * 0.18
@@ -405,6 +487,7 @@ function goChooseAiMove(game, level = "medium") {
 
   if (level === "medium") {
     const best = ranked[0];
+    if (endgameStarted && best.score < 0.35) return { type: "pass" };
     if (game.lastMove?.type === "pass" && best.score < 1.4) return { type: "pass" };
     return { type: "move", r: best.r, c: best.c };
   }
@@ -443,6 +526,7 @@ function goChooseAiMove(game, level = "medium") {
     }
   }
 
+  if (endgameStarted && bestMove.score < 0.55) return { type: "pass" };
   if (game.lastMove?.type === "pass" && bestMove.score < 1.7) return { type: "pass" };
   return { type: "move", r: bestMove.r, c: bestMove.c };
 }

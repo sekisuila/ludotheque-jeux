@@ -165,9 +165,10 @@ export function playServerGoPass(game,side){
   next.turn=otherGoSide(side);
   if(next.passes>=2){
     next.result=scoreGoGame(next);
+    next.result.endedBy="passes";
     next.result.text=next.result.winner
-      ? `${next.result.winner===GO_BLACK?"Noir":"Blanc"} gagne de ${next.result.margin.toFixed(1).replace(".0","")} point${next.result.margin>1?"s":""}.`
-      : "Partie terminée : égalité.";
+      ? `Deux passes consécutives : ${next.result.winner===GO_BLACK?"Noir":"Blanc"} gagne de ${next.result.margin.toFixed(1).replace(".0","")} point${next.result.margin>1?"s":""}.`
+      : "Deux passes consécutives : partie nulle.";
   }else{
     next.result={over:false,type:"pass",winner:null,text:`${side===GO_BLACK?"Noir":"Blanc"} passe. ${next.turn===GO_BLACK?"Noir":"Blanc"} au trait.`};
   }
