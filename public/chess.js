@@ -722,6 +722,24 @@ function chessPlayerLabel(color) {
   return color==="w"?"Blancs":"Noirs";
 }
 
+function chessMoveSentence(color,san,from,to) {
+  if(chessUi?.mode==="local"){
+    const side=color==="w"?"Les Blancs":"Les Noirs";
+    return `${side} ont joué ${san} (${from} → ${to}).`;
+  }
+  if(chessUi?.mode==="ai"){
+    const actor=color===chessUi.humanColor?"Vous avez":"L’IA a";
+    return `${actor} joué ${san} (${from} → ${to}).`;
+  }
+  return `${chessPlayerLabel(color)} a joué ${san} (${from} → ${to}).`;
+}
+
+function chessWinnerTitle(color) {
+  if(chessUi?.mode==="local")return `${color==="w"?"Les Blancs":"Les Noirs"} gagnent la partie !`;
+  if(chessUi?.mode==="ai")return color===chessUi.humanColor?"Vous gagnez la partie !":"L’IA gagne la partie !";
+  return `${chessPlayerLabel(color)} gagne la partie !`;
+}
+
 function chessIsOpponentMove(color) {
   if(!color||!chessUi)return false;
   if(chessUi.mode==="online") return Boolean(chessUi.online?.side) && color!==chessUi.online.side;
@@ -777,7 +795,7 @@ function chessRenderMoveNotice() {
   const from=chessSquareName(m.fr,m.fc),to=chessSquareName(m.tr,m.tc);
   const played=feedback.san||`${from}–${to}`;
   el.hidden=false;
-  el.textContent=`${chessPlayerLabel(feedback.mover)} a joué ${played} (${from} → ${to}).`;
+  el.textContent=chessMoveSentence(feedback.mover,played,from,to);
 }
 
 function chessRenderContext() {
@@ -835,7 +853,7 @@ function chessRenderGameResult() {
 
   box.hidden=false;
   if(title)title.textContent=winner==="w"||winner==="b"
-    ? `${chessPlayerLabel(winner)} gagne la partie !`
+    ? chessWinnerTitle(winner)
     : "Partie nulle";
   if(text)text.textContent=result.text||"Partie terminée.";
 
