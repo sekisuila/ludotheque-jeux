@@ -14,13 +14,16 @@ function sowOnly(state,index){
   let seeds=next.pits[index];
   next.pits[index]=0;
   let pos=index;
+  const sowPath=[];
   while(seeds>0){
     pos=(pos+1)%12;
     if(pos===index) continue;
     next.pits[pos]++;
+    sowPath.push(pos);
     seeds--;
   }
   next.last=pos;
+  next.sowPath=sowPath;
   return next;
 }
 
@@ -83,7 +86,9 @@ export function playServerAwaleMove(game,side,index){
   if(!isLegalAwaleMove(game.state,index)) return {ok:false,error:"Ce coup n’est pas légal."};
 
   const before=snapshot(game);
+  const seedsPicked=Number(game.state.pits[index]||0);
   const nextState=sowOnly(game.state,index);
+  const sowPath=[...(nextState.sowPath||[])];
   const current=side;
   let captured=[];
   let pos=nextState.last;
@@ -103,8 +108,9 @@ export function playServerAwaleMove(game,side,index){
   nextState.player=1-current;
   nextState.over=false;
   delete nextState.last;
+  delete nextState.sowPath;
 
-  const move={player:current,index,captured:[...captured],capturedSeeds:captured.reduce((sum,p)=>sum+(before.pits[p]||0),0)};
+  const move={player:current,index,seedsPicked,sowPath,captured:[...captured],capturedSeeds:captured.length?totalCaptured:0};
   const next={state:nextState,history:[...(game.history||[]),{state:before,move}],moves:[...(game.moves||[]),move],result:null};
   finalizeIfNeeded(next);
   return {ok:true,state:next,move};

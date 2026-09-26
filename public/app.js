@@ -2385,59 +2385,108 @@ function renderAwalePlay() {
   app.innerHTML = `
     <div class="page awale-page">
       <div class="breadcrumb"><a href="#/accueil">Accueil</a><span>›</span><a href="#/jouer">Jouer</a><span>›</span><span>Awélé</span></div>
-      <div class="section-head"><div><div class="eyebrow">Jeu jouable</div><h1>Awélé interactif</h1><p class="section-lead">Multijoueur en ligne par défaut, jeu local ou partie contre l’IA. Semailles, captures et règle de nourrissage sont contrôlées.</p></div></div>
-      <div class="awale-play-layout">
-        <section class="game-shell awale-shell">
-          <div class="awale-toolbar">
-            <div><label for="awaleMode"><strong>Mode :</strong></label><select id="awaleMode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></div>
-            <button id="newAwale" class="btn small" type="button">Nouvelle partie</button>
-          </div>
+      <div class="section-head awale-page-head">
+        <div>
+          <div class="eyebrow">Jeu jouable</div>
+          <h1>Awélé interactif</h1>
+          <p class="section-lead">Multijoueur en ligne par défaut, jeu local ou partie contre l’IA. Semailles, captures et règle de nourrissage sont contrôlées.</p>
+        </div>
+        <a class="btn outline small" href="#/jeu/awale">Voir les règles</a>
+      </div>
 
-          <div id="awaleOnlineSettings" class="awale-online-settings">
-            <div class="awale-online-grid">
-              <label><span>Votre camp à la création</span><select id="awaleCreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Sud — cases 1 à 6</option><option value="1">Nord — cases 7 à 12</option></select></label>
-              <label><span>Cadence</span><select id="awaleTimeControl"><option value="60,0">1+0</option><option value="180,2">3+2</option><option value="300,0">5+0</option><option value="600,5" selected>10+5</option><option value="900,10">15+10</option><option value="1800,0">30+0</option><option value="custom">Personnalisée</option></select></label>
-              <label class="form-check"><input id="awaleRated" type="checkbox" checked><span>Partie classée Elo</span></label>
-            </div>
-            <div id="awaleCustomTime" class="awale-custom-time" hidden>
-              <label><span>Minutes</span><input id="awaleMinutes" type="number" min="1" max="180" value="10"></label>
-              <label><span>Incrément (s)</span><input id="awaleIncrement" type="number" min="0" max="60" value="5"></label>
-            </div>
-            <div class="awale-room-actions">
-              <button id="createAwaleRoom" class="btn small" type="button">Créer un salon</button>
-              <input id="awaleRoomCode" maxlength="6" placeholder="CODE" autocomplete="off">
-              <button id="joinAwaleRoom" class="btn outline small" type="button">Rejoindre</button>
-            </div>
-            <div id="awaleOnlineStatus" class="form-status"></div>
+      <section class="game-shell awale-shell">
+        <div class="awale-toolbar">
+          <div class="awale-toolbar-settings">
+            <label for="awaleMode"><strong>Mode :</strong><select id="awaleMode"><option value="online" selected>Multijoueur en ligne</option><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option></select></label>
+            <label id="awaleAiSettings" hidden><strong>Niveau IA :</strong><select id="awaleAiLevel"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select></label>
           </div>
+          <button id="newAwale" class="btn small" type="button">Nouvelle partie</button>
+        </div>
 
-          <div class="awale-stage">
-            <div class="awale-board-column">
-              <div id="awaleTopPlayer" class="awale-player-caption"></div>
-              <div id="awaleBoard" class="awale-board" aria-label="Plateau d'Awélé"></div>
-              <div id="awaleBottomPlayer" class="awale-player-caption"></div>
-              <div class="scoreboard"><div class="score-box"><span id="awaleScoreLabel0">Joueur 1</span><strong id="score0">0</strong></div><div class="score-box"><span id="awaleScoreLabel1">Joueur 2</span><strong id="score1">0</strong></div></div>
-              <div id="awaleStatus" class="status"></div>
+        <div id="awaleOnlineSettings" class="awale-online-settings">
+          <div class="awale-online-grid">
+            <label><span>Votre camp à la création</span><select id="awaleCreatorSide"><option value="random" selected>Aléatoire</option><option value="0">Sud — cases 1 à 6</option><option value="1">Nord — cases 7 à 12</option></select></label>
+            <label><span>Cadence</span><select id="awaleTimeControl"><option value="60,0">1+0</option><option value="180,2">3+2</option><option value="300,0">5+0</option><option value="600,5" selected>10+5</option><option value="900,10">15+10</option><option value="1800,0">30+0</option><option value="custom">Personnalisée</option></select></label>
+            <label class="form-check"><input id="awaleRated" type="checkbox" checked><span>Partie classée Elo</span></label>
+          </div>
+          <div id="awaleCustomTime" class="awale-custom-time" hidden>
+            <label><span>Minutes</span><input id="awaleMinutes" type="number" min="1" max="180" value="10"></label>
+            <label><span>Incrément (s)</span><input id="awaleIncrement" type="number" min="0" max="60" value="5"></label>
+          </div>
+          <div class="awale-room-actions">
+            <button id="createAwaleRoom" class="btn small" type="button">Créer un salon</button>
+            <input id="awaleRoomCode" maxlength="6" placeholder="CODE" autocomplete="off">
+            <button id="joinAwaleRoom" class="btn outline small" type="button">Rejoindre</button>
+          </div>
+          <div id="awaleOnlineStatus" class="form-status"></div>
+        </div>
+
+        <div id="awaleMatchContext" class="awale-match-context"></div>
+
+        <div class="awale-stage awale-three-column">
+          <aside class="awale-info-rail">
+            <div class="awale-info-card">
+              <h3>Partie</h3>
+              <div id="awaleTurnInfo" class="awale-turn-info"></div>
+              <div class="scoreboard awale-scoreboard">
+                <div class="score-box"><span id="awaleScoreLabel0">Joueur 1</span><strong id="score0">0</strong><small>graines capturées</small></div>
+                <div class="score-box"><span id="awaleScoreLabel1">Joueur 2</span><strong id="score1">0</strong><small>graines capturées</small></div>
+              </div>
             </div>
+
             <div id="awaleClockPanel" class="awale-clock-panel" hidden>
               <div id="awaleClockReadout" class="awale-clock-readout"></div>
               <div id="awaleTimeMeta" class="chess-time-meta"></div>
-              <div id="awaleOnlineActions" class="chess-online-actions" hidden>
-                <button id="resignAwale" class="btn danger small" type="button">Abandonner</button>
-                <button id="offerDrawAwale" class="btn outline small" type="button">Proposer nulle</button>
-                <button id="offerRematchAwale" class="btn small" type="button" hidden>Proposer revanche</button>
-              </div>
-              <div id="awaleOnlinePrompt" class="online-decision" hidden><strong id="awaleOnlinePromptTitle"></strong><span id="awaleOnlinePromptText"></span><div><button id="acceptAwaleProposal" class="btn small" type="button">Accepter</button><button id="declineAwaleProposal" class="btn outline small" type="button">Refuser</button></div></div>
-              <div id="awaleRatingResult" class="rating-result" hidden></div>
             </div>
+
+            <div id="awaleOnlineActions" class="chess-online-actions awale-online-actions" hidden>
+              <button id="resignAwale" class="btn danger small" type="button">Abandonner</button>
+              <button id="offerDrawAwale" class="btn outline small" type="button">Proposer nulle</button>
+              <button id="offerRematchAwale" class="btn small" type="button" hidden>Proposer revanche</button>
+            </div>
+
+            <div id="awaleOnlinePrompt" class="online-decision" hidden>
+              <strong id="awaleOnlinePromptTitle"></strong>
+              <span id="awaleOnlinePromptText"></span>
+              <div><button id="acceptAwaleProposal" class="btn small" type="button">Accepter</button><button id="declineAwaleProposal" class="btn outline small" type="button">Refuser</button></div>
+            </div>
+            <div id="awaleRatingResult" class="rating-result" hidden></div>
+          </aside>
+
+          <div class="awale-board-column">
+            <div id="awaleTopPlayer" class="awale-player-caption"></div>
+            <div id="awaleBoard" class="awale-board" aria-label="Plateau d'Awélé"></div>
+            <div id="awaleBottomPlayer" class="awale-player-caption"></div>
+            <div id="awaleMoveNotice" class="awale-move-notice" hidden></div>
+            <div id="awaleStatus" class="status awale-status"></div>
+
+            <section id="awaleGameResult" class="awale-game-result" hidden>
+              <div>
+                <span class="eyebrow">Fin de partie</span>
+                <h2 id="awaleGameResultTitle">Partie terminée</h2>
+                <p id="awaleGameResultText"></p>
+              </div>
+              <div class="awale-result-actions">
+                <button id="awaleResultNew" class="btn" type="button">Nouvelle partie</button>
+                <button id="awaleResultHome" class="btn outline" type="button">Retour à l’accueil</button>
+              </div>
+            </section>
           </div>
-        </section>
-        <aside class="panel"><h3>Comment jouer</h3><p>Cliquez sur une de vos cases. Toutes ses graines sont semées une à une dans le sens antihoraire.</p><p>Une capture a lieu si la dernière graine arrive dans le camp adverse et forme une case de 2 ou 3 graines. La capture remonte ensuite sur les cases adverses précédentes qui contiennent elles aussi 2 ou 3 graines.</p><div class="note"><strong>En ligne :</strong> le serveur vérifie chaque coup, la règle anti-famine et la pendule.</div></aside>
-      </div>
+
+          <aside class="awale-history-panel">
+            <div class="awale-history-head"><h3>Historique</h3><span id="awaleHistoryCount">0 coup</span></div>
+            <div id="awaleHistory" class="awale-history"><div class="awale-history-empty">Les coups joués apparaîtront ici.</div></div>
+            <details class="awale-rules-reminder">
+              <summary>Rappel rapide</summary>
+              <p>Cliquez sur une de vos cases : toutes ses graines sont semées une à une dans le sens antihoraire.</p>
+              <p>Une capture a lieu si la dernière graine arrive dans le camp adverse et forme une case de 2 ou 3 graines.</p>
+            </details>
+          </aside>
+        </div>
+      </section>
     </div>`;
   initAwale();
 }
-
 
 function renderYamsGamePage(game) {
   app.innerHTML = `
@@ -2764,12 +2813,29 @@ function awaleEmptyOnline(){
   return {ws:null,connected:false,code:null,side:null,players:{black:null,white:null},game:null,clock:null,settings:null,ratings:null,ratingUpdate:null,result:null,drawOffer:null,rematchOffer:null,pendingProposal:null,syncTimer:null,reconnectTimer:null,manualClose:false};
 }
 
+function awaleFreshLocalState(mode="ai"){
+  return {pits:Array(12).fill(4),scores:[0,0],player:0,over:false,mode,moves:[],lastMove:null,result:null};
+}
+
+function awaleClearAnimation(){
+  if(!awaleUi)return;
+  for(const timer of awaleUi.animationTimers||[]) clearTimeout(timer);
+  awaleUi.animationTimers=[];
+  document.querySelectorAll("#awaleBoard .awale-source-flash,#awaleBoard .awale-sow-flash,#awaleBoard .awale-capture-flash").forEach(el=>{
+    el.classList.remove("awale-source-flash","awale-sow-flash","awale-capture-flash");
+  });
+}
+
 function initAwale() {
-  awale={pits:Array(12).fill(4),scores:[0,0],player:0,over:false,mode:"online"};
-  awaleUi={mode:"online",online:awaleEmptyOnline(),clockTimer:null};
+  awale=awaleFreshLocalState("online");
+  awaleUi={mode:"online",aiLevel:document.getElementById("awaleAiLevel")?.value||"medium",online:awaleEmptyOnline(),clockTimer:null,lastSeenMoveKey:null,moveFeedback:null,animationTimers:[]};
   document.getElementById("awaleMode")?.addEventListener("change",e=>awaleSetMode(e.target.value));
+  document.getElementById("awaleAiLevel")?.addEventListener("change",e=>{awaleUi.aiLevel=e.target.value;awaleRenderContext();});
   document.getElementById("newAwale")?.addEventListener("click",newAwale);
-  document.getElementById("awaleTimeControl")?.addEventListener("change",e=>{ document.getElementById("awaleCustomTime").hidden=e.target.value!=="custom"; });
+  document.getElementById("awaleTimeControl")?.addEventListener("change",e=>{ document.getElementById("awaleCustomTime").hidden=e.target.value!=="custom"; awaleRenderContext(); });
+  document.getElementById("awaleMinutes")?.addEventListener("input",awaleRenderContext);
+  document.getElementById("awaleIncrement")?.addEventListener("input",awaleRenderContext);
+  document.getElementById("awaleRated")?.addEventListener("change",awaleRenderContext);
   document.getElementById("createAwaleRoom")?.addEventListener("click",awaleCreateRoom);
   document.getElementById("joinAwaleRoom")?.addEventListener("click",awaleJoinRoom);
   document.getElementById("resignAwale")?.addEventListener("click",()=>{ if(confirm("Abandonner cette partie ?")) awaleSend({type:"resign"}); });
@@ -2777,6 +2843,8 @@ function initAwale() {
   document.getElementById("offerRematchAwale")?.addEventListener("click",()=>awaleSend({type:"rematch_offer"}));
   document.getElementById("acceptAwaleProposal")?.addEventListener("click",()=>awaleRespondProposal(true));
   document.getElementById("declineAwaleProposal")?.addEventListener("click",()=>awaleRespondProposal(false));
+  document.getElementById("awaleResultNew")?.addEventListener("click",awaleRestartFromResult);
+  document.getElementById("awaleResultHome")?.addEventListener("click",awaleBackHomeFromResult);
   awaleUpdateModeUi();
   renderAwale();
   awaleUi.clockTimer=setInterval(()=>{ if(!document.getElementById("awaleBoard")){ clearInterval(awaleUi.clockTimer); return; } awaleUpdateClockDisplay(); },250);
@@ -2786,29 +2854,245 @@ function initAwale() {
 function awaleSetMode(mode){
   if(!["online","ai","local"].includes(mode)) mode="online";
   if(awaleUi.mode==="online"&&mode!=="online") awaleDisconnect(true);
-  awaleUi.mode=mode; awale.mode=mode;
+  awaleClearAnimation();
+  awaleUi.mode=mode;
+  awaleUi.lastSeenMoveKey=null;
+  awaleUi.moveFeedback=null;
   if(mode!=="online") newAwale();
-  awaleUpdateModeUi(); renderAwale();
+  else awale=awaleFreshLocalState("online");
+  awaleUpdateModeUi();
+  renderAwale();
 }
 
 function awaleUpdateModeUi(){
   const online=awaleUi?.mode==="online";
+  const ai=awaleUi?.mode==="ai";
   const settings=document.getElementById("awaleOnlineSettings"); if(settings) settings.hidden=!online;
+  const aiSettings=document.getElementById("awaleAiSettings"); if(aiSettings) aiSettings.hidden=!ai;
   const newBtn=document.getElementById("newAwale"); if(newBtn) newBtn.hidden=online;
   const clock=document.getElementById("awaleClockPanel"); if(clock&&!online) clock.hidden=true;
+  const actions=document.getElementById("awaleOnlineActions"); if(actions&&!online) actions.hidden=true;
 }
 
 function newAwale() {
-  awale={pits:Array(12).fill(4),scores:[0,0],player:0,over:false,mode:awaleUi?.mode||"ai"};
+  awaleClearAnimation();
+  awale=awaleFreshLocalState(awaleUi?.mode||"ai");
+  if(awaleUi){awaleUi.lastSeenMoveKey=null;awaleUi.moveFeedback=null;}
   renderAwale("Nouvelle partie : au joueur 1 de commencer.");
 }
 
 function awaleCurrentState(){ return awaleUi?.mode==="online"?(awaleUi.online.game?.state||awale):awale; }
+function awaleCurrentMoves(){ return awaleUi?.mode==="online"?(awaleUi.online.game?.moves||[]):(awale?.moves||[]); }
 function awaleOnlineHasTwo(){ return Boolean(awaleUi?.online?.players?.black&&awaleUi?.online?.players?.white); }
+
 function awalePlayerName(side){
-  if(awaleUi?.mode!=="online") return side===0?"Joueur 1":awaleUi?.mode==="ai"?"IA":"Joueur 2";
-  const p=side===0?awaleUi.online.players?.black:awaleUi.online.players?.white;
-  return p?.username||`Joueur ${side+1}`;
+  side=Number(side);
+  if(awaleUi?.mode==="online"){
+    const p=side===0?awaleUi.online.players?.black:awaleUi.online.players?.white;
+    return p?.username||`Joueur ${side+1}`;
+  }
+  if(awaleUi?.mode==="ai") return side===0?"Vous":"IA";
+  return side===0?"Joueur 1":"Joueur 2";
+}
+
+function awaleLatestMoveInfo(){
+  const moves=awaleCurrentMoves();
+  const index=moves.length-1;
+  if(index<0)return null;
+  const move=moves[index];
+  const key=`${index}:${move.player}:${move.index}:${(move.captured||[]).join(",")}:${move.seedsPicked??""}`;
+  return {index,move,key};
+}
+
+function awaleSyncMoveFeedback({animate=true,revealLatest=true}={}){
+  const latest=awaleLatestMoveInfo();
+  if(!latest){
+    awaleUi.lastSeenMoveKey=null;
+    awaleUi.moveFeedback=null;
+    return;
+  }
+  if(latest.key===awaleUi.lastSeenMoveKey)return;
+  awaleUi.lastSeenMoveKey=latest.key;
+  awaleClearAnimation();
+  if(!revealLatest){
+    awaleUi.moveFeedback=null;
+    return;
+  }
+  awaleUi.moveFeedback={...latest,animate:Boolean(animate)};
+}
+
+function awaleMoveSeeds(move,index){
+  if(Number.isFinite(Number(move?.seedsPicked))) return Number(move.seedsPicked);
+  if(awaleUi?.mode==="online"){
+    const h=awaleUi.online.game?.history?.[index]?.state;
+    if(h?.pits&&Number.isFinite(Number(h.pits[move.index]))) return Number(h.pits[move.index]);
+  }
+  return 0;
+}
+
+function awaleSowPath(index,seeds){
+  const path=[];
+  let pos=Number(index);
+  let remaining=Math.max(0,Number(seeds)||0);
+  while(remaining>0){
+    pos=(pos+1)%12;
+    if(pos===Number(index)) continue;
+    path.push(pos);
+    remaining--;
+  }
+  return path;
+}
+
+function awaleMoveSentence(move,index=awaleCurrentMoves().length-1){
+  if(!move)return"";
+  const actor=awalePlayerName(move.player);
+  const seeds=awaleMoveSeeds(move,index);
+  const captured=Number(move.capturedSeeds||0);
+  const source=Number(move.index)+1;
+  let text=`${actor} joue la case ${source}`;
+  if(seeds) text+=` et sème ${seeds} graine${seeds>1?"s":""}`;
+  if(captured) text+=`, puis capture ${captured} graine${captured>1?"s":""}`;
+  return text+".";
+}
+
+function awaleRenderContext(){
+  const el=document.getElementById("awaleMatchContext");if(!el||!awaleUi)return;
+  const items=[];
+  if(awaleUi.mode==="online"){
+    items.push("Multijoueur en ligne");
+    const tc=awaleUi.online.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60;
+      const inc=Number(tc.incrementSeconds||0);
+      const cat=awaleUi.online.settings?.ratingCategory;
+      items.push(`Cadence ${Number.isInteger(min)?min:min.toFixed(1)}+${inc}${cat?` · ${AWALE_ELO_LABELS[cat]||cat}`:""}`);
+      items.push(awaleUi.online.settings?.rated?"Classée Elo":"Amicale");
+    }else{
+      const preset=document.getElementById("awaleTimeControl")?.selectedOptions?.[0]?.textContent;
+      if(preset)items.push(`Cadence ${preset}`);
+    }
+    if(awaleUi.online.side===0||awaleUi.online.side===1) items.push(`Vous : ${Number(awaleUi.online.side)===0?"Sud":"Nord"}`);
+  }else if(awaleUi.mode==="ai"){
+    items.push("Joueur contre IA");
+    items.push(`IA : ${document.getElementById("awaleAiLevel")?.selectedOptions?.[0]?.textContent||"Moyen"}`);
+    items.push("Vous : Sud");
+  }else{
+    items.push("2 joueurs sur le même écran");
+    items.push("Joueur 1 : Sud");
+    items.push("Joueur 2 : Nord");
+  }
+  el.innerHTML=items.map(x=>`<span>${escapeHtml(String(x))}</span>`).join("");
+}
+
+function awaleRenderHistory(){
+  const el=document.getElementById("awaleHistory");if(!el)return;
+  const moves=awaleCurrentMoves();
+  const count=document.getElementById("awaleHistoryCount");
+  if(count)count.textContent=`${moves.length} coup${moves.length>1?"s":""}`;
+  if(!moves.length){
+    el.innerHTML='<div class="awale-history-empty">Les coups joués apparaîtront ici.</div>';
+    return;
+  }
+  el.innerHTML=moves.map((move,i)=>{
+    const capture=Number(move.capturedSeeds||0);
+    const seeds=awaleMoveSeeds(move,i);
+    return `<div class="awale-history-row ${i===moves.length-1?"latest":""}"><span class="awale-history-number">${i+1}</span><div><strong>${escapeHtml(awalePlayerName(move.player))}</strong><span>Case ${Number(move.index)+1}${seeds?` · ${seeds} graine${seeds>1?"s":""}`:""}${capture?` · capture ${capture}`:""}</span></div></div>`;
+  }).join("");
+  el.scrollTop=el.scrollHeight;
+}
+
+function awaleRenderMoveNotice(){
+  const el=document.getElementById("awaleMoveNotice");if(!el)return;
+  const feedback=awaleUi?.moveFeedback;
+  if(!feedback){el.hidden=true;el.textContent="";return;}
+  el.hidden=false;
+  el.textContent=awaleMoveSentence(feedback.move,feedback.index);
+}
+
+function awaleAnimateLatestMove(){
+  const feedback=awaleUi?.moveFeedback;
+  if(!feedback?.animate)return;
+  feedback.animate=false;
+  const board=document.getElementById("awaleBoard");if(!board)return;
+  const move=feedback.move;
+  const source=board.querySelector(`.pit[data-pit="${move.index}"]`);
+  if(source)source.classList.add("awale-source-flash");
+
+  const reduced=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if(reduced)return;
+
+  const seeds=awaleMoveSeeds(move,feedback.index);
+  const path=(move.sowPath?.length?move.sowPath:awaleSowPath(move.index,seeds)).slice(0,48);
+  const timers=[];
+  path.forEach((pitIndex,step)=>{
+    timers.push(setTimeout(()=>{
+      const pit=board.querySelector(`.pit[data-pit="${pitIndex}"]`);
+      if(!pit)return;
+      pit.classList.remove("awale-sow-flash");
+      void pit.offsetWidth;
+      pit.classList.add("awale-sow-flash");
+    },70+step*55));
+  });
+  const captureDelay=120+path.length*55;
+  for(const pitIndex of move.captured||[]){
+    timers.push(setTimeout(()=>{
+      board.querySelector(`.pit[data-pit="${pitIndex}"]`)?.classList.add("awale-capture-flash");
+    },captureDelay));
+  }
+  timers.push(setTimeout(()=>{
+    board.querySelectorAll(".awale-source-flash,.awale-sow-flash,.awale-capture-flash").forEach(el=>el.classList.remove("awale-source-flash","awale-sow-flash","awale-capture-flash"));
+  },captureDelay+850));
+  awaleUi.animationTimers=timers;
+}
+
+function awaleCurrentResult(){
+  if(!awaleUi)return null;
+  if(awaleUi.mode==="online") return awaleUi.online.game?.result?.over?awaleUi.online.game.result:null;
+  if(!awale?.over)return null;
+  const winner=awale.scores[0]>awale.scores[1]?0:awale.scores[1]>awale.scores[0]?1:null;
+  return {over:true,type:"score",winner,scores:[...awale.scores],text:endMessage(awale)};
+}
+
+function awaleRenderGameResult(){
+  const box=document.getElementById("awaleGameResult");if(!box)return;
+  const result=awaleCurrentResult();
+  if(!result){box.hidden=true;return;}
+  const winner=result.winner===0||result.winner===1?Number(result.winner):null;
+  const title=document.getElementById("awaleGameResultTitle");
+  const text=document.getElementById("awaleGameResultText");
+  const again=document.getElementById("awaleResultNew");
+  box.hidden=false;
+
+  if(title){
+    if(winner===null) title.textContent="Partie nulle";
+    else if(awaleUi.mode==="ai") title.textContent=winner===0?"Vous gagnez la partie !":"L’IA gagne la partie !";
+    else title.textContent=`${awalePlayerName(winner)} gagne la partie !`;
+  }
+  if(text)text.textContent=result.text||"Partie terminée.";
+  if(again){
+    if(awaleUi.mode==="online"){
+      again.textContent=awaleUi.online.rematchOffer?"Revanche proposée…":"Proposer une revanche";
+      again.disabled=!awaleOnlineHasTwo()||Boolean(awaleUi.online.rematchOffer);
+    }else{
+      again.textContent="Nouvelle partie";
+      again.disabled=false;
+    }
+  }
+}
+
+function awaleRestartFromResult(){
+  if(awaleUi?.mode==="online"){
+    awaleSend({type:"rematch_offer"});
+    awaleRenderGameResult();
+    return;
+  }
+  newAwale();
+}
+
+function awaleBackHomeFromResult(){
+  if(awaleUi?.mode==="online")awaleDisconnect(true);
+  awaleClearAnimation();
+  location.hash="#/accueil";
 }
 
 function renderAwale(message="") {
@@ -2817,7 +3101,8 @@ function renderAwale(message="") {
   const rotated=awaleUi?.mode==="online"&&Number(awaleUi.online.side)===1;
   const top=rotated?[5,4,3,2,1,0]:[11,10,9,8,7,6];
   const bottom=rotated?[6,7,8,9,10,11]:[0,1,2,3,4,5];
-  board.innerHTML=[...top,...bottom].map(i=>pitHtml(i,state)).join("");
+  const latest=awaleLatestMoveInfo()?.move;
+  board.innerHTML=[...top,...bottom].map(i=>pitHtml(i,state,latest)).join("");
   document.getElementById("score0").textContent=state.scores[0];
   document.getElementById("score1").textContent=state.scores[1];
   document.getElementById("awaleScoreLabel0").textContent=awalePlayerName(0);
@@ -2827,17 +3112,28 @@ function renderAwale(message="") {
   document.getElementById("awaleBottomPlayer").textContent=`${awalePlayerName(bottomSide)} — ${bottomSide===0?"Sud":"Nord"}`;
   const status=document.getElementById("awaleStatus");
   if(status) status.textContent=message||awaleStatusText(state);
+  const turn=document.getElementById("awaleTurnInfo");
+  if(turn)turn.textContent=state.over?"Partie terminée":`Au tour de ${awalePlayerName(state.player)} (${state.player===0?"Sud":"Nord"})`;
   board.querySelectorAll(".pit.playable").forEach(btn=>btn.addEventListener("click",()=>handleAwaleMove(Number(btn.dataset.pit))));
-  awaleUpdateClockDisplay(); awaleUpdateOnlineControls(); awaleRenderRatingResult();
+  awaleRenderContext();
+  awaleRenderHistory();
+  awaleRenderMoveNotice();
+  awaleRenderGameResult();
+  awaleUpdateClockDisplay();
+  awaleUpdateOnlineControls();
+  awaleRenderRatingResult();
+  awaleAnimateLatestMove();
 }
 
-function pitHtml(i,state) {
+function pitHtml(i,state,latestMove=null) {
   const owner=i<6?0:1;
   let legal=!state.over&&owner===state.player&&isLegalAwaleMove(state,i);
   if(awaleUi?.mode==="ai"&&state.player===1) legal=false;
   if(awaleUi?.mode==="online") legal=legal&&!awaleUi.online.game?.result?.over&&awaleUi.online.connected&&awaleOnlineHasTwo()&&Number(awaleUi.online.side)===Number(state.player);
-  const seeds=Array.from({length:Math.min(state.pits[i],18)},()=>`<span class="seed"></span>`).join("");
-  return `<button class="pit ${legal?"playable":""}" data-pit="${i}" ${legal?"":"disabled"} aria-label="Case ${i+1}, ${state.pits[i]} graines"><span class="seed-cloud">${seeds}</span><span>${state.pits[i]}</span></button>`;
+  const seeds=Array.from({length:Math.min(state.pits[i],18)},()=>'<span class="seed"></span>').join("");
+  const last=latestMove&&Number(latestMove.index)===i;
+  const captured=latestMove?.captured?.some(x=>Number(x)===i);
+  return `<button class="pit ${legal?"playable":""} ${last?"awale-last-source":""} ${captured?"awale-last-capture":""}" data-pit="${i}" ${legal?"":"disabled"} aria-label="Case ${i+1}, ${state.pits[i]} graines"><span class="seed-cloud">${seeds}</span><span class="awale-pit-count">${state.pits[i]}</span></button>`;
 }
 
 function awaleStatusText(state) {
@@ -2848,15 +3144,27 @@ function awaleStatusText(state) {
     return `${awalePlayerName(state.player)} doit jouer.`;
   }
   if(state.over) return endMessage(state);
-  return state.player===0?"Au joueur 1 de jouer.":(awaleUi?.mode==="ai"?"L'IA réfléchit…":"Au joueur 2 de jouer.");
+  return state.player===0?`${awalePlayerName(0)} doit jouer.`:(awaleUi?.mode==="ai"?"L’IA réfléchit…":`${awalePlayerName(1)} doit jouer.`);
 }
 
 function handleAwaleMove(index) {
   const state=awaleCurrentState(); if(!isLegalAwaleMove(state,index)||state.over) return;
   if(awaleUi?.mode==="online") { awaleSend({type:"move",move:{index}}); return; }
-  awale=applyAwaleMove(awale,index); finishOrContinue(); renderAwale();
+  awale=applyAwaleMove(awale,index,true);
+  finishOrContinue();
+  awaleSyncMoveFeedback({animate:true,revealLatest:true});
+  renderAwale();
   if(!awale.over&&awaleUi?.mode==="ai"&&awale.player===1){
-    setTimeout(()=>{ const move=chooseAiMove(awale); if(move!==null) awale=applyAwaleMove(awale,move); finishOrContinue(); renderAwale(); },420);
+    const humanSeeds=Number(awale.lastMove?.seedsPicked||0);
+    const humanCaptured=Number(awale.lastMove?.capturedSeeds||0);
+    const aiDelay=Math.min(1450,Math.max(620,360+humanSeeds*55+(humanCaptured?220:0)));
+    setTimeout(()=>{
+      const move=chooseAiMove(awale,awaleUi.aiLevel);
+      if(move!==null) awale=applyAwaleMove(awale,move,true);
+      finishOrContinue();
+      awaleSyncMoveFeedback({animate:true,revealLatest:true});
+      renderAwale();
+    },aiDelay);
   }
 }
 
@@ -2899,30 +3207,57 @@ function awaleConnect(code,side,reconnecting=false){
     error:()=>{ if(o.ws!==ws)return;awaleOnlineStatus("Problème de connexion au salon."); }
   }); o.ws=ws;
 }
+
+function awaleApplyOnlineGame(data,{revealLatest=true}={}){
+  const o=awaleUi.online;
+  if(data.side!==undefined)o.side=Number(data.side);
+  if(data.players)o.players=data.players;
+  if(data.game){o.game=data.game;o.result=data.game.result;}
+  if(data.clock)o.clock={...data.clock,clientReceivedAt:Date.now()};
+  if(data.settings)o.settings=data.settings;
+  if(data.ratings)o.ratings=data.ratings;
+  if(data.ratingUpdate!==undefined)o.ratingUpdate=data.ratingUpdate;
+  if(data.drawOffer!==undefined)o.drawOffer=data.drawOffer;
+  if(data.rematchOffer!==undefined)o.rematchOffer=data.rematchOffer;
+  awaleSyncMoveFeedback({animate:true,revealLatest});
+  renderAwale();
+}
+
 function awaleHandleOnlineMessage(data){
   const o=awaleUi.online;
-  if(data.type==="welcome"||data.type==="state"){
-    if(data.side!==undefined)o.side=Number(data.side); if(data.players)o.players=data.players;if(data.game){o.game=data.game;o.result=data.game.result;}if(data.clock)o.clock={...data.clock,clientReceivedAt:Date.now()};if(data.settings)o.settings=data.settings;if(data.ratings)o.ratings=data.ratings;if(data.ratingUpdate)o.ratingUpdate=data.ratingUpdate;if(data.drawOffer!==undefined)o.drawOffer=data.drawOffer;if(data.rematchOffer!==undefined)o.rematchOffer=data.rematchOffer;renderAwale();return;
-  }
+  if(data.type==="welcome"){awaleApplyOnlineGame(data,{revealLatest:false});return;}
+  if(data.type==="state"){awaleApplyOnlineGame(data,{revealLatest:true});return;}
   if(data.type==="players"){o.players=data.players||o.players;if(data.clock)o.clock={...data.clock,clientReceivedAt:Date.now()};if(data.ratings)o.ratings=data.ratings;renderAwale();return;}
   if(data.type==="clock"){o.clock={...data.clock,clientReceivedAt:Date.now()};awaleUpdateClockDisplay();return;}
   if(data.type==="draw_offer"){o.drawOffer=data.offer;if(data.offer?.userId!==LudoOnline.state.user?.id)awaleShowProposal("draw",`${data.offer?.username||"Votre adversaire"} propose la nulle.`);awaleUpdateOnlineControls();return;}
   if(data.type==="draw_declined"){o.drawOffer=null;awaleHideProposal();awaleOnlineStatus("Proposition de nulle refusée.");awaleUpdateOnlineControls();return;}
-  if(data.type==="rematch_offer"){o.rematchOffer=data.offer;if(data.offer?.userId!==LudoOnline.state.user?.id)awaleShowProposal("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche.`);awaleUpdateOnlineControls();return;}
-  if(data.type==="rematch_declined"){o.rematchOffer=null;awaleHideProposal();awaleOnlineStatus("Revanche refusée.");awaleUpdateOnlineControls();return;}
-  if(data.type==="rematch_started"){o.side=Number(data.side);o.players=data.players;o.game=data.game;o.result=data.game?.result;o.clock=data.clock?{...data.clock,clientReceivedAt:Date.now()}:null;o.settings=data.settings;o.ratings=data.ratings;o.ratingUpdate=null;o.drawOffer=o.rematchOffer=null;awaleHideProposal();renderAwale();return;}
+  if(data.type==="rematch_offer"){o.rematchOffer=data.offer;if(data.offer?.userId!==LudoOnline.state.user?.id)awaleShowProposal("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche.`);awaleUpdateOnlineControls();awaleRenderGameResult();return;}
+  if(data.type==="rematch_declined"){o.rematchOffer=null;awaleHideProposal();awaleOnlineStatus("Revanche refusée.");awaleUpdateOnlineControls();awaleRenderGameResult();return;}
+  if(data.type==="rematch_started"){
+    awaleClearAnimation();
+    o.side=Number(data.side);o.players=data.players;o.game=data.game;o.result=data.game?.result;o.clock=data.clock?{...data.clock,clientReceivedAt:Date.now()}:null;o.settings=data.settings;o.ratings=data.ratings;o.ratingUpdate=null;o.drawOffer=o.rematchOffer=null;
+    awaleUi.lastSeenMoveKey=null;awaleUi.moveFeedback=null;
+    awaleHideProposal();renderAwale();return;
+  }
   if(data.type==="error") awaleOnlineStatus(data.message||"Erreur de partie.");
 }
+
 function awaleSend(payload){const ws=awaleUi?.online?.ws;if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(payload));}
 function awaleShowProposal(type,text){const box=document.getElementById("awaleOnlinePrompt");if(!box)return;awaleUi.online.pendingProposal=type;document.getElementById("awaleOnlinePromptTitle").textContent=type==="draw"?"Proposition de nulle":"Proposition de revanche";document.getElementById("awaleOnlinePromptText").textContent=text;box.hidden=false;}
 function awaleHideProposal(){if(awaleUi?.online)awaleUi.online.pendingProposal=null;const box=document.getElementById("awaleOnlinePrompt");if(box)box.hidden=true;}
 function awaleRespondProposal(accept){const t=awaleUi.online.pendingProposal;if(!t)return;awaleSend({type:t==="draw"?"draw_response":"rematch_response",accept});awaleHideProposal();}
+
 function awaleUpdateOnlineControls(){
-  const box=document.getElementById("awaleOnlineActions");if(!box||!awaleUi)return;const online=awaleUi.mode==="online"&&awaleUi.online.connected;box.hidden=!online;if(!online)return;
+  const box=document.getElementById("awaleOnlineActions");if(!box||!awaleUi)return;
+  const online=awaleUi.mode==="online"&&awaleUi.online.connected;
+  box.hidden=!online;if(!online)return;
   const over=Boolean(awaleUi.online.game?.result?.over),two=awaleOnlineHasTwo();
   const resign=document.getElementById("resignAwale"),draw=document.getElementById("offerDrawAwale"),rematch=document.getElementById("offerRematchAwale");
-  if(resign)resign.disabled=!two||over;if(draw)draw.disabled=!two||over||Boolean(awaleUi.online.drawOffer);if(rematch){rematch.hidden=!over;rematch.disabled=!two||Boolean(awaleUi.online.rematchOffer);}
+  if(resign)resign.disabled=!two||over;
+  if(draw)draw.disabled=!two||over||Boolean(awaleUi.online.drawOffer);
+  if(rematch){rematch.hidden=!over;rematch.disabled=!two||Boolean(awaleUi.online.rematchOffer);}
 }
+
 function awaleFormatClock(ms){let total=Math.max(0,Math.ceil(Number(ms||0)/1000)),m=Math.floor(total/60),s=total%60;return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;}
 function awaleClockValues(){const c=awaleUi?.online?.clock;if(!c)return null;let side0Ms=Number(c.side0Ms||0),side1Ms=Number(c.side1Ms||0);if(c.started&&c.runningSide!==null&&!awaleUi.online.game?.result?.over){const e=Math.max(0,Date.now()-Number(c.clientReceivedAt||Date.now()));if(Number(c.runningSide)===0)side0Ms=Math.max(0,side0Ms-e);else side1Ms=Math.max(0,side1Ms-e);}return{side0Ms,side1Ms,runningSide:c.runningSide,started:c.started};}
 function awaleUpdateClockDisplay(){
@@ -2933,19 +3268,101 @@ function awaleUpdateClockDisplay(){
   if(readout)readout.innerHTML=ordered.map(x=>`<div class="awale-clock-card side${x.side} ${x.active?"active":""}"><div><span>${x.side===0?"Sud":"Nord"}</span><strong>${escapeHtml(x.name)}</strong><small>Elo ${x.rating}</small></div><b>${awaleFormatClock(x.time)}</b></div>`).join("");
   const tc=o.settings?.timeControl,meta=document.getElementById("awaleTimeMeta");if(meta&&tc)meta.textContent=`${Number(tc.initialSeconds)/60}+${Number(tc.incrementSeconds||0)} · ${AWALE_ELO_LABELS[o.settings?.ratingCategory||"rapid"]} · ${o.settings?.rated?"classée Elo":"amicale"}`;
 }
+
 function awaleRenderRatingResult(){const box=document.getElementById("awaleRatingResult"),u=awaleUi?.online?.ratingUpdate;if(!box)return;if(!u){box.hidden=true;return;}const mine=Number(awaleUi.online.side)===0?u.side0:u.side1,other=Number(awaleUi.online.side)===0?u.side1:u.side0;box.hidden=false;box.innerHTML=`<strong>Elo ${AWALE_ELO_LABELS[u.category]||u.category}</strong><span>Vous : ${mine?.before??"—"} → ${mine?.after??"—"} (${Number(mine?.delta||0)>=0?"+":""}${mine?.delta??0})</span><span>${escapeHtml(other?.username||"Adversaire")} : ${other?.before??"—"} → ${other?.after??"—"}</span>`;}
 
 function finishOrContinue() {
   const legal=legalMoves(awale);
   if(awale.scores[0]>=25||awale.scores[1]>=25||legal.length===0||awale.pits.reduce((a,b)=>a+b,0)<=6){
-    awale.scores[0]+=awale.pits.slice(0,6).reduce((a,b)=>a+b,0);awale.scores[1]+=awale.pits.slice(6).reduce((a,b)=>a+b,0);awale.pits.fill(0);awale.over=true;
+    awale.scores[0]+=awale.pits.slice(0,6).reduce((a,b)=>a+b,0);
+    awale.scores[1]+=awale.pits.slice(6).reduce((a,b)=>a+b,0);
+    awale.pits.fill(0);
+    awale.over=true;
+    const winner=awale.scores[0]>awale.scores[1]?0:awale.scores[1]>awale.scores[0]?1:null;
+    awale.result={over:true,type:"score",winner,scores:[...awale.scores],text:endMessage(awale)};
   }
 }
+
 function legalMoves(state){const start=state.player===0?0:6,moves=[];for(let i=start;i<start+6;i++)if(isLegalAwaleMove(state,i))moves.push(i);return moves;}
 function isLegalAwaleMove(state,index){const owner=index<6?0:1;if(owner!==state.player||state.pits[index]===0)return false;const opponentEmpty=sideSeeds(state,1-state.player)===0;if(!opponentEmpty)return true;const test=sowOnly(state,index);return sideSeeds(test,1-state.player)>0;}
-function sowOnly(state,index){const next={pits:[...state.pits],scores:[...state.scores],player:state.player,over:state.over,mode:state.mode};let seeds=next.pits[index];next.pits[index]=0;let pos=index;while(seeds>0){pos=(pos+1)%12;if(pos===index)continue;next.pits[pos]++;seeds--;}next.last=pos;return next;}
-function applyAwaleMove(state,index){const next=sowOnly(state,index),current=state.player;let captured=[],pos=next.last;const opponentStart=current===0?6:0,opponentEnd=opponentStart+5;while(pos>=opponentStart&&pos<=opponentEnd&&(next.pits[pos]===2||next.pits[pos]===3)){captured.push(pos);pos=(pos+11)%12;}const totalCaptured=captured.reduce((sum,p)=>sum+next.pits[p],0),opponentTotalBefore=sideSeeds(next,1-current);if(totalCaptured>0&&totalCaptured<opponentTotalBefore)captured.forEach(p=>{next.scores[current]+=next.pits[p];next.pits[p]=0;});next.player=1-current;delete next.last;return next;}
+
+function sowOnly(state,index){
+  const next={pits:[...state.pits],scores:[...state.scores],player:state.player,over:state.over,mode:state.mode,moves:[...(state.moves||[])],lastMove:state.lastMove||null,result:state.result||null};
+  let seeds=next.pits[index];
+  next.pits[index]=0;
+  let pos=index;
+  const sowPath=[];
+  while(seeds>0){
+    pos=(pos+1)%12;
+    if(pos===index)continue;
+    next.pits[pos]++;
+    sowPath.push(pos);
+    seeds--;
+  }
+  next.last=pos;
+  next.sowPath=sowPath;
+  return next;
+}
+
+function applyAwaleMove(state,index,record=true){
+  const seedsPicked=Number(state.pits[index]||0);
+  const next=sowOnly(state,index);
+  const current=state.player;
+  let captured=[],pos=next.last;
+  const opponentStart=current===0?6:0,opponentEnd=opponentStart+5;
+  while(pos>=opponentStart&&pos<=opponentEnd&&(next.pits[pos]===2||next.pits[pos]===3)){captured.push(pos);pos=(pos+11)%12;}
+  let totalCaptured=captured.reduce((sum,p)=>sum+next.pits[p],0);
+  const opponentTotalBefore=sideSeeds(next,1-current);
+  if(totalCaptured>0&&totalCaptured<opponentTotalBefore){
+    captured.forEach(p=>{next.scores[current]+=next.pits[p];next.pits[p]=0;});
+  }else{
+    captured=[];
+    totalCaptured=0;
+  }
+  const move={player:current,index,seedsPicked,sowPath:[...(next.sowPath||[])],captured:[...captured],capturedSeeds:totalCaptured};
+  next.player=1-current;
+  delete next.last;
+  delete next.sowPath;
+  if(record){
+    next.lastMove=move;
+    next.moves=[...(state.moves||[]),move];
+  }
+  return next;
+}
+
 function sideSeeds(state,player){const start=player===0?0:6;return state.pits.slice(start,start+6).reduce((a,b)=>a+b,0);}
-function chooseAiMove(state){const moves=legalMoves(state);if(!moves.length)return null;let bestMove=moves[0],bestScore=-Infinity;for(const move of moves){const before=state.scores[1],simulated=applyAwaleMove(state,move),gain=simulated.scores[1]-before,opponentMoves=legalMoves(simulated);let opponentBestGain=0;for(const opp of opponentMoves){const reply=applyAwaleMove(simulated,opp);opponentBestGain=Math.max(opponentBestGain,reply.scores[0]-simulated.scores[0]);}const ownSeeds=sideSeeds(simulated,1),score=gain*10-opponentBestGain*6+ownSeeds*.08+Math.random()*.25;if(score>bestScore){bestScore=score;bestMove=move;}}return bestMove;}
-function endMessage(state){if(state.scores[0]>state.scores[1])return `Partie terminée : joueur 1 gagne ${state.scores[0]} à ${state.scores[1]}.`;if(state.scores[1]>state.scores[0])return `Partie terminée : joueur 2 / IA gagne ${state.scores[1]} à ${state.scores[0]}.`;return `Partie terminée : égalité ${state.scores[0]} à ${state.scores[1]}.`;}
+
+function chooseAiMove(state,level="medium"){
+  const moves=legalMoves(state);
+  if(!moves.length)return null;
+  if(level==="easy") return moves[Math.floor(Math.random()*moves.length)];
+
+  let bestMove=moves[0],bestScore=-Infinity;
+  for(const move of moves){
+    const before=state.scores[1];
+    const simulated=applyAwaleMove(state,move,false);
+    const gain=simulated.scores[1]-before;
+    const ownSeeds=sideSeeds(simulated,1);
+    let score=gain*10+ownSeeds*.08+Math.random()*.25;
+
+    if(level==="hard"){
+      const opponentMoves=legalMoves(simulated);
+      let opponentBestGain=0;
+      for(const opp of opponentMoves){
+        const reply=applyAwaleMove(simulated,opp,false);
+        opponentBestGain=Math.max(opponentBestGain,reply.scores[0]-simulated.scores[0]);
+      }
+      score-=opponentBestGain*6;
+    }
+
+    if(score>bestScore){bestScore=score;bestMove=move;}
+  }
+  return bestMove;
+}
+
+function endMessage(state){
+  if(state.scores[0]>state.scores[1])return `Partie terminée : ${awalePlayerName(0)} gagne ${state.scores[0]} à ${state.scores[1]}.`;
+  if(state.scores[1]>state.scores[0])return `Partie terminée : ${awalePlayerName(1)} gagne ${state.scores[1]} à ${state.scores[0]}.`;
+  return `Partie terminée : égalité ${state.scores[0]} à ${state.scores[1]}.`;
+}
 
