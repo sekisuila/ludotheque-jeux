@@ -2309,7 +2309,7 @@ function renderChessPlay() {
           </div>
         </section>
 
-        <aside class="chess-side-column">
+        <aside class="chess-info-column">
           <section class="panel chess-match-panel">
             <div id="chessMatchContext" class="chess-match-context" aria-label="Informations de la partie"></div>
             <div id="chessClockPanel" class="chess-clock-panel" hidden>
@@ -2327,6 +2327,11 @@ function renderChessPlay() {
                 <button id="chessResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
               </div>
             </div>
+          </section>
+        </aside>
+
+        <aside class="chess-history-column">
+          <section class="panel chess-history-panel">
             <div class="chess-history-head"><h3>Historique</h3><span id="chessHistoryCount">0 coup</span></div>
             <div id="chessHistory" class="chess-history"></div>
           </section>
