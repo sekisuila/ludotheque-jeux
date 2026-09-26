@@ -206,6 +206,52 @@
     el.textContent=`${who} a placé le domino ${move.tile.a}–${move.tile.b} sur l’extrémité ${sideText}.`;
   }
 
+  function roundResultText(g){
+    const summary=g?.state?.lastRound||g?.result?.lastRound;
+    if(!summary)return "";
+    if(summary.winner===null||summary.winner===undefined){
+      return `Manche ${summary.round} : égalité. Aucun point n’est attribué.`;
+    }
+    const winnerName=names()[summary.winner]||`Joueur ${summary.winner+1}`;
+    const pts=Number(summary.points||0);
+    return `${winnerName} gagne la manche ${summary.round} et marque ${pts} point${pts>1?"s":""}.`;
+  }
+  function renderRoundDecision(g){
+    const box=document.getElementById("dominoRoundDecision");if(!box)return;
+    const title=document.getElementById("dominoRoundDecisionTitle");
+    const text=document.getElementById("dominoRoundDecisionText");
+    const next=document.getElementById("dominoNextRound");
+    const restart=document.getElementById("dominoNewMatch");
+    const home=document.getElementById("dominoHome");
+
+    if(g.result?.over){
+      box.hidden=false;
+      const winnerName=g.result.winner===0||g.result.winner===1?names()[g.result.winner]:"";
+      if(title)title.textContent="Partie terminée";
+      if(text)text.textContent=`${roundResultText(g)} ${winnerName?`${winnerName} gagne la partie ${g.state.scores[0]}–${g.state.scores[1]}.`:(g.result.text||"Partie terminée.")}`;
+      if(next)next.hidden=true;
+      if(restart){
+        restart.hidden=false;
+        restart.disabled=Boolean(ui.mode==="online"&&ui.rematchRequested);
+        restart.textContent=ui.mode==="online"?(ui.rematchRequested?"Proposition envoyée…":"Nouvelle partie"):"Nouvelle partie";
+      }
+      if(home)home.hidden=false;
+      return;
+    }
+
+    if(g.state?.awaitingNextRound){
+      box.hidden=false;
+      if(title)title.textContent=`Manche ${g.state.lastRound?.round||g.state.round} terminée`;
+      if(text)text.textContent=roundResultText(g);
+      if(next){next.hidden=false;next.disabled=false;}
+      if(restart)restart.hidden=true;
+      if(home)home.hidden=true;
+      return;
+    }
+
+    box.hidden=true;
+  }
+
   function pipFace(v){return `<span class="domino-half" aria-label="${v}">${PIP_POS[v].map(p=>`<i class="domino-pip p${p}"></i>`).join("")}</span>`;}
   function dominoHtml(tile,{back=false,selected=false,small=false,oriented=false}={}){
     if(back)return `<span class="domino-tile domino-back ${small?"small":""}"><span class="domino-back-mark">S</span></span>`;
