@@ -457,6 +457,9 @@ function goEmptyOnlineState(){
 function goOnlineHasTwoPlayers(){ return Boolean(goUi?.online?.players?.black&&goUi?.online?.players?.white); }
 function goDisconnectOnline(){
   if(!goUi?.online) return;
+  goCancelMoveAnimation();
+  goUi.moveFeedback=null;
+  goUi.lastSeenActionKey=null;
   try{goUi.online.ws?.close();}catch{}
   if(goUi.online.clockTimer) clearInterval(goUi.online.clockTimer);
   if(goUi.online.syncTimer) clearInterval(goUi.online.syncTimer);
@@ -466,10 +469,223 @@ function goDisconnectOnline(){
   goUpdateClockDisplay();
 }
 let goUi = null;
+let goMoveGhost = null;
+let goMoveAnimation = null;
+
+function goLatestAction(game=goUi?.game){
+  const index=(game?.moves?.length||0)-1;
+  if(index<0)return null;
+  const move=game.moves[index];
+  if(!move)return null;
+  const key=`${index}:${move.type||""}:${move.player||""}:${move.r??""},${move.c??""}:${move.captured||0}`;
+  return{index,move,key};
+}
+
+function goPlayerLabel(side){
+  side=Number(side);
+  if(goUi?.mode==="online"){
+    const p=side===GO_BLACK?goUi.online?.players?.black:goUi.online?.players?.white;
+    return p?.username||(side===GO_BLACK?"Noir":"Blanc");
+  }
+  if(goUi?.mode==="ai")return side===Number(goUi.humanSide)?"Vous":"IA";
+  return side===GO_BLACK?"Noir":"Blanc";
+}
+
+function goIsOpponentAction(side){
+  side=Number(side);
+  if(goUi.mode==="online")return (goUi.online.side===GO_BLACK||goUi.online.side===GO_WHITE)&&side!==Number(goUi.online.side);
+  if(goUi.mode==="ai")return side!==Number(goUi.humanSide);
+  return goUi.mode==="local";
+}
+
+function goCancelMoveAnimation(){
+  try{goMoveAnimation?.cancel();}catch{}
+  goMoveAnimation=null;
+  goMoveGhost?.remove();
+  goMoveGhost=null;
+  document.querySelectorAll(".go-point.go-arriving").forEach(el=>el.classList.remove("go-arriving"));
+}
+
+function goSyncMoveFeedback({animate=true,revealLatest=true}={}){
+  const latest=goLatestAction();
+  if(!latest){
+    goUi.lastSeenActionKey=null;
+    goUi.moveFeedback=null;
+    return;
+  }
+  if(latest.key===goUi.lastSeenActionKey)return;
+  goUi.lastSeenActionKey=latest.key;
+  goCancelMoveAnimation();
+  if(!revealLatest||!goIsOpponentAction(latest.move.player)){
+    goUi.moveFeedback=null;
+    return;
+  }
+  goUi.moveFeedback={key:latest.key,index:latest.index,move:{...latest.move},animate:Boolean(animate)};
+}
+
+function goMoveSentence(feedback){
+  const m=feedback?.move;if(!m)return"";
+  const local=goUi.mode==="local",ai=goUi.mode==="ai";
+  let actor;
+  if(local)actor=m.player===GO_BLACK?"Noir":"Blanc";
+  else if(ai)actor=Number(m.player)===Number(goUi.humanSide)?"Vous avez":"L’IA a";
+  else actor=`${goPlayerLabel(m.player)} a`;
+
+  if(m.type==="pass")return local?`${actor} a passé.`:`${actor} passé.`;
+  if(m.type==="resign")return local?`${actor} a abandonné.`:`${actor} abandonné.`;
+
+  const color=m.player===GO_BLACK?"noire":"blanche";
+  const label=m.label||goMoveLabel(goUi.game.size,m.r,m.c);
+  const capture=Number(m.captured||0);
+  const verb=local?"a posé":"posé";
+  return `${actor} ${verb} une pierre ${color} en ${label}${capture?` et capturé ${capture} pierre${capture>1?"s":""}`:""}.`;
+}
+
+function goRenderMoveNotice(){
+  const el=document.getElementById("goMoveNotice");if(!el)return;
+  const feedback=goUi?.moveFeedback;
+  if(!feedback){el.hidden=true;el.textContent="";return;}
+  el.hidden=false;
+  el.textContent=goMoveSentence(feedback);
+}
+
+function goRenderContext(){
+  const el=document.getElementById("goMatchContext");if(!el||!goUi?.game)return;
+  const g=goUi.game;
+  const items=[`${g.size}×${g.size}`,`Komi ${String(g.komi).replace(".",",")}`,g.scoring==="territory"?"Score territoire":"Score aire"];
+  if(goUi.mode==="online"){
+    items.push("En ligne");
+    const tc=goUi.online?.settings?.timeControl;
+    if(tc){
+      const min=Number(tc.initialSeconds||0)/60,inc=Number(tc.incrementSeconds||0),cat=goUi.online.settings?.ratingCategory;
+      items.push(`Cadence ${Number.isInteger(min)?min:min.toFixed(1)}+${inc}${cat?` · ${GO_RATING_LABELS[cat]||cat}`:""}`);
+      items.push(goUi.online.settings?.rated?"Classée Elo":"Amicale");
+    }else{
+      const preset=document.getElementById("goTimePreset")?.selectedOptions?.[0]?.textContent;
+      if(preset)items.push(`Cadence ${preset}`);
+    }
+    if(goUi.online.side===GO_BLACK||goUi.online.side===GO_WHITE)items.push(`Vous : ${goUi.online.side===GO_BLACK?"Noir":"Blanc"}`);
+  }else if(goUi.mode==="ai"){
+    items.push("Joueur contre IA");
+    const level=document.getElementById("goAiLevel")?.selectedOptions?.[0]?.textContent||"IA";
+    items.push(`IA : ${level}`);
+    items.push(`Vous : ${goUi.humanSide===GO_BLACK?"Noir":"Blanc"}`);
+  }else items.push("2 joueurs sur le même écran");
+  el.innerHTML=items.map(x=>`<span>${String(x).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]))}</span>`).join("");
+}
+
+function goCurrentResult(){
+  if(!goUi?.game)return null;
+  if(goUi.mode==="online")return goUi.online?.result?.over?goUi.online.result:null;
+  return goUi.game.over?goUi.game.result:null;
+}
+
+function goWinnerTitle(winner){
+  winner=Number(winner);
+  if(goUi.mode==="ai")return winner===Number(goUi.humanSide)?"Vous gagnez la partie !":"L’IA gagne la partie !";
+  if(goUi.mode==="local")return `${winner===GO_BLACK?"Noir":"Blanc"} gagne la partie !`;
+  return `${goPlayerLabel(winner)} gagne la partie !`;
+}
+
+function goResultText(result){
+  if(!result)return"Partie terminée.";
+  if(result.text)return result.text;
+  if(result.type==="resign")return `${goPlayerLabel(result.winner)} gagne par abandon.`;
+  if(result.type==="timeout")return `${goPlayerLabel(result.winner)} gagne au temps.`;
+  if(result.type==="draw"||!result.winner)return"Partie nulle.";
+  if(result.type==="score"||Number.isFinite(Number(result.black))){
+    const black=Number(result.black||0),white=Number(result.white||0),margin=Number(result.margin??Math.abs(black-white));
+    return `${result.winner===GO_BLACK?"Noir":"Blanc"} gagne de ${margin.toFixed(1).replace(".0","")} point${margin>1?"s":""} (${black.toFixed(1).replace(".0","")} – ${white.toFixed(1).replace(".0","")}).`;
+  }
+  return"Partie terminée.";
+}
+
+function goRenderGameResult(){
+  const box=document.getElementById("goGameResult");if(!box||!goUi)return;
+  const result=goCurrentResult();
+  if(!result){box.hidden=true;return;}
+  const title=document.getElementById("goGameResultTitle"),text=document.getElementById("goGameResultText");
+  const again=document.getElementById("goResultNew"),home=document.getElementById("goResultHome");
+  box.hidden=false;
+  if(title)title.textContent=result.winner===GO_BLACK||result.winner===GO_WHITE?goWinnerTitle(result.winner):"Partie nulle";
+  if(text)text.textContent=goResultText(result);
+  if(again){
+    if(goUi.mode==="online"){
+      again.textContent=goUi.online?.rematchOffer?"Revanche proposée…":"Proposer une revanche";
+      again.disabled=!goOnlineHasTwoPlayers()||Boolean(goUi.online?.rematchOffer);
+    }else{
+      again.textContent="Nouvelle partie";again.disabled=false;
+    }
+  }
+  if(home)home.disabled=false;
+}
+
+function goRestartFromResult(){
+  if(goUi?.mode==="online"){
+    goSendOnlineAction("rematch_offer");
+    goRenderGameResult();
+    return;
+  }
+  newGoGame();
+}
+
+function goBackHomeFromResult(){
+  if(goUi?.mode==="online")goDisconnectOnline();
+  goCancelMoveAnimation();
+  location.hash="#/accueil";
+}
+
+function goAnimateOpponentMove(feedback){
+  if(!feedback?.animate||feedback.move?.type!=="move")return;
+  feedback.animate=false;
+  if(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)return;
+  const m=feedback.move;
+  const target=document.querySelector(`#goBoard .go-point[data-r="${m.r}"][data-c="${m.c}"]`);
+  if(!target)return;
+  const tr=target.getBoundingClientRect();if(!tr.width)return;
+
+  let source=null;
+  if(goUi.mode==="online")source=document.querySelector(`.go-clock-card[data-side="${Number(m.player)}"]`);
+  source=source||document.querySelector(".go-match-panel")||document.getElementById("goBoard");
+  const sr=source?.getBoundingClientRect?.()||tr;
+
+  goCancelMoveAnimation();
+  target.classList.add("go-arriving");
+  const ghost=document.createElement("span");
+  ghost.className=`go-move-ghost go-stone ${Number(m.player)===GO_BLACK?"black":"white"}`;
+  ghost.setAttribute("aria-hidden","true");
+  const size=tr.width*.84;
+  ghost.style.left=`${tr.left+(tr.width-size)/2}px`;
+  ghost.style.top=`${tr.top+(tr.height-size)/2}px`;
+  ghost.style.width=`${size}px`;
+  ghost.style.height=`${size}px`;
+  document.body.appendChild(ghost);
+  goMoveGhost=ghost;
+
+  const sx=sr.left+sr.width/2,sy=sr.top+Math.min(sr.height/2,70);
+  const tx=tr.left+tr.width/2,ty=tr.top+tr.height/2;
+  const dx=sx-tx,dy=sy-ty;
+  if(typeof ghost.animate!=="function"){
+    target.classList.remove("go-arriving");ghost.remove();goMoveGhost=null;return;
+  }
+  goMoveAnimation=ghost.animate([
+    {transform:`translate(${dx}px,${dy}px) scale(.55)`,opacity:.25},
+    {offset:.78,transform:"translate(0,0) scale(1.12)",opacity:1},
+    {transform:"translate(0,0) scale(1)",opacity:1}
+  ],{duration:560,easing:"cubic-bezier(.2,.72,.25,1)",fill:"forwards"});
+  goMoveAnimation.onfinish=()=>{
+    target.classList.remove("go-arriving");ghost.remove();
+    if(goMoveGhost===ghost)goMoveGhost=null;goMoveAnimation=null;
+  };
+  goMoveAnimation.oncancel=()=>{
+    target.classList.remove("go-arriving");ghost.remove();
+    if(goMoveGhost===ghost)goMoveGhost=null;goMoveAnimation=null;
+  };
+}
 
 function initGo() {
   const sizeEl=document.getElementById("goSize"); if(!sizeEl) return;
-  goUi={game:null,mode:document.getElementById("goMode").value,aiLevel:document.getElementById("goAiLevel").value,humanSide:Number(document.getElementById("goSide").value),thinking:false,online:goEmptyOnlineState()};
+  goUi={game:null,mode:document.getElementById("goMode").value,aiLevel:document.getElementById("goAiLevel").value,humanSide:Number(document.getElementById("goSide").value),thinking:false,moveFeedback:null,lastSeenActionKey:null,online:goEmptyOnlineState()};
   document.getElementById("goMode").addEventListener("change",e=>{
     if(goUi.mode==="online") goDisconnectOnline();
     goUi.mode=e.target.value;
@@ -478,7 +694,7 @@ function initGo() {
     if(goUi.mode==="online") goRefreshOnlineLoginStatus();
     newGoGame();
   });
-  document.getElementById("goAiLevel").addEventListener("change",e=>{goUi.aiLevel=e.target.value;});
+  document.getElementById("goAiLevel").addEventListener("change",e=>{goUi.aiLevel=e.target.value;goRenderContext();});
   document.getElementById("goSide").addEventListener("change",e=>{goUi.humanSide=Number(e.target.value); if(goUi.mode!=="online") newGoGame();});
   document.getElementById("goSize").addEventListener("change",()=>{if(goUi.mode!=="online")newGoGame();});
   document.getElementById("goKomi").addEventListener("change",()=>{if(goUi.game&&goUi.mode!=="online"){goUi.game.setOptions({komi:Number(document.getElementById("goKomi").value)});renderGoBoard();}});
@@ -493,18 +709,25 @@ function initGo() {
     if(goUi.mode==="ai"&&goUi.game.turn!==goUi.humanSide) return;
     goUi.game.resign();renderGoBoard();
   });
-  document.getElementById("goTimePreset")?.addEventListener("change",e=>{document.getElementById("goCustomTime").hidden=e.target.value!=="custom";});
+  document.getElementById("goTimePreset")?.addEventListener("change",e=>{document.getElementById("goCustomTime").hidden=e.target.value!=="custom";goRenderContext();});
+  document.getElementById("goInitialMinutes")?.addEventListener("input",goRenderContext);
+  document.getElementById("goIncrementSeconds")?.addEventListener("input",goRenderContext);
   document.getElementById("createGoRoom")?.addEventListener("click",goCreateOnlineRoom);
   document.getElementById("joinGoRoom")?.addEventListener("click",goJoinOnlineRoom);
   document.getElementById("offerDrawGo")?.addEventListener("click",()=>goSendOnlineAction("draw_offer"));
   document.getElementById("offerRematchGo")?.addEventListener("click",()=>goSendOnlineAction("rematch_offer"));
   document.getElementById("acceptGoProposal")?.addEventListener("click",()=>goRespondToOnlineProposal(true));
   document.getElementById("declineGoProposal")?.addEventListener("click",()=>goRespondToOnlineProposal(false));
+  document.getElementById("goResultNew")?.addEventListener("click",goRestartFromResult);
+  document.getElementById("goResultHome")?.addEventListener("click",goBackHomeFromResult);
   newGoGame();
 }
 
 function newGoGame() {
   if (!goUi) return;
+  goCancelMoveAnimation();
+  goUi.moveFeedback=null;
+  goUi.lastSeenActionKey=null;
   const size = Number(document.getElementById("goSize").value);
   const komi = Number(document.getElementById("goKomi").value);
   const scoring = document.getElementById("goScoring").value;
@@ -533,16 +756,18 @@ function renderGoBoard() {
       const value = game.board[goIndex(game.size, r, c)];
       const legal = value === GO_EMPTY && humanCanPlay && game.isLegal(r, c);
       const last = game.lastMove?.type === "move" && game.lastMove.r === r && game.lastMove.c === c;
+      const opponentLast=last&&goUi.moveFeedback?.move?.type==="move"&&Number(goUi.moveFeedback.move.r)===r&&Number(goUi.moveFeedback.move.c)===c;
       const edgeClasses = [r === 0 ? "edge-top" : "", r === game.size - 1 ? "edge-bottom" : "", c === 0 ? "edge-left" : "", c === game.size - 1 ? "edge-right" : ""].filter(Boolean).join(" ");
       const star = goIsStarPoint(game.size, r, c);
       const stone = value ? `<span class="go-stone ${value === GO_BLACK ? "black" : "white"}">${last ? `<span class="go-last-dot"></span>` : ""}</span>` : "";
       const ghost = legal ? `<span class="go-ghost ${game.turn === GO_BLACK ? "black" : "white"}"></span>` : "";
       const coord = `${goMoveLabel(game.size, r, c)}`;
-      html.push(`<button class="go-point ${edgeClasses} ${legal ? "playable" : ""}" data-r="${r}" data-c="${c}" ${legal ? "" : "disabled"} aria-label="${coord}${value === GO_BLACK ? ", pierre noire" : value === GO_WHITE ? ", pierre blanche" : ""}">${star && !value ? `<span class="go-star"></span>` : ""}${ghost}${stone}</button>`);
+      html.push(`<button class="go-point ${edgeClasses} ${legal ? "playable" : ""} ${opponentLast ? "opponent-last" : ""}" data-r="${r}" data-c="${c}" ${legal ? "" : "disabled"} aria-label="${coord}${value === GO_BLACK ? ", pierre noire" : value === GO_WHITE ? ", pierre blanche" : ""}">${star && !value ? `<span class="go-star"></span>` : ""}${ghost}${stone}</button>`);
     }
   }
   boardEl.innerHTML = html.join("");
   boardEl.querySelectorAll(".go-point.playable").forEach(btn => btn.addEventListener("click", onGoPointClick));
+  requestAnimationFrame(()=>goAnimateOpponentMove(goUi.moveFeedback));
   renderGoInfo();
 }
 
@@ -590,6 +815,12 @@ function renderGoInfo() {
   }
   historyEl.innerHTML = rows.length ? rows.join("") : `<div class="history-empty">Les coups apparaîtront ici.</div>`;
   historyEl.scrollTop = historyEl.scrollHeight;
+  const count=document.getElementById("goHistoryCount");
+  if(count)count.textContent=`${game.moves.length} coup${game.moves.length>1?"s":""}`;
+
+  goRenderContext();
+  goRenderMoveNotice();
+  goRenderGameResult();
 
   const disabled = game.over || goUi.thinking || (goUi.mode === "ai" && game.turn !== goUi.humanSide) || (goUi.mode === "online" && (!goUi.online.connected || !goOnlineHasTwoPlayers() || Number(game.turn)!==Number(goUi.online.side)));
   document.getElementById("passGo").disabled = disabled;
@@ -614,6 +845,7 @@ function onGoPointClick(event) {
     document.getElementById("goStatus").textContent = result.reason;
     return;
   }
+  goSyncMoveFeedback({animate:true,revealLatest:true});
   renderGoBoard();
   maybeGoAiTurn();
 }
@@ -626,6 +858,7 @@ function playGoPass(fromAi = false) {
     goUi.online.ws.send(JSON.stringify({type:"pass"})); return;
   }
   goUi.game.pass();
+  goSyncMoveFeedback({animate:false,revealLatest:true});
   renderGoBoard();
   if (!goUi.game.over) maybeGoAiTurn();
 }
@@ -641,6 +874,9 @@ function undoGoMove() {
   } else {
     game.undo();
   }
+  goCancelMoveAnimation();
+  goUi.moveFeedback=null;
+  goUi.lastSeenActionKey=goLatestAction()?.key||null;
   renderGoBoard();
 }
 
@@ -653,6 +889,7 @@ function maybeGoAiTurn() {
     const action = goChooseAiMove(goUi.game, goUi.aiLevel);
     if (action.type === "pass") goUi.game.pass();
     else goUi.game.play(action.r, action.c);
+    goSyncMoveFeedback({animate:action.type==="move",revealLatest:true});
     goUi.thinking = false;
     renderGoBoard();
     // Deux passes terminent la partie ; aucun enchaînement supplémentaire n'est nécessaire.
@@ -735,27 +972,28 @@ function goConnectOnline(code){
   if(goUi.online.clockTimer)clearInterval(goUi.online.clockTimer);
   goUi.online.clockTimer=setInterval(goUpdateClockDisplay,250);
 }
-function goApplyServerGame(serverGame){
+function goApplyServerGame(serverGame,{revealLatest=true}={}){
   if(!serverGame)return;const g=new GoGame(Number(serverGame.size||19),{komi:Number(serverGame.komi??7.5),scoring:serverGame.scoring||"area"});
   Object.assign(g,serverGame);g.board=(serverGame.board||[]).slice();g.captures={...serverGame.captures};g.moves=[...(serverGame.moves||[])];g.history=[...(serverGame.history||[])];g.boardHashes=[...(serverGame.boardHashes||[])];g.over=Boolean(serverGame.result?.over);goUi.game=g;goUi.online.result=serverGame.result||null;
+  goSyncMoveFeedback({animate:true,revealLatest});
   document.getElementById("goSize").value=String(g.size);document.getElementById("goKomi").value=String(g.komi);document.getElementById("goScoring").value=g.scoring;renderGoBoard();goUpdateOnlineControls();goUpdateRatingResult();
 }
 function goSetOnlineClock(clock){goUi.online.clock=clock?{...clock,clientReceivedAt:Date.now()}:null;}
 function goHandleOnlineMessage(data){
   if(!goUi||goUi.mode!=="online")return;
   if(data.type==="welcome"){
-    goUi.online.connected=true;goUi.online.side=Number(data.side);goUi.online.players=data.players||{black:null,white:null};goUi.online.settings=data.settings||null;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=data.ratingUpdate||null;goUi.online.drawOffer=data.drawOffer||null;goUi.online.rematchOffer=data.rematchOffer||null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game);goSetRoomStatus(`Salon ${goUi.online.code||""} connecté.`);goMaybeShowIncomingProposal();return;
+    goUi.online.connected=true;goUi.online.side=Number(data.side);goUi.online.players=data.players||{black:null,white:null};goUi.online.settings=data.settings||null;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=data.ratingUpdate||null;goUi.online.drawOffer=data.drawOffer||null;goUi.online.rematchOffer=data.rematchOffer||null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game,{revealLatest:false});goSetRoomStatus(`Salon ${goUi.online.code||""} connecté.`);goMaybeShowIncomingProposal();return;
   }
   if(data.type==="state"){
-    if(data.players)goUi.online.players=data.players;if(data.settings)goUi.online.settings=data.settings;if(data.ratings)goUi.online.ratings=data.ratings;if(data.ratingUpdate!==undefined)goUi.online.ratingUpdate=data.ratingUpdate;if(data.clock)goSetOnlineClock(data.clock);goApplyServerGame(data.game);return;
+    if(data.players)goUi.online.players=data.players;if(data.settings)goUi.online.settings=data.settings;if(data.ratings)goUi.online.ratings=data.ratings;if(data.ratingUpdate!==undefined)goUi.online.ratingUpdate=data.ratingUpdate;if(data.clock)goSetOnlineClock(data.clock);goApplyServerGame(data.game,{revealLatest:true});return;
   }
   if(data.type==="players"){goUi.online.players=data.players||goUi.online.players;if(data.clock)goSetOnlineClock(data.clock);if(data.settings)goUi.online.settings=data.settings;if(data.ratings)goUi.online.ratings=data.ratings;renderGoBoard();return;}
   if(data.type==="clock"){goSetOnlineClock(data.clock||null);goUpdateClockDisplay();return;}
   if(data.type==="draw_offer"){goUi.online.drawOffer=data.offer||null;if(Number(data.offer?.side)!==Number(goUi.online.side))goShowOnlinePrompt("draw",`${data.offer?.username||"Votre adversaire"} propose la partie nulle.`);return;}
   if(data.type==="draw_declined"){goUi.online.drawOffer=null;goHideOnlinePrompt();goSetRoomStatus("La proposition de nulle a été refusée.");return;}
-  if(data.type==="rematch_offer"){goUi.online.rematchOffer=data.offer||null;if(Number(data.offer?.side)!==Number(goUi.online.side))goShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des couleurs.`);return;}
-  if(data.type==="rematch_declined"){goUi.online.rematchOffer=null;goHideOnlinePrompt();goSetRoomStatus("La revanche a été refusée.");return;}
-  if(data.type==="rematch_started"){goUi.online.side=Number(data.side);goUi.online.players=data.players||goUi.online.players;goUi.online.settings=data.settings||goUi.online.settings;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=null;goUi.online.drawOffer=null;goUi.online.rematchOffer=null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game);goHideOnlinePrompt();goSetRoomStatus("Revanche commencée : couleurs inversées.");return;}
+  if(data.type==="rematch_offer"){goUi.online.rematchOffer=data.offer||null;if(Number(data.offer?.side)!==Number(goUi.online.side))goShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des couleurs.`);goUpdateOnlineControls();return;}
+  if(data.type==="rematch_declined"){goUi.online.rematchOffer=null;goHideOnlinePrompt();goSetRoomStatus("La revanche a été refusée.");goUpdateOnlineControls();return;}
+  if(data.type==="rematch_started"){goUi.online.side=Number(data.side);goUi.online.players=data.players||goUi.online.players;goUi.online.settings=data.settings||goUi.online.settings;goUi.online.ratings=data.ratings||null;goUi.online.ratingUpdate=null;goUi.online.drawOffer=null;goUi.online.rematchOffer=null;goUi.moveFeedback=null;goUi.lastSeenActionKey=null;goSetOnlineClock(data.clock||null);goApplyServerGame(data.game,{revealLatest:false});goHideOnlinePrompt();goSetRoomStatus("Revanche commencée : couleurs inversées.");return;}
   if(data.type==="error"){goSetRoomStatus(data.message||"Erreur de partie.",true);}
 }
 function goMaybeShowIncomingProposal(){const d=goUi.online.drawOffer,r=goUi.online.rematchOffer;if(d&&Number(d.side)!==Number(goUi.online.side))goShowOnlinePrompt("draw",`${d.username||"Votre adversaire"} propose la partie nulle.`);else if(r&&Number(r.side)!==Number(goUi.online.side))goShowOnlinePrompt("rematch",`${r.username||"Votre adversaire"} propose une revanche.`);}
@@ -764,7 +1002,19 @@ function goHideOnlinePrompt(){if(goUi?.online)goUi.online.pendingProposal=null;c
 function goRespondToOnlineProposal(accept){const type=goUi?.online?.pendingProposal;if(!type||!goUi.online.ws||goUi.online.ws.readyState!==WebSocket.OPEN)return;goUi.online.ws.send(JSON.stringify({type:type==="draw"?"draw_response":"rematch_response",accept:Boolean(accept)}));goHideOnlinePrompt();}
 function goSendOnlineAction(type){if(goUi?.online?.ws?.readyState===WebSocket.OPEN)goUi.online.ws.send(JSON.stringify({type}));}
 function goResignOnline(){if(!goUi?.online?.result?.over&&confirm("Voulez-vous vraiment abandonner cette partie ?"))goSendOnlineAction("resign");}
-function goUpdateOnlineControls(){const box=document.getElementById("goOnlineActions");if(!box||!goUi)return;const online=goUi.mode==="online"&&goUi.online.connected;box.hidden=!online;for(const id of ["goSize","goKomi","goScoring"]){const el=document.getElementById(id);if(el)el.disabled=online;}if(!online)return;const over=Boolean(goUi.online.result?.over),two=goOnlineHasTwoPlayers();const draw=document.getElementById("offerDrawGo"),rematch=document.getElementById("offerRematchGo");if(draw)draw.disabled=!two||over||Boolean(goUi.online.drawOffer);if(rematch){rematch.hidden=!over;rematch.disabled=!two||Boolean(goUi.online.rematchOffer);}}
+function goUpdateOnlineControls(){
+  const box=document.getElementById("goOnlineActions");if(!box||!goUi)return;
+  const online=goUi.mode==="online"&&goUi.online.connected;
+  box.hidden=!online;
+  document.getElementById("goOnlineSettings")?.classList.toggle("connected",online);
+  for(const id of ["goSize","goKomi","goScoring"]){const el=document.getElementById(id);if(el)el.disabled=online;}
+  if(!online){goRenderGameResult();return;}
+  const over=Boolean(goUi.online.result?.over),two=goOnlineHasTwoPlayers();
+  const draw=document.getElementById("offerDrawGo"),rematch=document.getElementById("offerRematchGo");
+  if(draw)draw.disabled=!two||over||Boolean(goUi.online.drawOffer);
+  if(rematch)rematch.hidden=true;
+  goRenderGameResult();
+}
 function goOnlineClockValues(){const c=goUi?.online?.clock;if(!c)return null;let blackMs=Number(c.blackMs||0),whiteMs=Number(c.whiteMs||0);if(c.started&&c.runningSide&&!goUi.online.result?.over){const e=Math.max(0,Date.now()-Number(c.clientReceivedAt||Date.now()));if(Number(c.runningSide)===GO_BLACK)blackMs=Math.max(0,blackMs-e);else whiteMs=Math.max(0,whiteMs-e);}return{blackMs,whiteMs,runningSide:c.runningSide,started:c.started};}
 function goFormatClock(ms){let t=Math.max(0,Math.ceil(Number(ms||0)/1000)),m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;}
 function goUpdateClockDisplay(){
@@ -774,17 +1024,16 @@ function goUpdateClockDisplay(){
   const hasClock=Boolean(online?.clock);
   // En cas de micro-coupure WebSocket, on garde les dernières pendules visibles.
   panel.hidden=!(online&&hasClock);
-  document.querySelector(".go-shell")?.classList.toggle("go-online-clock-layout",Boolean(online&&hasClock));
   if(!online||!hasClock)return;
   const v=goOnlineClockValues()||{blackMs:0,whiteMs:0,runningSide:null,started:false};
   const p=online.players||{},r=online.ratings||{};
   const readout=document.getElementById("goClockReadout");
   if(readout)readout.innerHTML=`
-    <div class="go-clock-card black ${v.started&&Number(v.runningSide)===GO_BLACK&&!online.result?.over?"active":""}">
+    <div class="go-clock-card black ${v.started&&Number(v.runningSide)===GO_BLACK&&!online.result?.over?"active":""}" data-side="${GO_BLACK}">
       <div class="go-clock-player"><span class="go-clock-dot black" aria-hidden="true"></span><span>Noirs · ${p.black?.username||"En attente"}</span><small>Elo ${r.black?.rating??1200}</small></div>
       <strong>${goFormatClock(v.blackMs)}</strong>
     </div>
-    <div class="go-clock-card white ${v.started&&Number(v.runningSide)===GO_WHITE&&!online.result?.over?"active":""}">
+    <div class="go-clock-card white ${v.started&&Number(v.runningSide)===GO_WHITE&&!online.result?.over?"active":""}" data-side="${GO_WHITE}">
       <div class="go-clock-player"><span class="go-clock-dot white" aria-hidden="true"></span><span>Blancs · ${p.white?.username||"En attente"}</span><small>Elo ${r.white?.rating??1200}</small></div>
       <strong>${goFormatClock(v.whiteMs)}</strong>
     </div>`;
