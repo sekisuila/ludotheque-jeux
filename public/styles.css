@@ -2866,3 +2866,129 @@ main { min-height: calc(100vh - 160px); }
 @media (prefers-reduced-motion:reduce){
   .chess-move-ghost{display:none!important}
 }
+
+
+/* ============================================================
+   V6.37 — Échecs : pendules à gauche, plateau au centre, historique à droite
+   ============================================================ */
+.chess-info-column,
+.chess-history-column{
+  display:grid;
+  gap:10px;
+  min-width:0;
+  align-self:start;
+}
+.chess-history-panel{min-width:0}
+.chess-history-panel .chess-history-head{margin:0 0 .35rem}
+.chess-toolbar-wide{min-width:0}
+
+/* PC large : on utilise réellement toute la largeur disponible. */
+@media (min-width:1180px){
+  .chess-play-page{
+    width:min(1580px,calc(100% - 24px));
+  }
+  .chess-play-layout{
+    display:grid;
+    grid-template-columns:minmax(220px,260px) minmax(520px,760px) minmax(260px,310px);
+    grid-template-rows:auto auto;
+    justify-content:center;
+    align-items:start;
+    gap:10px 14px;
+  }
+  .chess-toolbar-wide{
+    grid-column:1/-1;
+    grid-row:1;
+    margin:0!important;
+    padding:9px 11px;
+  }
+  .chess-play-page .chess-shell{
+    grid-column:2;
+    grid-row:2;
+    width:100%;
+    min-width:0;
+  }
+  .chess-info-column{
+    grid-column:1;
+    grid-row:2;
+  }
+  .chess-history-column{
+    grid-column:3;
+    grid-row:2;
+  }
+  .chess-match-panel,
+  .chess-history-panel{
+    position:sticky;
+    top:88px;
+    padding:11px;
+  }
+  .chess-play-page .chess-shell>.chess-board-wrap{
+    width:min(100%,calc(100vh - 245px),760px);
+  }
+  .chess-history{
+    min-height:320px;
+    max-height:calc(100vh - 210px);
+    font-size:.84rem;
+  }
+  .chess-history .history-row{
+    grid-template-columns:30px 1fr 1fr;
+    gap:4px;
+    padding:5px 2px;
+  }
+}
+
+/* PC plus étroit : le plateau reste à gauche et les deux panneaux se
+   superposent à droite, afin d'éviter de comprimer l'échiquier. */
+@media (min-width:1051px) and (max-width:1179px){
+  .chess-play-layout{
+    grid-template-columns:minmax(0,1fr) 300px;
+    grid-template-rows:auto auto auto;
+    gap:10px 14px;
+  }
+  .chess-toolbar-wide{
+    grid-column:1/-1;
+    grid-row:1;
+    margin:0!important;
+    padding:9px 11px;
+  }
+  .chess-play-page .chess-shell{
+    grid-column:1;
+    grid-row:2 / span 2;
+  }
+  .chess-info-column{
+    grid-column:2;
+    grid-row:2;
+  }
+  .chess-history-column{
+    grid-column:2;
+    grid-row:3;
+  }
+  .chess-match-panel,
+  .chess-history-panel{
+    padding:11px;
+  }
+  .chess-history{
+    min-height:180px;
+    max-height:300px;
+  }
+}
+
+/* Tablette/mobile : ordre vertical naturel — réglages, plateau,
+   informations, puis historique. */
+@media (max-width:1050px){
+  .chess-toolbar-wide{margin:0 0 12px}
+  .chess-info-column,
+  .chess-history-column{width:100%}
+  .chess-history-panel .chess-history{max-height:320px}
+}
+
+@media (min-width:1180px) and (max-height:850px){
+  .chess-play-page .chess-shell>.chess-board-wrap{
+    width:min(100%,calc(100vh - 205px),700px);
+  }
+  .chess-history{
+    max-height:calc(100vh - 180px);
+    min-height:260px;
+  }
+  .chess-match-panel,
+  .chess-history-panel{top:82px}
+}
