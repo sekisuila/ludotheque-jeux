@@ -405,12 +405,12 @@
   }
   function renderRoundResult(g){
     const box=document.getElementById("dominoRoundResult");if(!box)return;
-    const summary=g.result?.lastRound||g.state?.lastRound;
-    const visible=Boolean(summary&&(g.state?.roundPending||g.result?.over));
+    const summary=g.result?.lastRound||g.state?.lastRound||null;
+    const visible=Boolean(g.result?.over||(summary&&g.state?.roundPending));
     box.hidden=!visible;
     if(!visible)return;
 
-    const n=names(),winner=summary.winner;
+    const n=names(),winner=summary?.winner;
     const title=document.getElementById("dominoRoundResultTitle");
     const text=document.getElementById("dominoRoundResultText");
     const next=document.getElementById("dominoNextRound");
@@ -419,9 +419,15 @@
 
     if(g.result?.over){
       if(title)title.textContent=`${n[g.result.winner]||"Un joueur"} gagne la partie !`;
-      if(text)text.textContent=winner===null
-        ? `La manche ${summary.round} se termine sur une égalité. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`
-        : `${n[winner]} gagne la manche ${summary.round} et marque ${summary.points} point${summary.points>1?"s":""}. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+      if(text){
+        if(summary){
+          text.textContent=winner===null
+            ? `La manche ${summary.round} se termine sur une égalité. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`
+            : `${n[winner]} gagne la manche ${summary.round} et marque ${summary.points} point${summary.points>1?"s":""}. Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+        }else{
+          text.textContent=g.result.text||`Score final : ${g.state.scores[0]}–${g.state.scores[1]}.`;
+        }
+      }
       if(next)next.hidden=true;
       if(restart){restart.hidden=false;restart.textContent=ui.mode==="online"?"Proposer une nouvelle partie":"Nouvelle partie";}
       if(home)home.hidden=false;
