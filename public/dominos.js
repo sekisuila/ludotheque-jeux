@@ -163,7 +163,9 @@
     ui.lastSeenPlayKey=latest.key;
     cancelDominoMoveAnimation();
     const event=latest.event;
-    if(!isOpponentMove(event.side)){
+    // Un changement de manche efface naturellement le dernier coup :
+    // le domino final de la manche précédente n'existe plus sur la nouvelle chaîne.
+    if(Number(event.round)!==Number(g?.state?.round)||!isOpponentMove(event.side)){
       ui.moveFeedback=null;
       return;
     }
@@ -286,7 +288,7 @@
     cancelDominoMoveAnimation();
     const startX=sr.left+sr.width/2,startY=sr.top+sr.height/2;
     const endX=tr.left+tr.width/2,endY=tr.top+tr.height/2;
-    const rotation=Number((/rotate\\((-?[\\d.]+)deg\\)/.exec(target.style.transform)||[])[1]||0);
+    const rotation=Number((/rotate\((-?[\d.]+)deg\)/.exec(target.style.transform)||[])[1]||0);
 
     const ghost=document.createElement("span");
     ghost.className="domino-move-ghost";
