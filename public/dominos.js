@@ -59,7 +59,7 @@
     const set=shuffle(makeSet()),hands=[set.splice(0,7),set.splice(0,7)],starter=chooseStarter(hands),tile=starter.tile;
     hands[starter.side]=hands[starter.side].filter(t=>t.id!==tile.id);
     return{
-      state:{target:100,round,scores:[...scores],hands,boneyard:set,chain:[{id:tile.id,left:tile.a,right:tile.b}],turn:1-starter.side,starter:starter.side,passCount:0,lastRound},
+      state:{target:100,round,scores:[...scores],hands,boneyard:set,chain:[{id:tile.id,left:tile.a,right:tile.b}],turn:1-starter.side,starter:starter.side,passCount:0,lastRound,awaitingNextRound:false},
       result:null,history:[{type:"round_start",round,starter:starter.side,tile:{...tile}}]
     };
   }
@@ -72,12 +72,20 @@
     }
     const summary={round:s.round,winner,reason,points,pips:tot,scores:[...s.scores]};
     g.history.push({type:"round_end",...clone(summary)});
+    s.lastRound=summary;
+    s.turn=null;
+    s.awaitingNextRound=true;
     if((winner===0||winner===1)&&s.scores[winner]>=s.target){
+      s.awaitingNextRound=false;
       g.result={over:true,type:"score",winner,scores:[...s.scores],target:s.target,lastRound:summary};
-      s.lastRound=summary;return g;
     }
-    const next=dealRound(s.scores,s.round+1,summary);
-    next.history=[...g.history,...next.history];return next;
+    return g;
+  }
+  function advanceLocalRound(g){
+    if(g?.result?.over||!g?.state?.awaitingNextRound)return g;
+    const s=g.state,next=dealRound(s.scores,s.round+1,s.lastRound);
+    next.history=[...(g.history||[]),...next.history];
+    return next;
   }
   function localPlay(g,side,tileId,where){
     const hand=g.state.hands[side],tile=hand.find(t=>t.id===tileId);if(!tile)return false;
@@ -112,7 +120,7 @@
     if(ui.mode==="ai")return["Vous","IA"];
     return["Joueur 1","Joueur 2"];
   }
-  function canAct(g){if(g.result?.over)return false;if(ui.mode==="online")return ui.online.connected&&Number(g.state.turn)===mySide()&&ui.online.players.black&&ui.online.players.white;if(ui.mode==="ai")return Number(g.state.turn)===0;return true;}
+  function canAct(g){if(g.result?.over||g.state?.awaitingNextRound)return false;if(ui.mode==="online")return ui.online.connected&&Number(g.state.turn)===mySide()&&ui.online.players.black&&ui.online.players.white;if(ui.mode==="ai")return Number(g.state.turn)===0;return true;}
   function handForView(g){
     if(ui.mode==="online")return g.state.hands?.[mySide()]||[];
     if(ui.mode==="ai")return g.state.hands[0]||[];
