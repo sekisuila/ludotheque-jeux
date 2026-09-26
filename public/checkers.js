@@ -786,6 +786,7 @@ function initDraughts(variant = "international") {
 
   draughtUpdateCustomTimeVisibility();
   newDraughtGame();
+  LudoOnline?.invites?.autoJoin?.(variant==="english"?"checkers-english":"checkers-international","draughtRoomCode",draughtJoinOnlineRoom);
 }
 
 function newDraughtGame() {
