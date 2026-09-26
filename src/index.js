@@ -901,6 +901,99 @@ async function myChessRatings(env,user){
   return json({ratings:await chessRatingsForUser(env,user.id)});
 }
 
+const CHESS_AI_ENGINE_ELO={
+  "sf-1320":1320,"sf-1400":1400,"sf-1600":1600,"sf-1800":1800,"sf-2000":2000,
+  "sf-2200":2200,"sf-2400":2400,"sf-2600":2600,"sf-2800":2800,"sf-3000":3000,"sf-max":3190
+};
+const CHESS_AI_K=32;
+
+async function chessAiRatingForUser(env,userId){
+  const row=await env.DB.prepare("SELECT rating,games,wins,draws,losses,updated_at FROM chess_ai_ratings WHERE user_id=?").bind(userId).first();
+  return row?{
+    rating:Number(row.rating),games:Number(row.games),wins:Number(row.wins),draws:Number(row.draws),losses:Number(row.losses),updatedAt:row.updated_at
+  }:{rating:1200,games:0,wins:0,draws:0,losses:0,updatedAt:null};
+}
+
+async function myChessAiRating(env,user){
+  return json({rating:await chessAiRatingForUser(env,user.id),kFactor:CHESS_AI_K});
+}
+
+async function recordChessAiResult(request,env,user){
+  const body=await readJson(request);
+  const clientGameId=String(body?.clientGameId||"").trim();
+  const engineLevel=String(body?.engineLevel||"").trim();
+  const engineElo=CHESS_AI_ENGINE_ELO[engineLevel];
+  const playerColor=body?.playerColor==="b"?"b":body?.playerColor==="w"?"w":null;
+  const result=["win","draw","loss"].includes(body?.result)?body.result:null;
+  const reason=String(body?.reason||"unknown").slice(0,40);
+  const moveCount=clampInt(body?.moveCount,0,1000,0);
+
+  if(!/^[0-9a-f-]{20,80}$/i.test(clientGameId)) return json({error:"Identifiant de partie invalide."},400);
+  if(!engineElo) return json({error:"Ce niveau Stockfish ne peut pas être classé."},400);
+  if(!playerColor||!result) return json({error:"Résultat de partie invalide."},400);
+
+  const duplicate=await env.DB.prepare(`
+    SELECT engine_level,engine_elo,result,rating_before,rating_after,rating_delta,created_at
+    FROM chess_ai_results WHERE user_id=? AND client_game_id=?
+  `).bind(user.id,clientGameId).first();
+  if(duplicate){
+    return json({
+      duplicate:true,
+      update:{
+        rated:true,engineLevel:duplicate.engine_level,engineElo:Number(duplicate.engine_elo),result:duplicate.result,
+        before:Number(duplicate.rating_before),after:Number(duplicate.rating_after),delta:Number(duplicate.rating_delta)
+      },
+      rating:await chessAiRatingForUser(env,user.id)
+    });
+  }
+
+  const current=await chessAiRatingForUser(env,user.id);
+  const before=Number(current.rating||1200);
+  const expected=1/(1+Math.pow(10,(engineElo-before)/400));
+  const score=result==="win"?1:result==="draw"?0.5:0;
+  const delta=Math.round(CHESS_AI_K*(score-expected));
+  const after=Math.max(100,Math.min(3500,before+delta));
+  const actualDelta=after-before;
+  const wins=current.wins+(result==="win"?1:0);
+  const draws=current.draws+(result==="draw"?1:0);
+  const losses=current.losses+(result==="loss"?1:0);
+  const games=current.games+1;
+  const id=crypto.randomUUID();
+
+  try{
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO chess_ai_results(
+          id,client_game_id,user_id,engine_level,engine_elo,player_color,result,reason,
+          rating_before,rating_after,rating_delta,move_count
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+      `).bind(id,clientGameId,user.id,engineLevel,engineElo,playerColor,result,reason,before,after,actualDelta,moveCount),
+      env.DB.prepare(`
+        INSERT INTO chess_ai_ratings(user_id,rating,games,wins,draws,losses,updated_at)
+        VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+          rating=excluded.rating,games=excluded.games,wins=excluded.wins,draws=excluded.draws,losses=excluded.losses,updated_at=CURRENT_TIMESTAMP
+      `).bind(user.id,after,games,wins,draws,losses)
+    ]);
+  }catch(error){
+    const existing=await env.DB.prepare("SELECT rating_before,rating_after,rating_delta,engine_level,engine_elo,result FROM chess_ai_results WHERE user_id=? AND client_game_id=?")
+      .bind(user.id,clientGameId).first();
+    if(existing){
+      return json({
+        duplicate:true,
+        update:{rated:true,engineLevel:existing.engine_level,engineElo:Number(existing.engine_elo),result:existing.result,before:Number(existing.rating_before),after:Number(existing.rating_after),delta:Number(existing.rating_delta)},
+        rating:await chessAiRatingForUser(env,user.id)
+      });
+    }
+    throw error;
+  }
+
+  return json({
+    update:{rated:true,engineLevel,engineElo,result,before,after,delta:actualDelta,expectedScore:expected,kFactor:CHESS_AI_K},
+    rating:{rating:after,games,wins,draws,losses,updatedAt:new Date().toISOString()}
+  },201);
+}
+
 async function chessLeaderboard(request,env){
   const url=new URL(request.url);
   const category=["bullet","blitz","rapid","classical"].includes(url.searchParams.get("category"))
@@ -1285,6 +1378,8 @@ async function api(request,env){
   const saveMatch=p.match(/^\/api\/saves\/([0-9a-f-]{36})$/i); if(saveMatch) return saveById(request,env,user,saveMatch[1]);
   if(p==="/api/ratings/me"&&request.method==="GET") return myChessRatings(env,user);
   if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
+  if(p==="/api/ratings/chess-ai/me"&&request.method==="GET") return myChessAiRating(env,user);
+  if(p==="/api/chess/ai-result"&&request.method==="POST") return recordChessAiResult(request,env,user);
   if(p==="/api/ratings/checkers/me"&&request.method==="GET") return myCheckersRatings(request,env,user);
   if(p==="/api/ratings/checkers"&&request.method==="GET") return checkersLeaderboard(request,env);
   if(p==="/api/ratings/go/me"&&request.method==="GET") return myGoRatings(request,env,user);
