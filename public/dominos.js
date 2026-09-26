@@ -103,7 +103,7 @@
     g.state.turn=1-side;return g;
   }
 
-  let ui=null,aiTimer=null,reconnectTimer=null,dominoBoardResizeObserver=null;
+  let ui=null,aiTimer=null,reconnectTimer=null,dominoBoardResizeObserver=null,dominoMoveGhost=null,dominoMoveAnimation=null;
   const onlineEmpty=()=>({ws:null,code:null,connected:false,side:null,players:{black:null,white:null},game:null,ratings:null,ratingUpdate:null,settings:null,reconnectAttempts:0,manualClose:false});
   function game(){return ui.mode==="online"?(ui.online.game||newGame()):ui.game;}
   function mySide(){return ui.mode==="online"?Number(ui.online.side):0;}
@@ -126,6 +126,67 @@
   function ownLabel(g){
     const n=names();
     return ui.mode==="online"?n[mySide()]:ui.mode==="local"?n[g.state.turn]:n[0];
+  }
+
+  function latestPlayEvent(g){
+    const history=g?.history||[];
+    for(let i=history.length-1;i>=0;i--){
+      const event=history[i];
+      if(event?.type==="play"){
+        return{
+          event,
+          index:i,
+          key:`${i}:${event.round??""}:${event.side??""}:${event.tile?.id||""}:${event.placement||""}`
+        };
+      }
+    }
+    return null;
+  }
+  function isOpponentMove(side){
+    side=Number(side);
+    if(ui.mode==="online")return side!==mySide();
+    if(ui.mode==="ai")return side===1;
+    // En mode local, l'écran passe au joueur suivant : le coup qui vient
+    // d'être joué est donc le coup de son adversaire.
+    return ui.mode==="local";
+  }
+  function cancelDominoMoveAnimation(){
+    try{dominoMoveAnimation?.cancel();}catch{}
+    dominoMoveAnimation=null;
+    dominoMoveGhost?.remove();
+    dominoMoveGhost=null;
+    document.querySelectorAll(".domino-board-piece.domino-arriving").forEach(el=>el.classList.remove("domino-arriving"));
+  }
+  function syncMoveFeedbackFromGame(g,{animate=true}={}){
+    const latest=latestPlayEvent(g);
+    if(!latest||latest.key===ui.lastSeenPlayKey)return;
+    ui.lastSeenPlayKey=latest.key;
+    cancelDominoMoveAnimation();
+    const event=latest.event;
+    if(!isOpponentMove(event.side)){
+      ui.moveFeedback=null;
+      return;
+    }
+    ui.moveFeedback={
+      key:latest.key,
+      side:Number(event.side),
+      tile:{...(event.tile||{})},
+      placement:event.placement==="left"?"left":"right",
+      animate:Boolean(animate)
+    };
+  }
+  function renderMoveNotice(){
+    const el=document.getElementById("dominoMoveNotice");if(!el)return;
+    const move=ui.moveFeedback;
+    if(!move){
+      el.hidden=true;
+      el.textContent="";
+      return;
+    }
+    const who=names()[move.side]||`Joueur ${move.side+1}`;
+    const sideText=move.placement==="left"?"gauche":"droite";
+    el.hidden=false;
+    el.textContent=`${who} a placé le domino ${move.tile.a}–${move.tile.b} sur l’extrémité ${sideText}.`;
   }
 
   function pipFace(v){return `<span class="domino-half" aria-label="${v}">${PIP_POS[v].map(p=>`<i class="domino-pip p${p}"></i>`).join("")}</span>`;}
@@ -210,11 +271,71 @@
     el.style.height=`${Math.max(110,Math.ceil(maxBottom+8))}px`;
   }
 
+  function animateOpponentDomino(move,target){
+    if(!move?.animate||!target)return;
+    move.animate=false;
+
+    const reduced=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if(reduced)return;
+
+    const source=document.querySelector("#dominoOpponent .domino-back-row")||document.getElementById("dominoOpponent");
+    if(!source)return;
+    const sr=source.getBoundingClientRect(),tr=target.getBoundingClientRect();
+    if(!sr.width||!tr.width)return;
+
+    cancelDominoMoveAnimation();
+    const startX=sr.left+sr.width/2,startY=sr.top+sr.height/2;
+    const endX=tr.left+tr.width/2,endY=tr.top+tr.height/2;
+    const rotation=Number((/rotate\\((-?[\\d.]+)deg\\)/.exec(target.style.transform)||[])[1]||0);
+
+    const ghost=document.createElement("span");
+    ghost.className="domino-move-ghost";
+    ghost.setAttribute("aria-hidden","true");
+    ghost.innerHTML=dominoHtml(move.tile,{small:true});
+    ghost.style.left=`${endX-28}px`;
+    ghost.style.top=`${endY-15}px`;
+    document.body.appendChild(ghost);
+    dominoMoveGhost=ghost;
+    target.classList.add("domino-arriving");
+
+    const dx=startX-endX,dy=startY-endY;
+    if(typeof ghost.animate!=="function"){
+      target.classList.remove("domino-arriving");
+      ghost.remove();dominoMoveGhost=null;
+      return;
+    }
+    dominoMoveAnimation=ghost.animate([
+      {transform:`translate(${dx}px,${dy}px) rotate(0deg) scale(.78)`,opacity:.28},
+      {offset:.72,transform:`translate(${dx*.14}px,${dy*.14}px) rotate(${rotation*.82}deg) scale(1.08)`,opacity:1},
+      {transform:`translate(0,0) rotate(${rotation}deg) scale(1)`,opacity:1}
+    ],{duration:680,easing:"cubic-bezier(.22,.75,.25,1)",fill:"forwards"});
+    dominoMoveAnimation.onfinish=()=>{
+      target.classList.remove("domino-arriving");
+      ghost.remove();
+      if(dominoMoveGhost===ghost)dominoMoveGhost=null;
+      dominoMoveAnimation=null;
+    };
+    dominoMoveAnimation.oncancel=()=>{
+      target.classList.remove("domino-arriving");
+      ghost.remove();
+      if(dominoMoveGhost===ghost)dominoMoveGhost=null;
+      dominoMoveAnimation=null;
+    };
+  }
+
   function renderBoard(g){
     const el=document.getElementById("dominoBoard");if(!el)return;
     const chain=g.state.chain||[];
-    el.innerHTML=chain.map((t,i)=>`<span class="domino-board-piece" data-chain-index="${i}">${dominoHtml(t,{oriented:true,small:true})}</span>`).join("");
-    requestAnimationFrame(layoutDominoBoard);
+    const move=ui.moveFeedback;
+    const highlightId=move?.tile?.id||null;
+    el.innerHTML=chain.map((t,i)=>`<span class="domino-board-piece ${highlightId===t.id?"domino-last-opponent":""}" data-chain-index="${i}" data-domino-id="${t.id}">${dominoHtml(t,{oriented:true,small:true})}</span>`).join("");
+    requestAnimationFrame(()=>{
+      layoutDominoBoard();
+      if(move?.animate){
+        const target=[...el.querySelectorAll(".domino-board-piece")].find(piece=>piece.dataset.dominoId===move.tile?.id);
+        animateOpponentDomino(move,target);
+      }
+    });
     const ends=document.getElementById("dominoEnds");if(ends){
       const l=chain[0]?.left,r=chain[chain.length-1]?.right;
       ends.textContent=chain.length?`Extrémités libres : ${l} et ${r}`:"";
@@ -275,18 +396,25 @@
   }
   function render(){
     if(!ui)return;const g=game();
-    renderScore(g);renderOpponent(g);renderBoard(g);renderHand(g);renderActions(g);renderStatus(g);renderOnline(g);
+    renderScore(g);renderOpponent(g);renderMoveNotice();renderBoard(g);renderHand(g);renderActions(g);renderStatus(g);renderOnline(g);
   }
 
   function cancelAi(){clearTimeout(aiTimer);aiTimer=null;}
-  function resetLocal(){cancelAi();ui.game=newGame();ui.selected=null;render();if(ui.mode==="ai"&&ui.game.state.turn===1)scheduleAi();}
+  function resetLocal(){
+    cancelAi();cancelDominoMoveAnimation();
+    ui.game=newGame();ui.selected=null;ui.moveFeedback=null;ui.lastSeenPlayKey=null;
+    render();
+    if(ui.mode==="ai"&&ui.game.state.turn===1)scheduleAi();
+  }
   function selectTile(id){const g=game();if(!canAct(g))return;ui.selected=ui.selected===id?null:id;renderHand(g);renderActions(g);}
   function play(where){
     const g=game(),tile=handForView(g).find(t=>t.id===ui.selected);if(!tile||!canAct(g))return;
     ui.selected=null;
     if(ui.mode==="online"){ui.online.ws?.send(JSON.stringify({type:"domino_play",tileId:tile.id,placement:where}));return;}
     const side=ui.mode==="ai"?0:g.state.turn;
-    const next=localPlay(g,side,tile.id,where);if(next)ui.game=next;render();
+    const next=localPlay(g,side,tile.id,where);if(next)ui.game=next;
+    syncMoveFeedbackFromGame(ui.game);
+    render();
     if(ui.mode==="ai"&&!ui.game.result?.over&&ui.game.state.turn===1)scheduleAi();
   }
   function drawOrPass(){
@@ -328,7 +456,9 @@
       if(!ui||ui.mode!=="ai"||ui.game.result?.over||ui.game.state.turn!==1)return;
       const move=chooseAiMove(ui.game);
       if(move){
-        ui.game=localPlay(ui.game,1,move.tile.id,move.where);render();
+        ui.game=localPlay(ui.game,1,move.tile.id,move.where);
+        syncMoveFeedbackFromGame(ui.game);
+        render();
         if(!ui.game.result?.over&&ui.game.state.turn===1)aiTimer=setTimeout(step,550);
         return;
       }
@@ -347,11 +477,16 @@
       message:data=>{
         if(data.gameType&&data.gameType!=="dominos")return;
         if(data.type==="welcome"||data.type==="state"){
-          ui.online.game=data.game||ui.online.game;ui.online.players=data.players||ui.online.players;ui.online.ratings=data.ratings||ui.online.ratings;ui.online.settings=data.settings||ui.online.settings;ui.online.ratingUpdate=data.ratingUpdate||ui.online.ratingUpdate;ui.selected=null;render();
+          ui.online.game=data.game||ui.online.game;ui.online.players=data.players||ui.online.players;ui.online.ratings=data.ratings||ui.online.ratings;ui.online.settings=data.settings||ui.online.settings;ui.online.ratingUpdate=data.ratingUpdate||ui.online.ratingUpdate;ui.selected=null;
+          syncMoveFeedbackFromGame(ui.online.game,{animate:true});
+          render();
         }else if(data.type==="players"){ui.online.players=data.players||ui.online.players;ui.online.ratings=data.ratings||ui.online.ratings;render();}
         else if(data.type==="rematch_offer")showPrompt(`${data.offer?.username||"Votre adversaire"} propose une revanche.`,"rematch");
         else if(data.type==="rematch_declined")onlineStatus("La revanche a été refusée.");
-        else if(data.type==="rematch_started"){ui.online.side=Number(data.side);ui.online.players=data.players;ui.online.game=data.game;ui.online.ratings=data.ratings||null;ui.online.ratingUpdate=null;ui.selected=null;hidePrompt();render();}
+        else if(data.type==="rematch_started"){
+          cancelDominoMoveAnimation();ui.moveFeedback=null;ui.lastSeenPlayKey=null;
+          ui.online.side=Number(data.side);ui.online.players=data.players;ui.online.game=data.game;ui.online.ratings=data.ratings||null;ui.online.ratingUpdate=null;ui.selected=null;hidePrompt();render();
+        }
         else if(data.type==="error")onlineStatus(data.message||"Erreur du salon.");
       },
       close:()=>{ui.online.connected=false;render();if(!ui.online.manualClose&&ui.mode==="online"&&ui.online.code){const d=Math.min(6000,1000*(++ui.online.reconnectAttempts));reconnectTimer=setTimeout(()=>connect(ui.online.code,ui.online.side),d);}},
@@ -378,7 +513,7 @@
   }
 
   window.initDominos=function(){
-    ui={mode:"online",game:newGame(),selected:null,aiLevel:"medium",online:onlineEmpty()};
+    ui={mode:"online",game:newGame(),selected:null,aiLevel:"medium",online:onlineEmpty(),moveFeedback:null,lastSeenPlayKey:null};
 
     // Recalcule automatiquement le serpentin si la fenêtre ou la colonne de jeu change de largeur.
     dominoBoardResizeObserver?.disconnect();
