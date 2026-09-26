@@ -2549,6 +2549,7 @@ function renderDominoPlay(){
 
           <div id="dominoScore" class="domino-score"></div>
           <div id="dominoOpponent" class="domino-opponent"></div>
+          <div id="dominoMoveNotice" class="domino-move-notice" role="status" aria-live="polite" hidden></div>
           <div class="domino-table">
             <div id="dominoBoard" class="domino-board" aria-label="Chaîne de dominos"></div>
             <div id="dominoEnds" class="domino-ends"></div>
