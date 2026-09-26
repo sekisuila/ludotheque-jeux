@@ -1197,10 +1197,11 @@ function draughtHandleOnlineMessage(data){
   if(data.type==="rematch_offer"){
     draughtUi.online.rematchOffer=data.offer||null;
     if(Number(data.offer?.side)!==Number(draughtUi.online.side)) draughtShowOnlinePrompt("rematch",`${data.offer?.username||"Votre adversaire"} propose une revanche avec inversion des camps.`);
+    draughtUpdateOnlineControls();
     return;
   }
   if(data.type==="rematch_declined"){
-    draughtUi.online.rematchOffer=null; draughtHideOnlinePrompt(); draughtSetRoomStatus("La revanche a été refusée."); return;
+    draughtUi.online.rematchOffer=null; draughtHideOnlinePrompt(); draughtSetRoomStatus("La revanche a été refusée."); draughtUpdateOnlineControls(); return;
   }
   if(data.type==="rematch_started"){
     draughtUi.online.side=Number(data.side);
@@ -1251,9 +1252,9 @@ function draughtUpdateOnlineControls(){
   const box=document.getElementById("draughtOnlineActions"); if(!box||!draughtUi) return;
   const online=draughtUi.mode==="online"&&draughtUi.online.connected;
   box.hidden=!online;
-  if(!online) return;
-  const over=Boolean(draughtUi.online.result?.over),two=draughtOnlineHasTwoPlayers();
   document.getElementById("draughtOnlineSettings")?.classList.toggle("connected",online);
+  if(!online){draughtRenderGameResult();return;}
+  const over=Boolean(draughtUi.online.result?.over),two=draughtOnlineHasTwoPlayers();
   const resign=document.getElementById("resignDraughtOnline"),draw=document.getElementById("offerDrawDraught"),rematch=document.getElementById("offerRematchDraught");
   if(resign) resign.disabled=!two||over;
   if(draw) draw.disabled=!two||over||Boolean(draughtUi.online.drawOffer);
