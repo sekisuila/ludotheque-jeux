@@ -2992,3 +2992,30 @@ main { min-height: calc(100vh - 160px); }
   .chess-match-panel,
   .chess-history-panel{top:82px}
 }
+
+
+/* Compléments V6.37 : toutes les informations de jeu restent avec la pendule. */
+.chess-match-panel .chess-status{
+  min-height:0;
+  margin:.45rem 0 0;
+  padding:.55rem .62rem;
+  font-size:.82rem;
+  line-height:1.35;
+}
+.chess-match-panel .chess-online-actions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:.4rem;
+  margin-top:.5rem;
+}
+.chess-match-panel .chess-online-actions .btn{width:100%}
+.chess-match-panel .online-decision{
+  margin-top:.5rem;
+  padding:.65rem;
+}
+.chess-match-panel .online-decision-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.4rem;
+}
+.chess-match-panel .online-decision-actions .btn{width:100%}
