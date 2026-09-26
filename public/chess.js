@@ -1331,7 +1331,7 @@ function initChess() {
     const previous=chessUi.aiLevel;
     chessUi.aiLevel=e.target.value;
     if(chessUi.mode==="ai"){
-      if(!chessUi.game.history.length){
+      if(!chessUi.game.history.length&&!chessUi.thinking){
         chessUi.aiRatedLevel=chessUi.aiLevel;
         chessUi.aiRatingEligible=chessLevelUsesStockfish(chessUi.aiRatedLevel);
         chessUi.aiRatingInvalidReason="";
@@ -1507,7 +1507,7 @@ function renderChessInfo() {
   chessRenderAiRatingPanel();
   chessMaybeSubmitAiRating(localStatus);
 
-  document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
+  document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || localStatus.over || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
   if (chessUi.mode === "online") chessUpdateOnlineControls();
 }
 
@@ -1686,8 +1686,12 @@ async function chessMaybeSubmitAiRating(status){
     chessRenderAiRatingPanel();
     return;
   }
+  chessUi.aiRatingSubmitting=true;
+  chessRenderAiRatingPanel();
+  const submittedGameId=chessUi.aiGameId;
   const user=await LudoOnline?.me?.().catch(()=>null);
   if(!user||!LudoOnline?.chessAiRating){
+    if(chessUi.aiGameId===submittedGameId)chessUi.aiRatingSubmitting=false;
     chessRenderAiRatingPanel();
     return;
   }
@@ -1698,8 +1702,6 @@ async function chessMaybeSubmitAiRating(status){
     result=winner===chessUi.humanColor?"win":"loss";
   }
 
-  chessUi.aiRatingSubmitting=true;
-  chessRenderAiRatingPanel();
   try{
     const data=await LudoOnline.chessAiRating.record({
       clientGameId:chessUi.aiGameId,
@@ -1709,15 +1711,19 @@ async function chessMaybeSubmitAiRating(status){
       reason:status.type,
       moveCount:chessUi.game.history.length
     });
-    chessUi.aiRatingSubmitted=true;
-    chessUi.aiRatingUpdate=data.update||null;
     chessUi.aiRating=data.rating||chessUi.aiRating;
-    chessRenderContext();
+    if(chessUi.aiGameId===submittedGameId){
+      chessUi.aiRatingSubmitted=true;
+      chessUi.aiRatingUpdate=data.update||null;
+      chessRenderContext();
+    }
   }catch(error){
-    chessUi.aiRatingSubmitted=true;
-    chessUi.aiRatingUpdate={error:`Elo IA non enregistré : ${error.message}`};
+    if(chessUi.aiGameId===submittedGameId){
+      chessUi.aiRatingSubmitted=true;
+      chessUi.aiRatingUpdate={error:`Elo IA non enregistré : ${error.message}`};
+    }
   }finally{
-    chessUi.aiRatingSubmitting=false;
+    if(chessUi.aiGameId===submittedGameId)chessUi.aiRatingSubmitting=false;
     chessRenderAiRatingPanel();
   }
 }
