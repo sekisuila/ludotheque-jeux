@@ -862,6 +862,13 @@ function chessRestartFromResult() {
   newChessGame();
 }
 
+function chessBackHomeFromResult() {
+  window.StrathasardStockfish?.stop?.();
+  if(chessUi?.mode==="online")chessDisconnectOnlineRoom();
+  chessCancelMoveAnimation();
+  location.hash="#/accueil";
+}
+
 function chessAnimateOpponentMove(feedback) {
   if(!feedback?.animate)return;
   feedback.animate=false;
@@ -1320,7 +1327,7 @@ function initChess() {
   document.getElementById("acceptChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(true));
   document.getElementById("declineChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(false));
   document.getElementById("chessResultNew")?.addEventListener("click", chessRestartFromResult);
-  document.getElementById("chessResultHome")?.addEventListener("click",()=>{location.hash="#/accueil";});
+  document.getElementById("chessResultHome")?.addEventListener("click",chessBackHomeFromResult);
   document.getElementById("promotionPicker").addEventListener("click", e => {
     const piece = e.target.closest("button")?.dataset.promotion;
     if (piece) finishPromotion(piece);
