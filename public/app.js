@@ -2242,8 +2242,7 @@ function renderChessPlay() {
       </div>
 
       <div class="chess-play-layout">
-        <section class="game-shell chess-shell">
-          <div class="chess-toolbar">
+        <div class="chess-toolbar chess-toolbar-wide panel">
             <label><span>Mode</span><select id="chessMode"><option value="ai">Joueur contre IA</option><option value="local">2 joueurs sur le même écran</option><option value="online" selected>Multijoueur en ligne</option></select></label>
             <div id="chessAiSettings" class="toolbar-group" hidden>
               <label><span>Niveau IA</span><select id="chessAiLevel">
@@ -2286,9 +2285,10 @@ function renderChessPlay() {
               <button id="joinChessRoom" class="btn outline small">Rejoindre</button>
               <span id="chessRoomStatus" class="online-room-status">Connectez-vous pour jouer en ligne.</span>
             </div>
-            <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
-          </div>
+          <div class="toolbar-actions"><button id="newChess" class="btn small">Nouvelle partie</button><button id="undoChess" class="btn outline small">Annuler</button><button id="flipChess" class="btn outline small" title="Retourner l’échiquier">↻ Plateau</button></div>
+        </div>
 
+        <section class="game-shell chess-shell">
           <div class="chess-board-wrap">
             <div id="chessBoard" class="chess-board" aria-label="Échiquier interactif"></div>
             <div id="promotionPicker" class="promotion-picker" hidden><strong>Promotion :</strong><button data-promotion="Q"></button><button data-promotion="R"></button><button data-promotion="B"></button><button data-promotion="N"></button></div>
