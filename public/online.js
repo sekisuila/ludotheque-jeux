@@ -381,10 +381,16 @@
 
   function routeForGame(game){return LOBBY_GAME_ROUTES[game]||"#/jouer";}
 
+  function navigateToGame(game){
+    const route=routeForGame(game);
+    if(location.hash===route) location.reload();
+    else location.hash=route;
+  }
+
   async function createInvite(inviteeId,game){
     const data=await request("/api/invites",{method:"POST",body:{inviteeId,game}});
     setPendingRoom(data.room.game,data.room.code);
-    location.hash=routeForGame(data.room.game);
+    navigateToGame(data.room.game);
     return data;
   }
 
@@ -392,7 +398,7 @@
     const data=await request(`/api/invites/${encodeURIComponent(id)}/respond`,{method:"POST",body:{accept:Boolean(accept)}});
     if(data.accepted&&data.room){
       setPendingRoom(data.room.game,data.room.code);
-      location.hash=routeForGame(data.room.game);
+      navigateToGame(data.room.game);
     }
     return data;
   }
