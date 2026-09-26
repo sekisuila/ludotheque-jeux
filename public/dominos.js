@@ -167,13 +167,20 @@
   }
   function syncMoveFeedbackFromGame(g,{animate=true}={}){
     const latest=latestPlayEvent(g);
-    if(!latest||latest.key===ui.lastSeenPlayKey)return;
+    if(!latest){ui.moveFeedback=null;ui.lastSeenPlayKey=null;return;}
+    const event=latest.event;
+    // Une nouvelle manche conserve l’historique précédent, mais son dernier domino
+    // ne doit plus rester surligné sur le nouveau plateau.
+    if(Number(event.round)!==Number(g?.state?.round)){
+      ui.lastSeenPlayKey=latest.key;
+      cancelDominoMoveAnimation();
+      ui.moveFeedback=null;
+      return;
+    }
+    if(latest.key===ui.lastSeenPlayKey)return;
     ui.lastSeenPlayKey=latest.key;
     cancelDominoMoveAnimation();
-    const event=latest.event;
-    // Un changement de manche efface naturellement le dernier coup :
-    // le domino final de la manche précédente n'existe plus sur la nouvelle chaîne.
-    if(Number(event.round)!==Number(g?.state?.round)||!isOpponentMove(event.side)){
+    if(!isOpponentMove(event.side)){
       ui.moveFeedback=null;
       return;
     }
