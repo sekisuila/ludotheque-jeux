@@ -3155,13 +3155,16 @@ function handleAwaleMove(index) {
   awaleSyncMoveFeedback({animate:true,revealLatest:true});
   renderAwale();
   if(!awale.over&&awaleUi?.mode==="ai"&&awale.player===1){
+    const humanSeeds=Number(awale.lastMove?.seedsPicked||0);
+    const humanCaptured=Number(awale.lastMove?.capturedSeeds||0);
+    const aiDelay=Math.min(1450,Math.max(620,360+humanSeeds*55+(humanCaptured?220:0)));
     setTimeout(()=>{
       const move=chooseAiMove(awale,awaleUi.aiLevel);
       if(move!==null) awale=applyAwaleMove(awale,move,true);
       finishOrContinue();
       awaleSyncMoveFeedback({animate:true,revealLatest:true});
       renderAwale();
-    },420);
+    },aiDelay);
   }
 }
 
