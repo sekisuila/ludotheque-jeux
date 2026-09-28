@@ -850,6 +850,7 @@ function chessRenderGameResult() {
   const text=document.getElementById("chessGameResultText");
   const again=document.getElementById("chessResultNew");
   const home=document.getElementById("chessResultHome");
+  const analyse=document.getElementById("chessResultAnalyze");
   const winner=result.winner;
 
   box.hidden=false;
@@ -869,7 +870,48 @@ function chessRenderGameResult() {
       again.disabled=false;
     }
   }
+  if(analyse){
+    analyse.hidden=!chessUi.game?.history?.length;
+    analyse.disabled=!chessUi.game?.history?.length;
+  }
   if(home)home.disabled=false;
+}
+
+function chessReplaySnapshot(){
+  if(!chessUi?.game)return null;
+  return JSON.parse(JSON.stringify({
+    state:chessUi.game.state,
+    history:chessUi.game.history,
+    positionHistory:chessUi.game.positionHistory
+  }));
+}
+
+function chessAnalysisNames(){
+  if(chessUi?.mode==="online"){
+    return{
+      whiteName:chessUi.online?.players?.white?.username||"Blancs",
+      blackName:chessUi.online?.players?.black?.username||"Noirs"
+    };
+  }
+  if(chessUi?.mode==="ai"){
+    const engine=document.getElementById("chessAiLevel")?.selectedOptions?.[0]?.textContent||"IA";
+    return chessUi.humanColor==="w"
+      ?{whiteName:"Vous",blackName:engine}
+      :{whiteName:engine,blackName:"Vous"};
+  }
+  return{whiteName:"Blancs",blackName:"Noirs"};
+}
+
+function chessStartCurrentAnalysis(){
+  const panel=document.getElementById("chessPostAnalysis");
+  const replay=chessReplaySnapshot();
+  if(!panel||!replay?.history?.length)return;
+  const names=chessAnalysisNames();
+  window.StrathasardChessAnalysis?.mount?.(panel,replay,{
+    title:"Analyse de la partie terminée",
+    subtitle:`${names.whiteName} — ${names.blackName}`,
+    ...names
+  });
 }
 
 function chessRestartFromResult() {
@@ -1297,6 +1339,10 @@ function initChess() {
     aiRatingInvalidReason:"",
     aiRatedLevel:null,
     aiGameId:null,
+    aiArchiveLevel:null,
+    aiArchiveEligible:false,
+    aiArchiveSubmitted:false,
+    aiArchiveSubmitting:false,
     online: chessEmptyOnlineState()
   };
 
@@ -1335,9 +1381,12 @@ function initChess() {
         chessUi.aiRatedLevel=chessUi.aiLevel;
         chessUi.aiRatingEligible=chessLevelUsesStockfish(chessUi.aiRatedLevel);
         chessUi.aiRatingInvalidReason="";
+        chessUi.aiArchiveLevel=chessUi.aiLevel;
+        chessUi.aiArchiveEligible=true;
       }else if(previous!==chessUi.aiLevel){
         chessUi.aiRatingEligible=false;
         chessUi.aiRatingInvalidReason="Niveau IA changé en cours de partie : cette partie ne comptera pas pour l’Elo IA.";
+        chessUi.aiArchiveEligible=false;
       }
     }
     chessRenderContext();
@@ -1369,6 +1418,7 @@ function initChess() {
   document.getElementById("acceptChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(true));
   document.getElementById("declineChessProposal")?.addEventListener("click", () => chessRespondToOnlineProposal(false));
   document.getElementById("chessResultNew")?.addEventListener("click", chessRestartFromResult);
+  document.getElementById("chessResultAnalyze")?.addEventListener("click",chessStartCurrentAnalysis);
   document.getElementById("chessResultHome")?.addEventListener("click",chessBackHomeFromResult);
   document.getElementById("promotionPicker").addEventListener("click", e => {
     const piece = e.target.closest("button")?.dataset.promotion;
@@ -1385,9 +1435,14 @@ function newChessGame() {
   chessCancelMoveAnimation();
   chessUi.moveFeedback=null;
   chessUi.lastSeenMoveKey=null;
+  window.StrathasardChessAnalysis?.clear?.(document.getElementById("chessPostAnalysis"));
   chessUi.aiGameId=crypto.randomUUID();
   chessUi.aiRatedLevel=chessUi.aiLevel;
   chessUi.aiRatingEligible=chessUi.mode==="ai"&&chessLevelUsesStockfish(chessUi.aiRatedLevel);
+  chessUi.aiArchiveLevel=chessUi.aiLevel;
+  chessUi.aiArchiveEligible=chessUi.mode==="ai";
+  chessUi.aiArchiveSubmitted=false;
+  chessUi.aiArchiveSubmitting=false;
   chessUi.aiRatingSubmitted=false;
   chessUi.aiRatingSubmitting=false;
   chessUi.aiRatingUpdate=null;
@@ -1505,6 +1560,7 @@ function renderChessInfo() {
   chessRenderMoveNotice();
   chessRenderGameResult();
   chessRenderAiRatingPanel();
+  chessMaybeArchiveAiGame(localStatus);
   chessMaybeSubmitAiRating(localStatus);
 
   document.getElementById("undoChess").disabled = chessUi.mode === "online" || chessUi.thinking || localStatus.over || !moves.length || (chessUi.mode === "ai" && moves.length < 2);
@@ -1678,6 +1734,48 @@ function chessRenderAiRatingPanel(){
   }
 }
 
+function chessAiResultFromStatus(status){
+  let result="draw";
+  if(status?.type==="checkmate"){
+    const winner=chessOpposite(chessUi.game.state.turn);
+    result=winner===chessUi.humanColor?"win":"loss";
+  }
+  return result;
+}
+
+async function chessMaybeArchiveAiGame(status){
+  if(!chessUi||chessUi.mode!=="ai"||!status?.over)return;
+  if(chessUi.aiArchiveSubmitted||chessUi.aiArchiveSubmitting||!chessUi.aiArchiveEligible)return;
+  const api=LudoOnline?.chessAiGames;
+  if(!api)return;
+  const user=await LudoOnline?.me?.().catch(()=>null);
+  if(!user)return;
+
+  const gameId=chessUi.aiGameId;
+  const level=chessUi.aiArchiveLevel||chessUi.aiLevel;
+  const playerColor=chessUi.humanColor;
+  const result=chessAiResultFromStatus(status);
+  const replay=chessReplaySnapshot();
+  if(!replay?.history?.length)return;
+
+  chessUi.aiArchiveSubmitting=true;
+  try{
+    await api.archive({
+      clientGameId:gameId,
+      engineLevel:level,
+      playerColor,
+      result,
+      reason:status.type,
+      replay
+    });
+    if(chessUi.aiGameId===gameId)chessUi.aiArchiveSubmitted=true;
+  }catch(error){
+    console.warn("Archive de la partie IA impossible :",error);
+  }finally{
+    if(chessUi.aiGameId===gameId)chessUi.aiArchiveSubmitting=false;
+  }
+}
+
 async function chessMaybeSubmitAiRating(status){
   if(!chessUi||chessUi.mode!=="ai"||!status?.over)return;
   if(chessUi.aiRatingSubmitted||chessUi.aiRatingSubmitting)return;
@@ -1693,11 +1791,7 @@ async function chessMaybeSubmitAiRating(status){
   const submittedColor=chessUi.humanColor;
   const submittedReason=status.type;
   const submittedMoveCount=chessUi.game.history.length;
-  let submittedResult="draw";
-  if(status.type==="checkmate"){
-    const winner=chessOpposite(chessUi.game.state.turn);
-    submittedResult=winner===submittedColor?"win":"loss";
-  }
+  const submittedResult=chessAiResultFromStatus(status);
 
   const user=await LudoOnline?.me?.().catch(()=>null);
   if(!user||!LudoOnline?.chessAiRating){
