@@ -994,6 +994,81 @@ async function recordChessAiResult(request,env,user){
   },201);
 }
 
+const CHESS_AI_LEVEL_LABELS={
+  easy:"Débutant — IA Strathasard",
+  medium:"Facile — IA Strathasard",
+  hard:"Intermédiaire — IA Strathasard",
+  "sf-1320":"Stockfish 1320","sf-1400":"Stockfish 1400","sf-1600":"Stockfish 1600",
+  "sf-1800":"Stockfish 1800","sf-2000":"Stockfish 2000","sf-2200":"Stockfish 2200",
+  "sf-2400":"Stockfish 2400","sf-2600":"Stockfish 2600","sf-2800":"Stockfish 2800",
+  "sf-3000":"Stockfish 3000","sf-max":"Stockfish maximum"
+};
+
+function validChessReplay(replay){
+  return replay && typeof replay==="object" && replay.state && Array.isArray(replay.history) && replay.history.length<=1000;
+}
+
+async function archiveChessAiGame(request,env,user){
+  const body=await readJson(request);
+  const clientGameId=String(body?.clientGameId||"").trim();
+  const engineLevel=String(body?.engineLevel||"").trim();
+  const playerColor=body?.playerColor==="b"?"b":body?.playerColor==="w"?"w":null;
+  const result=["win","draw","loss"].includes(body?.result)?body.result:null;
+  const reason=String(body?.reason||"unknown").slice(0,40);
+  const replay=body?.replay;
+
+  if(!/^[0-9a-f-]{20,80}$/i.test(clientGameId)) return json({error:"Identifiant de partie invalide."},400);
+  if(!CHESS_AI_LEVEL_LABELS[engineLevel]) return json({error:"Niveau IA invalide."},400);
+  if(!playerColor||!result||!validChessReplay(replay)) return json({error:"Archive de partie invalide."},400);
+
+  const replayJson=JSON.stringify(replay);
+  if(replayJson.length>1500000) return json({error:"Historique de partie trop volumineux."},413);
+
+  const existing=await env.DB.prepare("SELECT id FROM chess_ai_games WHERE user_id=? AND client_game_id=?")
+    .bind(user.id,clientGameId).first();
+  const id=existing?.id||crypto.randomUUID();
+
+  await env.DB.prepare(`
+    INSERT INTO chess_ai_games(
+      id,client_game_id,user_id,engine_level,engine_label,player_color,result,reason,game_json
+    ) VALUES(?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(user_id,client_game_id) DO UPDATE SET
+      engine_level=excluded.engine_level,
+      engine_label=excluded.engine_label,
+      player_color=excluded.player_color,
+      result=excluded.result,
+      reason=excluded.reason,
+      game_json=excluded.game_json
+  `).bind(id,clientGameId,user.id,engineLevel,CHESS_AI_LEVEL_LABELS[engineLevel],playerColor,result,reason,replayJson).run();
+
+  return json({ok:true,id},existing?200:201);
+}
+
+async function listChessAiGames(env,user){
+  const {results=[]}=await env.DB.prepare(`
+    SELECT id,client_game_id,engine_level,engine_label,player_color,result,reason,created_at,
+      CASE WHEN game_json IS NULL THEN 0 ELSE 1 END AS replay_available
+    FROM chess_ai_games WHERE user_id=? ORDER BY created_at DESC LIMIT 200
+  `).bind(user.id).all();
+  return json({games:results.map(r=>({
+    id:r.id,clientGameId:r.client_game_id,engineLevel:r.engine_level,engineLabel:r.engine_label,
+    playerColor:r.player_color,result:r.result,reason:r.reason,createdAt:r.created_at,replayAvailable:Boolean(r.replay_available)
+  }))});
+}
+
+async function chessAiGameById(env,user,id){
+  const r=await env.DB.prepare(`
+    SELECT id,client_game_id,engine_level,engine_label,player_color,result,reason,created_at,game_json
+    FROM chess_ai_games WHERE id=? AND user_id=?
+  `).bind(id,user.id).first();
+  if(!r) return json({error:"Partie contre l’IA introuvable."},404);
+  return json({game:{
+    id:r.id,clientGameId:r.client_game_id,engineLevel:r.engine_level,engineLabel:r.engine_label,
+    playerColor:r.player_color,result:r.result,reason:r.reason,createdAt:r.created_at,
+    replay:r.game_json?JSON.parse(r.game_json):null
+  }});
+}
+
 async function chessLeaderboard(request,env){
   const url=new URL(request.url);
   const category=["bullet","blitz","rapid","classical"].includes(url.searchParams.get("category"))
@@ -1380,6 +1455,10 @@ async function api(request,env){
   if(p==="/api/ratings/chess"&&request.method==="GET") return chessLeaderboard(request,env);
   if(p==="/api/ratings/chess-ai/me"&&request.method==="GET") return myChessAiRating(env,user);
   if(p==="/api/chess/ai-result"&&request.method==="POST") return recordChessAiResult(request,env,user);
+  if(p==="/api/chess/ai-games"&&request.method==="GET") return listChessAiGames(env,user);
+  if(p==="/api/chess/ai-games"&&request.method==="POST") return archiveChessAiGame(request,env,user);
+  const chessAiGameMatch=p.match(/^\/api\/chess\/ai-games\/([0-9a-f-]{36})$/i);
+  if(chessAiGameMatch&&request.method==="GET") return chessAiGameById(env,user,chessAiGameMatch[1]);
   if(p==="/api/ratings/checkers/me"&&request.method==="GET") return myCheckersRatings(request,env,user);
   if(p==="/api/ratings/checkers"&&request.method==="GET") return checkersLeaderboard(request,env);
   if(p==="/api/ratings/go/me"&&request.method==="GET") return myGoRatings(request,env,user);
