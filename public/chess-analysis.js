@@ -215,7 +215,7 @@
       selected=Math.max(0,Math.min(moves.length-1,index));
       const m=moves[selected];
       rows.forEach((row,i)=>row.classList.toggle("selected",i===selected));
-      board.innerHTML=boardHtml(m.after,m.move,m.bestMove);
+      board.innerHTML=boardHtml(m.before,m.move,m.bestMove);
       info.innerHTML=`<strong>${m.number}${m.color==="w"?".":"…"} ${escapeHtml(m.san)} — ${m.quality.label}</strong><span>Évaluation après le coup : ${escapeHtml(m.evalAfter)}</span>${m.bestSan&&m.bestSan!==m.san?`<span>Stockfish préfère <b>${escapeHtml(m.bestSan)}</b> (${escapeHtml(m.evalBefore)} avant le coup).</span>`:"<span>Le coup joué correspond au meilleur choix de Stockfish ou en est très proche.</span>"}`;
       rows[selected]?.scrollIntoView?.({block:"nearest"});
       container.querySelector('[data-analysis-nav="prev"]').disabled=selected===0;
