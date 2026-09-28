@@ -2482,8 +2482,9 @@ function renderChessPlay() {
           <section class="panel chess-help-panel"><h3>Multijoueur en ligne</h3><p>Le créateur choisit sa couleur, la <strong>cadence</strong> et si la partie compte pour le <strong>classement Elo</strong>. Une cadence comme <strong>10+5</strong> signifie 10 minutes au départ et 5 secondes ajoutées après chaque coup joué.</p><p>Pendant la partie, chacun peut <strong>abandonner</strong> ou <strong>proposer la nulle</strong>. Une revanche acceptée inverse automatiquement les couleurs tout en conservant la même cadence.</p><p>La pendule et la légalité des coups sont contrôlées côté Cloudflare : fermer l’onglet n’arrête donc pas le temps.</p><div class="note"><strong>Classements :</strong> Bullet, Blitz, Rapide et Classique disposent chacun de leur propre Elo, avec 1200 comme valeur de départ.</div></section>
           <section class="panel chess-help-panel"><h3>Niveaux d’IA</h3><p><strong>IA Strathasard :</strong> trois niveaux pédagogiques.</p><p><strong>Stockfish :</strong> niveaux gradués d’environ 1320 Elo jusqu’à la force maximale.</p><div class="note">Les parties terminées contre Stockfish alimentent un <strong>Elo IA personnel</strong>, séparé de l’Elo multijoueur. Une partie avec annulation de coup, changement de niveau en cours de partie ou repli sur l’IA interne ne compte pas.</div></section>
         </aside>
+
+        <section id="chessPostAnalysis" class="chess-analysis-panel panel" hidden></section>
       </div>
-      <section id="chessPostAnalysis" class="chess-analysis-panel panel" hidden></section>
     </div>
   `;
 
