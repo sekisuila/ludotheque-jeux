@@ -111,7 +111,7 @@
   function cancel(){
     if(activeJob)activeJob.cancelled=true;
     activeJob=null;
-    try{window.StrathasardStockfish?.stop?.();}catch{}
+    try{window.StrathasardStockfish?.destroy?.();}catch{}
   }
 
   async function analyseReplay(replay,onProgress,job){
