@@ -4164,3 +4164,163 @@ main { min-height: calc(100vh - 160px); }
     min-height:240px;
   }
 }
+
+
+/* ============================================================
+   ÉCHECS — disposition d'analyse commune (partie + historique)
+   ============================================================ */
+.chess-analysis-panel,
+.archive-chess-analysis{
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
+}
+
+.chess-analysis-panel .analysis-eval-chart,
+.archive-chess-analysis .analysis-eval-chart{
+  width:100% !important;
+  max-width:none !important;
+  margin:8px 0 20px !important;
+}
+
+.chess-analysis-panel .analysis-chart-wrap,
+.archive-chess-analysis .analysis-chart-wrap{
+  width:100% !important;
+  height:clamp(300px,28vw,420px) !important;
+  min-height:300px !important;
+  aspect-ratio:auto !important;
+}
+
+.chess-analysis-panel .analysis-chart-zero,
+.archive-chess-analysis .analysis-chart-zero{
+  stroke:#2f2a25 !important;
+  stroke-width:4 !important;
+}
+
+.chess-analysis-panel .analysis-chart-zero-label,
+.archive-chess-analysis .analysis-chart-zero-label{
+  fill:#2f2a25;
+  font-size:25px;
+  font-weight:900;
+}
+
+.chess-analysis-panel .analysis-chart-grid line,
+.archive-chess-analysis .analysis-chart-grid line{
+  stroke:#c8c0b3;
+  stroke-width:1.35;
+}
+
+.chess-analysis-panel .analysis-chart-grid text,
+.archive-chess-analysis .analysis-chart-grid text{
+  font-size:21px;
+  font-weight:700;
+}
+
+.archive-chess-analysis .chess-analysis-workspace{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:14px !important;
+  width:100%;
+  min-width:0;
+}
+
+.archive-chess-analysis .analysis-board-column{
+  grid-column:1 !important;
+  width:min(100%,620px) !important;
+  min-width:0;
+  justify-self:center !important;
+}
+
+.archive-chess-analysis .analysis-board{
+  display:grid;
+  grid-template-columns:repeat(8,minmax(0,1fr)) !important;
+  grid-template-rows:repeat(8,minmax(0,1fr)) !important;
+  width:min(100%,620px) !important;
+  height:auto !important;
+  aspect-ratio:1 / 1 !important;
+  margin-inline:auto !important;
+  overflow:hidden !important;
+}
+
+.archive-chess-analysis .analysis-square{
+  width:100% !important;
+  height:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  aspect-ratio:1 / 1;
+  overflow:hidden;
+}
+
+.archive-chess-analysis .analysis-move-list{
+  grid-column:1 !important;
+  width:min(100%,900px);
+  min-width:0;
+  justify-self:center;
+  max-height:500px;
+}
+
+/* Analyse lancée juste après une partie : le plateau d'analyse reprend
+   exactement la colonne centrale du plateau de jeu. */
+@media (min-width:1180px){
+  #chessPostAnalysis .chess-analysis-workspace{
+    display:grid !important;
+    grid-template-columns:minmax(220px,260px) minmax(520px,760px) minmax(260px,310px) !important;
+    gap:10px 14px !important;
+    width:100%;
+    min-width:0;
+    justify-content:center;
+  }
+  #chessPostAnalysis .analysis-board-column{
+    grid-column:2 !important;
+    width:100% !important;
+    justify-self:center !important;
+  }
+  #chessPostAnalysis .analysis-board{
+    width:min(100%,620px) !important;
+  }
+  #chessPostAnalysis .analysis-move-list{
+    grid-column:3 !important;
+    min-width:0;
+    max-height:620px;
+  }
+}
+
+@media (min-width:1051px) and (max-width:1179px){
+  #chessPostAnalysis .chess-analysis-workspace{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) 300px !important;
+    gap:10px 14px !important;
+  }
+  #chessPostAnalysis .analysis-board-column{
+    grid-column:1 !important;
+    width:min(100%,620px) !important;
+    justify-self:center !important;
+  }
+  #chessPostAnalysis .analysis-move-list{
+    grid-column:2 !important;
+    min-width:0;
+  }
+}
+
+@media (max-width:1050px){
+  #chessPostAnalysis .chess-analysis-workspace{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+  }
+  #chessPostAnalysis .analysis-board-column,
+  #chessPostAnalysis .analysis-move-list{
+    grid-column:1 !important;
+  }
+  #chessPostAnalysis .analysis-board-column{
+    width:min(100%,620px) !important;
+    justify-self:center !important;
+  }
+}
+
+@media (max-width:620px){
+  .chess-analysis-panel .analysis-chart-wrap,
+  .archive-chess-analysis .analysis-chart-wrap{
+    height:260px !important;
+    min-height:260px !important;
+  }
+}
