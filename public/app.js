@@ -1070,8 +1070,10 @@ function renderChessArchiveBoard(){
   panel.querySelector('[data-step="end"]').disabled=chessArchiveReplay.ply===max;
 }
 function closeChessArchiveReplay(){
+  window.StrathasardChessAnalysis?.cancel?.();
   chessArchiveReplay={game:null,ply:0};
-  const panel=document.getElementById("chessArchiveReplay"); if(panel) panel.hidden=true;
+  const panel=document.getElementById("chessArchiveReplay");
+  if(panel){panel.hidden=true;panel.innerHTML="";}
 }
 function chessAiArchiveScore(game){
   if(game?.result==="draw")return"1/2-1/2";
