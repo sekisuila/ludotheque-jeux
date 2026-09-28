@@ -77,11 +77,25 @@
         continue;
       }
 
-      if (pending?.kind === "move" && msg.startsWith("bestmove ")) {
+      if (pending?.kind === "analysis" && msg.startsWith("info ")) {
+        const scoreMatch=msg.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+        if(scoreMatch){
+          const depthMatch=msg.match(/\bdepth\s+(\d+)/);
+          const pvMatch=msg.match(/\bpv\s+([^\r\n]+)/);
+          pending.analysis={
+            score:{type:scoreMatch[1],value:Number(scoreMatch[2])},
+            depth:depthMatch?Number(depthMatch[1]):null,
+            pv:pvMatch?pvMatch[1].trim().split(/\s+/):[]
+          };
+        }
+        continue;
+      }
+
+      if ((pending?.kind === "move" || pending?.kind === "analysis") && msg.startsWith("bestmove ")) {
         const best = msg.split(/\s+/)[1] || null;
-        const { resolve } = pending;
+        const { resolve, kind, analysis } = pending;
         pending = null;
-        resolve(best);
+        resolve(kind==="analysis"?{bestmove:best,score:analysis?.score||null,depth:analysis?.depth||null,pv:analysis?.pv||[]}:best);
       }
     }
   }
@@ -110,6 +124,26 @@
         kind,
         resolve: value => { clearTimeout(timer); resolve(value); },
         reject: error => { clearTimeout(timer); reject(error); }
+      };
+      worker.postMessage(command);
+    });
+  }
+
+  function waitForAnalysis(command, timeoutMs = 12000) {
+    return new Promise((resolve,reject)=>{
+      if(!worker) return reject(new Error("Stockfish n’est pas chargé."));
+      if(pending) return reject(new Error("Stockfish est déjà occupé."));
+      const timer=setTimeout(()=>{
+        if(pending?.kind==="analysis"){
+          pending=null;
+          reject(new Error("Stockfish ne répond pas pendant l’analyse."));
+        }
+      },timeoutMs);
+      pending={
+        kind:"analysis",
+        analysis:null,
+        resolve:value=>{clearTimeout(timer);resolve(value);},
+        reject:error=>{clearTimeout(timer);reject(error);}
       };
       worker.postMessage(command);
     });
@@ -152,6 +186,16 @@
     return parseUciMove(game, bestmove);
   }
 
+  async function analyseState(state, options = {}) {
+    await ensureReady();
+    worker.postMessage("setoption name UCI_LimitStrength value false");
+    worker.postMessage("setoption name Skill Level value 20");
+    await waitFor("ready","isready",10000);
+    worker.postMessage(`position fen ${stateToFen(state)}`);
+    const movetime=Math.max(80,Math.min(2000,Math.round(Number(options.movetime)||220)));
+    return waitForAnalysis(`go movetime ${movetime}`,Math.max(12000,movetime+8000));
+  }
+
   function stop() {
     if (worker) {
       try { worker.postMessage("stop"); } catch {}
@@ -168,6 +212,7 @@
     MAX_ELO,
     stateToFen,
     chooseMove,
+    analyseState,
     stop,
     destroy
   };
