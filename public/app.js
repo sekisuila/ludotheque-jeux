@@ -1545,11 +1545,11 @@ const ACCOUNT_HISTORY_GAMES = [
   {
     id: "echecs",
     label: "Échecs",
-    description: "Retrouvez vos parties multijoueurs terminées et rejouez-les coup par coup.",
+    description: "Retrouvez vos parties multijoueurs et vos parties contre l’IA, rejouez-les coup par coup et lancez une analyse Stockfish.",
     listId: "chessGameArchiveList",
     replayId: "chessArchiveReplay",
     replayClass: "chess-archive-replay",
-    note: "Les parties d’Échecs jouées avant la V6.6 peuvent apparaître sans relecture complète."
+    note: "Les anciennes parties multijoueurs peuvent apparaître sans relecture complète. Les parties contre l’IA sont archivées à partir de cette version lorsque vous êtes connecté."
   },
   {
     id: "dames",
@@ -2408,6 +2408,7 @@ function renderChessPlay() {
               <p id="chessGameResultText"></p>
               <div class="chess-game-result-actions">
                 <button id="chessResultNew" class="btn small" type="button">Nouvelle partie</button>
+                <button id="chessResultAnalyze" class="btn small" type="button">Analyser avec Stockfish</button>
                 <button id="chessResultHome" class="btn outline small" type="button">Retour à l’accueil</button>
               </div>
             </div>
@@ -2423,6 +2424,7 @@ function renderChessPlay() {
           <section class="panel chess-help-panel"><h3>Niveaux d’IA</h3><p><strong>IA Strathasard :</strong> trois niveaux pédagogiques.</p><p><strong>Stockfish :</strong> niveaux gradués d’environ 1320 Elo jusqu’à la force maximale.</p><div class="note">Les parties terminées contre Stockfish alimentent un <strong>Elo IA personnel</strong>, séparé de l’Elo multijoueur. Une partie avec annulation de coup, changement de niveau en cours de partie ou repli sur l’IA interne ne compte pas.</div></section>
         </aside>
       </div>
+      <section id="chessPostAnalysis" class="chess-analysis-panel panel" hidden></section>
     </div>
   `;
 
