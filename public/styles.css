@@ -4363,3 +4363,92 @@ main { min-height: calc(100vh - 160px); }
     width:min(100%,560px) !important;
   }
 }
+
+
+/* ============================================================
+   ÉCHECS — analyse compacte : plateau réduit + coups à droite
+   ============================================================ */
+.chess-analysis-panel .analysis-chart-wrap,
+.archive-chess-analysis .analysis-chart-wrap{
+  height:clamp(240px,22vw,320px) !important;
+  min-height:240px !important;
+}
+
+/* Plateau d'analyse un peu plus compact dans tous les contextes. */
+.chess-analysis-panel .analysis-board-column,
+.archive-chess-analysis .analysis-board-column{
+  width:min(100%,500px) !important;
+}
+
+.chess-analysis-panel .analysis-board,
+.archive-chess-analysis .analysis-board{
+  width:min(100%,500px) !important;
+}
+
+/* Historique : plateau à gauche, liste des coups à droite sur PC. */
+@media (min-width:900px){
+  #chessArchiveReplay .archive-chess-analysis .chess-analysis-workspace{
+    display:grid !important;
+    grid-template-columns:minmax(380px,500px) minmax(300px,1fr) !important;
+    gap:18px !important;
+    align-items:start;
+    justify-content:center;
+    width:min(100%,1080px);
+    margin-inline:auto;
+  }
+
+  #chessArchiveReplay .archive-chess-analysis .analysis-board-column{
+    grid-column:1 !important;
+    justify-self:center !important;
+  }
+
+  #chessArchiveReplay .archive-chess-analysis .analysis-move-list{
+    grid-column:2 !important;
+    width:100% !important;
+    max-height:500px;
+    justify-self:stretch !important;
+  }
+}
+
+/* Analyse immédiate : on conserve la liste à droite du plateau,
+   mais avec un plateau plus petit pour voir davantage le graphique. */
+@media (min-width:1180px){
+  #chessPostAnalysis .analysis-board-column{
+    width:min(100%,500px) !important;
+  }
+
+  #chessPostAnalysis .analysis-board{
+    width:min(100%,500px) !important;
+  }
+
+  #chessPostAnalysis .analysis-move-list{
+    max-height:500px;
+  }
+}
+
+@media (min-width:1051px) and (max-width:1179px){
+  #chessPostAnalysis .analysis-board-column{
+    width:min(100%,500px) !important;
+  }
+
+  #chessPostAnalysis .analysis-board{
+    width:min(100%,500px) !important;
+  }
+}
+
+@media (max-width:899px){
+  .chess-analysis-panel .analysis-chart-wrap,
+  .archive-chess-analysis .analysis-chart-wrap{
+    height:220px !important;
+    min-height:220px !important;
+  }
+
+  .archive-chess-analysis .chess-analysis-workspace{
+    grid-template-columns:1fr !important;
+  }
+
+  .archive-chess-analysis .analysis-move-list{
+    grid-column:1 !important;
+    max-height:400px;
+  }
+}
