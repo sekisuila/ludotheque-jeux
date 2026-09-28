@@ -176,6 +176,55 @@
     return{moves:side.length,best:count("best"),good:count("good"),inaccuracy:count("inaccuracy"),mistake:count("mistake"),blunder:count("blunder")};
   }
 
+  function graphValue(cp){
+    if(cp==null||!Number.isFinite(Number(cp)))return 0;
+    return Math.max(-800,Math.min(800,Number(cp)));
+  }
+
+  function analysisGraphHtml(result){
+    const moves=result?.moves||[];
+    if(!moves.length)return "";
+    const initialState=result?.states?.[0];
+    const initialScore=result?.positionAnalysis?.[0]?.score;
+    const initialCp=whiteEvalCp(initialState,initialScore);
+    const values=[initialCp,...moves.map(m=>m.whiteCpAfter)].map(graphValue);
+    const width=1000,height=250,padX=36,padTop=25,padBottom=34;
+    const innerW=width-padX*2,innerH=height-padTop-padBottom,midY=padTop+innerH/2;
+    const maxAbs=Math.max(100,...values.map(v=>Math.abs(v)));
+    const visualMax=Math.min(800,Math.max(200,Math.ceil(maxAbs/100)*100));
+    const xFor=i=>padX+(values.length<=1?0:i/(values.length-1)*innerW);
+    const yFor=value=>midY-(Math.max(-visualMax,Math.min(visualMax,value))/visualMax)*(innerH/2);
+    const line=values.map((v,i)=>`${i?"L":"M"} ${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+    const points=moves.map((m,i)=>{
+      const x=xFor(i+1),y=yFor(values[i+1]);
+      return `<button type="button" class="analysis-chart-point" data-analysis-chart-point="${i}" style="--chart-x:${(x/width*100).toFixed(3)}%;--chart-y:${(y/height*100).toFixed(3)}%" aria-label="Coup ${m.number}${m.color==="w"?".":"…"} ${escapeHtml(m.san)}, évaluation ${escapeHtml(m.evalAfter)}"></button>`;
+    }).join("");
+    const labels=[visualMax,visualMax/2,0,-visualMax/2,-visualMax].map(cp=>{
+      const y=yFor(cp),pawns=cp/100;
+      return `<g class="analysis-chart-grid"><line x1="${padX}" y1="${y}" x2="${width-padX}" y2="${y}"></line><text x="8" y="${y+4}">${pawns>0?"+":""}${pawns.toFixed(pawns%1?1:0)}</text></g>`;
+    }).join("");
+    return `
+      <section class="analysis-eval-chart">
+        <div class="analysis-chart-head">
+          <div><strong>Évolution de la partie</strong><span>Au-dessus de 0 : avantage aux Blancs · en dessous : avantage aux Noirs</span></div>
+          <span class="analysis-chart-scale">Échelle limitée à ±${(visualMax/100).toFixed(visualMax%100?1:0)}</span>
+        </div>
+        <div class="analysis-chart-wrap" data-analysis-chart>
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Graphique de l’évolution de l’évaluation Stockfish">
+            <rect class="analysis-chart-white-zone" x="${padX}" y="${padTop}" width="${innerW}" height="${innerH/2}"></rect>
+            <rect class="analysis-chart-black-zone" x="${padX}" y="${midY}" width="${innerW}" height="${innerH/2}"></rect>
+            ${labels}
+            <line class="analysis-chart-zero" x1="${padX}" y1="${midY}" x2="${width-padX}" y2="${midY}"></line>
+            <path class="analysis-chart-line" d="${line}"></path>
+            <text class="analysis-chart-side-label white" x="${width-padX-4}" y="${padTop+15}" text-anchor="end">Blancs</text>
+            <text class="analysis-chart-side-label black" x="${width-padX-4}" y="${height-padBottom-7}" text-anchor="end">Noirs</text>
+          </svg>
+          ${points}
+          <span class="analysis-chart-cursor" data-analysis-chart-cursor></span>
+        </div>
+      </section>`;
+  }
+
   function renderFinished(container,replay,result,meta){
     const moves=result.moves,white=summaryFor(moves,"w"),black=summaryFor(moves,"b");
     container.innerHTML=`
@@ -187,6 +236,7 @@
         <div><span>${escapeHtml(meta?.whiteName||"Blancs")}</span><strong>${white.blunder} gaffe${white.blunder>1?"s":""}</strong><small>${white.mistake} erreur${white.mistake>1?"s":""} · ${white.inaccuracy} imprécision${white.inaccuracy>1?"s":""}</small></div>
         <div><span>${escapeHtml(meta?.blackName||"Noirs")}</span><strong>${black.blunder} gaffe${black.blunder>1?"s":""}</strong><small>${black.mistake} erreur${black.mistake>1?"s":""} · ${black.inaccuracy} imprécision${black.inaccuracy>1?"s":""}</small></div>
       </div>
+      ${analysisGraphHtml(result)}
       <div class="chess-analysis-workspace">
         <div class="analysis-board-column">
           <div class="analysis-board" data-analysis-board></div>
@@ -211,10 +261,17 @@
     const board=container.querySelector("[data-analysis-board]");
     const info=container.querySelector("[data-analysis-info]");
     const rows=[...container.querySelectorAll("[data-analysis-move]")];
+    const chartPoints=[...container.querySelectorAll("[data-analysis-chart-point]")];
+    const chartCursor=container.querySelector("[data-analysis-chart-cursor]");
     const show=index=>{
       selected=Math.max(0,Math.min(moves.length-1,index));
       const m=moves[selected];
       rows.forEach((row,i)=>row.classList.toggle("selected",i===selected));
+      chartPoints.forEach((point,i)=>point.classList.toggle("selected",i===selected));
+      if(chartCursor&&chartPoints[selected]){
+        chartCursor.style.left=chartPoints[selected].style.getPropertyValue("--chart-x");
+        chartCursor.hidden=false;
+      }
       board.innerHTML=boardHtml(m.before,m.move,m.bestMove);
       info.innerHTML=`<strong>${m.number}${m.color==="w"?".":"…"} ${escapeHtml(m.san)} — ${m.quality.label}</strong><span>Évaluation après le coup : ${escapeHtml(m.evalAfter)}</span>${m.bestSan&&m.bestSan!==m.san?`<span>Stockfish préfère <b>${escapeHtml(m.bestSan)}</b> (${escapeHtml(m.evalBefore)} avant le coup).</span>`:"<span>Le coup joué correspond au meilleur choix de Stockfish ou en est très proche.</span>"}`;
       rows[selected]?.scrollIntoView?.({block:"nearest"});
@@ -222,6 +279,7 @@
       container.querySelector('[data-analysis-nav="next"]').disabled=selected===moves.length-1;
     };
     rows.forEach(row=>row.addEventListener("click",()=>show(Number(row.dataset.analysisMove))));
+    chartPoints.forEach(point=>point.addEventListener("click",()=>show(Number(point.dataset.analysisChartPoint))));
     container.querySelector('[data-analysis-nav="prev"]')?.addEventListener("click",()=>show(selected-1));
     container.querySelector('[data-analysis-nav="next"]')?.addEventListener("click",()=>show(selected+1));
     container.querySelector("[data-analysis-close]")?.addEventListener("click",()=>{cancel();container.hidden=true;container.innerHTML="";});

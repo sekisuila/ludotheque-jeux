@@ -3887,3 +3887,143 @@ main { min-height: calc(100vh - 160px); }
   .chess-analysis-head{display:grid}
   .analysis-move-row{grid-template-columns:36px 65px 1fr}
 }
+
+
+/* ============================================================
+   ÉCHECS — corrections analyse : centrage, cases carrées, courbe
+   ============================================================ */
+.chess-analysis-panel{
+  width:100%;
+  margin-left:auto;
+  margin-right:auto;
+}
+.chess-analysis-workspace{
+  grid-template-columns:minmax(220px,1fr) minmax(380px,500px) minmax(220px,1fr);
+  gap:18px;
+}
+.analysis-board-column{
+  grid-column:2;
+  width:100%;
+  min-width:0;
+  justify-self:center;
+}
+.analysis-board{
+  grid-template-columns:repeat(8,minmax(0,1fr));
+  grid-template-rows:repeat(8,minmax(0,1fr));
+  width:min(100%,500px);
+  aspect-ratio:1 / 1;
+  margin-inline:auto;
+  overflow:hidden;
+}
+.analysis-square{
+  width:100%;
+  height:100%;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+}
+.analysis-move-list{
+  grid-column:3;
+  min-width:0;
+}
+
+.analysis-eval-chart{
+  display:grid;
+  gap:8px;
+  width:min(100%,980px);
+  margin:4px auto 18px;
+  padding:10px 12px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#faf8f2;
+}
+.analysis-chart-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.analysis-chart-head>div{display:grid;gap:2px}
+.analysis-chart-head strong{font-size:.9rem}
+.analysis-chart-head span{font-size:.73rem;color:var(--muted)}
+.analysis-chart-scale{flex:0 0 auto;white-space:nowrap;font-weight:800}
+.analysis-chart-wrap{
+  position:relative;
+  width:100%;
+  aspect-ratio:4 / 1;
+  min-height:150px;
+  overflow:hidden;
+  border-radius:9px;
+  border:1px solid #d6d0c5;
+  background:#fff;
+}
+.analysis-chart-wrap svg{display:block;width:100%;height:100%}
+.analysis-chart-white-zone{fill:#fbfbf8}
+.analysis-chart-black-zone{fill:#f0eee9}
+.analysis-chart-grid line{stroke:#d8d3c9;stroke-width:1}
+.analysis-chart-grid text{fill:#827b70;font-size:20px}
+.analysis-chart-zero{stroke:#6e675d;stroke-width:2}
+.analysis-chart-line{
+  fill:none;
+  stroke:#2f6f91;
+  stroke-width:5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.analysis-chart-side-label{fill:#6e675d;font-size:21px;font-weight:800}
+.analysis-chart-point{
+  position:absolute;
+  left:var(--chart-x);
+  top:var(--chart-y);
+  z-index:2;
+  width:12px;
+  height:12px;
+  min-width:12px;
+  min-height:12px;
+  padding:0;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#2f6f91;
+  box-shadow:0 0 0 1px rgba(45,57,65,.35);
+  transform:translate(-50%,-50%);
+  cursor:pointer;
+}
+.analysis-chart-point:hover,
+.analysis-chart-point.selected{
+  width:16px;
+  height:16px;
+  min-width:16px;
+  min-height:16px;
+  box-shadow:0 0 0 2px #2f6f91;
+}
+.analysis-chart-cursor{
+  position:absolute;
+  top:0;
+  bottom:0;
+  z-index:1;
+  width:1px;
+  background:rgba(74,67,58,.35);
+  transform:translateX(-50%);
+  pointer-events:none;
+}
+.analysis-chart-cursor[hidden]{display:none!important}
+
+@media(max-width:1150px){
+  .chess-analysis-workspace{
+    grid-template-columns:minmax(340px,500px) minmax(260px,1fr);
+    justify-content:center;
+  }
+  .analysis-board-column{grid-column:1}
+  .analysis-move-list{grid-column:2}
+}
+@media(max-width:900px){
+  .chess-analysis-workspace{grid-template-columns:1fr}
+  .analysis-board-column{grid-column:1;max-width:520px}
+  .analysis-move-list{grid-column:1;max-height:430px}
+  .analysis-board{margin:auto}
+}
+@media(max-width:560px){
+  .analysis-chart-head{display:grid}
+  .analysis-chart-scale{white-space:normal}
+  .analysis-chart-wrap{aspect-ratio:2 / 1}
+}
