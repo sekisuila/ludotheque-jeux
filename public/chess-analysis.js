@@ -188,7 +188,7 @@
     const initialScore=result?.positionAnalysis?.[0]?.score;
     const initialCp=whiteEvalCp(initialState,initialScore);
     const values=[initialCp,...moves.map(m=>m.whiteCpAfter)].map(graphValue);
-    const width=1000,height=250,padX=36,padTop=25,padBottom=34;
+    const width=1200,height=340,padX=48,padTop=30,padBottom=42;
     const innerW=width-padX*2,innerH=height-padTop-padBottom,midY=padTop+innerH/2;
     const maxAbs=Math.max(100,...values.map(v=>Math.abs(v)));
     const visualMax=Math.min(800,Math.max(200,Math.ceil(maxAbs/100)*100));
@@ -215,6 +215,7 @@
             <rect class="analysis-chart-black-zone" x="${padX}" y="${midY}" width="${innerW}" height="${innerH/2}"></rect>
             ${labels}
             <line class="analysis-chart-zero" x1="${padX}" y1="${midY}" x2="${width-padX}" y2="${midY}"></line>
+            <text class="analysis-chart-zero-label" x="${padX+8}" y="${midY-9}">0 — égalité</text>
             <path class="analysis-chart-line" d="${line}"></path>
             <text class="analysis-chart-side-label white" x="${width-padX-4}" y="${padTop+15}" text-anchor="end">Blancs</text>
             <text class="analysis-chart-side-label black" x="${width-padX-4}" y="${height-padBottom-7}" text-anchor="end">Noirs</text>
@@ -261,6 +262,7 @@
     const board=container.querySelector("[data-analysis-board]");
     const info=container.querySelector("[data-analysis-info]");
     const rows=[...container.querySelectorAll("[data-analysis-move]")];
+    const moveList=container.querySelector("[data-analysis-list]");
     const chartPoints=[...container.querySelectorAll("[data-analysis-chart-point]")];
     const chartCursor=container.querySelector("[data-analysis-chart-cursor]");
     const show=index=>{
@@ -274,7 +276,15 @@
       }
       board.innerHTML=boardHtml(m.before,m.move,m.bestMove);
       info.innerHTML=`<strong>${m.number}${m.color==="w"?".":"…"} ${escapeHtml(m.san)} — ${m.quality.label}</strong><span>Évaluation après le coup : ${escapeHtml(m.evalAfter)}</span>${m.bestSan&&m.bestSan!==m.san?`<span>Stockfish préfère <b>${escapeHtml(m.bestSan)}</b> (${escapeHtml(m.evalBefore)} avant le coup).</span>`:"<span>Le coup joué correspond au meilleur choix de Stockfish ou en est très proche.</span>"}`;
-      rows[selected]?.scrollIntoView?.({block:"nearest"});
+      const selectedRow=rows[selected];
+      if(selectedRow&&moveList){
+        const rowTop=selectedRow.offsetTop;
+        const rowBottom=rowTop+selectedRow.offsetHeight;
+        const viewTop=moveList.scrollTop;
+        const viewBottom=viewTop+moveList.clientHeight;
+        if(rowTop<viewTop) moveList.scrollTop=rowTop;
+        else if(rowBottom>viewBottom) moveList.scrollTop=Math.max(0,rowBottom-moveList.clientHeight);
+      }
       container.querySelector('[data-analysis-nav="prev"]').disabled=selected===0;
       container.querySelector('[data-analysis-nav="next"]').disabled=selected===moves.length-1;
     };
@@ -306,7 +316,8 @@
       if(job.cancelled||!container.isConnected)return;
       renderFinished(container,replay,result,meta);
       activeJob=null;
-      container.scrollIntoView?.({behavior:"smooth",block:"start"});
+      const top=container.getBoundingClientRect().top+window.scrollY-16;
+      window.scrollTo({top,left:0,behavior:"smooth"});
     }catch(error){
       if(job.cancelled)return;
       container.innerHTML=`<div class="chess-analysis-head"><div><h3>Analyse impossible</h3><p>${escapeHtml(error.message)}</p></div><button type="button" class="btn outline small" data-analysis-close>Fermer</button></div>`;
