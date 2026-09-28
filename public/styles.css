@@ -4324,3 +4324,42 @@ main { min-height: calc(100vh - 160px); }
     min-height:260px !important;
   }
 }
+
+
+/* ============================================================
+   ÉCHECS — historique : l'analyse occupe toute la largeur
+   ============================================================ */
+@media (min-width:760px){
+  #chessArchiveReplay:not([hidden]){
+    grid-template-rows:auto auto auto auto;
+  }
+
+  #chessArchiveReplay .archive-analysis-actions{
+    grid-column:1/-1 !important;
+    grid-row:3 !important;
+    justify-content:center;
+    margin-top:14px;
+  }
+
+  #chessArchiveReplay .archive-chess-analysis{
+    grid-column:1/-1 !important;
+    grid-row:4 !important;
+    width:100% !important;
+    max-width:none !important;
+    min-width:0;
+    justify-self:stretch;
+  }
+}
+
+/* L'analyse immédiate reste dans la colonne du plateau de jeu,
+   mais le plateau d'analyse est légèrement réduit pour laisser
+   davantage de graphique visible en même temps. */
+@media (min-width:1051px){
+  #chessPostAnalysis .analysis-board-column{
+    width:min(100%,560px) !important;
+  }
+
+  #chessPostAnalysis .analysis-board{
+    width:min(100%,560px) !important;
+  }
+}
