@@ -1144,10 +1144,12 @@ async function loadChessGamesPanel(){
   if(!list || !window.LudoOnline?.chessGames) return;
   list.innerHTML="<p>Chargement des parties…</p>";
   try{
-    const [onlineGames,aiGames]=await Promise.all([
+    const [onlineResult,aiResult]=await Promise.allSettled([
       LudoOnline.chessGames.list(),
       LudoOnline.chessAiGames?.list?.()||Promise.resolve([])
     ]);
+    const onlineGames=onlineResult.status==="fulfilled"?onlineResult.value:[];
+    const aiGames=aiResult.status==="fulfilled"?aiResult.value:[];
     const entries=[
       ...onlineGames.map(game=>({source:"online",game,createdAt:game.createdAt})),
       ...aiGames.map(game=>({source:"ai",game,createdAt:game.createdAt}))
