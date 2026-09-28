@@ -278,12 +278,10 @@
       info.innerHTML=`<strong>${m.number}${m.color==="w"?".":"…"} ${escapeHtml(m.san)} — ${m.quality.label}</strong><span>Évaluation après le coup : ${escapeHtml(m.evalAfter)}</span>${m.bestSan&&m.bestSan!==m.san?`<span>Stockfish préfère <b>${escapeHtml(m.bestSan)}</b> (${escapeHtml(m.evalBefore)} avant le coup).</span>`:"<span>Le coup joué correspond au meilleur choix de Stockfish ou en est très proche.</span>"}`;
       const selectedRow=rows[selected];
       if(selectedRow&&moveList){
-        const rowTop=selectedRow.offsetTop;
-        const rowBottom=rowTop+selectedRow.offsetHeight;
-        const viewTop=moveList.scrollTop;
-        const viewBottom=viewTop+moveList.clientHeight;
-        if(rowTop<viewTop) moveList.scrollTop=rowTop;
-        else if(rowBottom>viewBottom) moveList.scrollTop=Math.max(0,rowBottom-moveList.clientHeight);
+        const listRect=moveList.getBoundingClientRect();
+        const rowRect=selectedRow.getBoundingClientRect();
+        if(rowRect.top<listRect.top) moveList.scrollTop-=listRect.top-rowRect.top;
+        else if(rowRect.bottom>listRect.bottom) moveList.scrollTop+=rowRect.bottom-listRect.bottom;
       }
       container.querySelector('[data-analysis-nav="prev"]').disabled=selected===0;
       container.querySelector('[data-analysis-nav="next"]').disabled=selected===moves.length-1;
