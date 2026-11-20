@@ -1,3 +1,4 @@
+import {newGin, playGin, ginView} from "../public/gin-engine.js";
 import { newGame as newBackgammon, play as playBackgammon, cubeState } from "../public/backgammon-engine.js";
 import { DurableObject } from "cloudflare:workers";
 import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-engine.js";
@@ -54,6 +55,7 @@ export class AbaloneRoom extends DurableObject {
     if(gameType === "awale") return initialAwaleGameState();
     if(gameType === "yams") return initialYamsGameState();
     if(gameType === "421") return initial421GameState();
+    if(gameType === "gin-rummy") return newGin();
     if(gameType === "backgammon") return newBackgammon();
     if(gameType === "dominos") return initialDominoGameState();
     return initialGameState();
@@ -145,14 +147,14 @@ export class AbaloneRoom extends DurableObject {
       if(gameType === "chess") return "b";
       if(gameType === "checkers") return 0;
       if(gameType === "go") return GO_BLACK;
-      if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon") return 0;
+      if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon" || gameType === "gin-rummy") return 0;
       return AB_BLACK;
     }
     if(players.white?.id===userId){
       if(gameType === "chess") return "w";
       if(gameType === "checkers") return 1;
       if(gameType === "go") return GO_WHITE;
-      if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon") return 1;
+      if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon" || gameType === "gin-rummy") return 1;
       return AB_WHITE;
     }
     return null;
@@ -174,7 +176,7 @@ export class AbaloneRoom extends DurableObject {
       if(winner===GO_WHITE) return players.white?.id || null;
       return null;
     }
-    if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon"){
+    if(gameType === "awale" || gameType === "yams" || gameType === "421" || gameType === "dominos" || gameType === "backgammon" || gameType === "gin-rummy"){
       if(winner===0) return players.black?.id || null;
       if(winner===1) return players.white?.id || null;
       return null;
@@ -1374,6 +1376,7 @@ export class AbaloneRoom extends DurableObject {
         else if(body.game==="awale") gameType="awale";
         else if(body.game==="yams") gameType="yams";
         else if(body.game==="421") gameType="421";
+        else if(body.game==="gin-rummy") gameType="gin-rummy";
         else if(body.game==="backgammon") gameType="backgammon";
         else if(body.game==="dominos") gameType="dominos";
         else if(body.game==="checkers-international" || body.game==="checkers-english"){
@@ -1395,7 +1398,7 @@ export class AbaloneRoom extends DurableObject {
         if(gameType==="checkers") await this.ctx.storage.put("checkersVariant",checkersVariant||"international");
         await this.ctx.storage.put("players",players);
         const goOptions={size:Number(body.goSettings?.size||19),komi:Number(body.goSettings?.komi??7.5),scoring:body.goSettings?.scoring||"area"};
-        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():gameType==="421"?initial421GameState():gameType==="backgammon"?newBackgammon():gameType==="dominos"?initialDominoGameState():initialGameState();
+        const initialGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(checkersVariant||"international"):gameType==="go"?initialGoGameState(goOptions):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():gameType==="421"?initial421GameState():gameType==="gin-rummy"?newGin():gameType==="backgammon"?newBackgammon():gameType==="dominos"?initialDominoGameState():initialGameState();
         await this.ctx.storage.put("game",initialGame);
         await this.ctx.storage.put("code",body.code);
         await this.ctx.storage.put("gameNumber",1);
@@ -1450,7 +1453,7 @@ export class AbaloneRoom extends DurableObject {
     if(request.method==="GET" && url.pathname==="/state"){
       const gameType=await this.getGameType();
       return json({
-        gameType,players:await this.getPlayers(),game:await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
+        gameType,players:await this.getPlayers(),game:gameType==="gin-rummy"?ginView(await this.getGame(),null):await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
         clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),ratings:await this.ratingsForGameType(gameType),
         ratingUpdate:await this.getRatingUpdate()
@@ -1472,7 +1475,7 @@ export class AbaloneRoom extends DurableObject {
       server.serializeAttachment({userId,username,side,gameType});
       await this.maybeStartClockForGame(gameType);
       server.send(JSON.stringify({
-        type:"welcome",gameType,side,players,game:gameType==="dominos"?publicDominoGameState(await this.getGame(),Number(side)):await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
+        type:"welcome",gameType,side,players,game:gameType==="gin-rummy"?ginView(await this.getGame(),side):gameType==="dominos"?publicDominoGameState(await this.getGame(),Number(side)):await this.getGame(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
         clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
         ratings:await this.ratingsForGameType(gameType),ratingUpdate:await this.getRatingUpdate()
@@ -1492,6 +1495,27 @@ export class AbaloneRoom extends DurableObject {
     const session=ws.deserializeAttachment();
     const gameType=session?.gameType || await this.getGameType();
 
+    if (gameType === "gin-rummy" && !["sync","rematch_offer","rematch_response"].includes(data.type)) {
+      const players = await this.getPlayers();
+      const game = await this.getGame();
+      let next;
+      try {
+        if (!players.black || !players.white) throw Error("En attente du deuxième joueur.");
+        if (data.revision !== game.revision) throw Error("La table a changé.");
+        if (data.type !== "gin-rummy") throw Error("Action inconnue.");
+        next = playGin(game, session.side, data);
+      } catch (error) {
+        ws.send(JSON.stringify({type:"error",message:error.message}));
+        return;
+      }
+      await this.ctx.storage.put("game", next);
+      if (next.result) await this.markFinished(next.result.winner);
+      for (const socket of this.ctx.getWebSockets()) {
+        const viewer = socket.deserializeAttachment()?.side;
+        try { socket.send(JSON.stringify({type:"state",gameType,players,game:ginView(next,viewer)})); } catch {}
+      }
+      return;
+    }
     if (gameType === "backgammon" && !["sync","rematch_offer","rematch_response"].includes(data.type)) {
       const players = await this.getPlayers();
       const game = await this.getGame();
@@ -1901,7 +1925,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_offer"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams" && gameType!=="421" && gameType!=="dominos" && gameType!=="backgammon"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams" && gameType!=="421" && gameType!=="dominos" && gameType!=="backgammon" && gameType!=="gin-rummy"){ ws.send(JSON.stringify({type:"error",message:"Cette action n’est pas disponible pour ce jeu."})); return; }
       const game=await this.getGame();
       const players=await this.getPlayers();
       if(!game?.result?.over){ ws.send(JSON.stringify({type:"error",message:"La partie doit être terminée avant de proposer une revanche."})); return; }
@@ -1915,7 +1939,7 @@ export class AbaloneRoom extends DurableObject {
     }
 
     if(data.type==="rematch_response"){
-      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams" && gameType!=="421" && gameType!=="dominos" && gameType!=="backgammon") return;
+      if(gameType!=="chess" && gameType!=="checkers" && gameType!=="go" && gameType!=="awale" && gameType!=="abalone" && gameType!=="yams" && gameType!=="421" && gameType!=="dominos" && gameType!=="backgammon" && gameType!=="gin-rummy") return;
       const offer=await this.getRematchOffer();
       if(!offer || offer.userId===session.userId){ ws.send(JSON.stringify({type:"error",message:"Aucune proposition de revanche à laquelle répondre."})); return; }
       const accept=data.accept===true;
@@ -1928,7 +1952,7 @@ export class AbaloneRoom extends DurableObject {
       const players=await this.getPlayers();
       const swapped={black:players.white,white:players.black};
       const variant=gameType==="checkers"?await this.getCheckersVariant():null;
-      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):gameType==="go"?initialGoGameState(await this.getGoSettings()):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():gameType==="421"?initial421GameState():gameType==="backgammon"?newBackgammon():gameType==="dominos"?initialDominoGameState():initialGameState();
+      const newGame=gameType==="chess"?initialChessGameState():gameType==="checkers"?initialCheckersGameState(variant||"international"):gameType==="go"?initialGoGameState(await this.getGoSettings()):gameType==="awale"?initialAwaleGameState():gameType==="yams"?initialYamsGameState():gameType==="421"?initial421GameState():gameType==="gin-rummy"?newGin():gameType==="backgammon"?newBackgammon():gameType==="dominos"?initialDominoGameState():initialGameState();
       const nextGameNumber=(await this.getGameNumber())+1;
       await this.ctx.storage.put("players",swapped);
       await this.ctx.storage.put("game",newGame);
@@ -1953,7 +1977,7 @@ export class AbaloneRoom extends DurableObject {
         if(!att) continue;
         const side=this.sideForUser(gameType,swapped,att.userId);
         try{
-          socket.send(JSON.stringify({type:"rematch_started",gameType,side,players:swapped,game:gameType==="dominos"?publicDominoGameState(newGame,Number(side)):newGame,variant,clock,settings,ratings}));
+          socket.send(JSON.stringify({type:"rematch_started",gameType,side,players:swapped,game:gameType==="gin-rummy"?ginView(newGame,side):gameType==="dominos"?publicDominoGameState(newGame,Number(side)):newGame,variant,clock,settings,ratings}));
         }catch{}
       }
       return;
@@ -2001,7 +2025,7 @@ export class AbaloneRoom extends DurableObject {
       }
       const syncGame=await this.getGame();
       ws.send(JSON.stringify({
-        type:"state",gameType,game:gameType==="dominos"?publicDominoGameState(syncGame,Number(session.side)):syncGame,players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
+        type:"state",gameType,game:gameType==="gin-rummy"?ginView(syncGame,session.side):gameType==="dominos"?publicDominoGameState(syncGame,Number(session.side)):syncGame,players:await this.getPlayers(),variant:gameType==="checkers"?await this.getCheckersVariant():null,
         drawOffer:await this.getDrawOffer(),rematchOffer:await this.getRematchOffer(),
         clock:await this.clockForGameType(gameType),settings:await this.settingsForGameType(gameType),
         ratings:await this.ratingsForGameType(gameType),ratingUpdate:await this.getRatingUpdate()

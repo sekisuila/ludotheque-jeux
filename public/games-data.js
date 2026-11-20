@@ -147,6 +147,23 @@ const GAMES = [
     art: "carcassonne"
   },
   {
+    id: "gin-rummy", name: "Gin Rummy", category: "Jeu de cartes", art: "gin", demo: true,
+    players: "2 joueurs", duration: "20 à 40 min", difficulty: "Accessible",
+    intro: "Formez des brelans et des suites, puis choisissez le bon moment pour frapper.",
+    goal: "Atteindre 100 points en plusieurs manches.",
+    rules: [
+      "Distribuez dix cartes à chacun avec un jeu de 52 cartes. Retournez une carte pour commencer la défausse. Le donneur change à chaque manche.",
+      "Le joueur face au donneur peut prendre la première carte ou passer. Si les deux passent, le premier joueur doit prendre une carte dans la pioche.",
+      "À votre tour, prenez la carte visible ou piochez face cachée. Défaussez ensuite une carte pour revenir à dix. Une carte prise dans la défausse doit rester en main pendant ce tour.",
+      "Un brelan ou un carré réunit trois ou quatre cartes de même rang. Une suite comprend au moins trois cartes consécutives de la même famille. L’as est toujours bas. Une carte compte dans une seule combinaison.",
+      "Les cartes isolées valent leur rang, les figures 10 et l’as 1. Le jeu organise automatiquement votre main pour minimiser ces points.",
+      "Après avoir choisi votre défausse, vous pouvez frapper (knock) avec 10 points isolés ou moins. L’adversaire peut compléter vos combinaisons avec ses cartes isolées. Les compléments sont calculés automatiquement.",
+      "Si votre total est inférieur, vous marquez la différence. En cas d’égalité ou si votre adversaire a moins de points, il marque la différence plus 25 points.",
+      "Avec zéro point isolé, annoncez gin : vous marquez 25 points plus les points isolés adverses, sans compléments. Si la pioche tombe à deux cartes et que le joueur termine son tour sans frapper, la manche est nulle."
+    ],
+    tips: "Surveillez les cartes prises dans la défausse : elles donnent des indices sur les combinaisons adverses."
+  },
+  {
     id: "cartes",
     name: "Jeux de cartes",
     category: "Hasard & tactique",
