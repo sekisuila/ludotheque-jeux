@@ -1,8 +1,13 @@
-import {BAR, OFF, newGame, legalMoves, play} from "./backgammon-engine.js";
+import {BAR, OFF, newGame, legalMoves, play} from "./backgammon-engine.js?v=2";
 
 const colors = ["Noirs", "Blancs"];
 const faces = ["","⚀","⚁","⚂","⚃","⚄","⚅"];
 const order = [...Array.from({length:12}, (_,i) => i+12), ...Array.from({length:12}, (_,i) => 11-i)];
+
+// Chaque casier reste à l’extérieur du plateau et contient un disque par pion sorti.
+function tray(side) {
+  return `<div class="bg-tray" id="bg-tray-${side}"><b>${colors[side]}</b><small>Sortis</small><strong></strong><div class="bg-stack"></div></div>`;
+}
 
 window.renderBackgammonRules = (app, game) => {
   app.innerHTML = `<div class="page"><div class="breadcrumb"><a href="#/catalogue">Catalogue</a> › Jeux de dés</div>
@@ -14,15 +19,15 @@ window.renderBackgammonRules = (app, game) => {
 window.renderBackgammon = app => {
   app.innerHTML = `<div class="page bg-page"><div class="breadcrumb"><a href="#/jouer">Jouer</a> › Jeux de dés</div>
     <div class="section-head"><h1>Backgammon</h1><a href="#/jeu/backgammon" class="btn outline small">Règles du jeu</a></div>
-    <div class="bg-layout"><section class="bg-table" aria-label="Plateau de backgammon">
-    <div id="bg-points"></div><div class="bg-rail"><span id="bg-dice"></span><button id="bg-roll" class="btn small">Lancer les dés</button></div></section>
+    <div class="bg-layout"><div class="bg-board-area">${tray(0)}<section class="bg-table" aria-label="Plateau de backgammon">
+    <div id="bg-points"></div><div class="bg-rail"><span id="bg-dice"></span><button id="bg-roll" class="btn small">Lancer les dés</button></div></section>${tray(1)}</div>
     <aside class="panel bg-controls"><label>Mode de jeu <select id="bg-mode"><option value="ai">Contre l’ordinateur</option><option value="local">À deux sur cet écran</option><option value="online">Multijoueur en ligne</option></select></label>
     <div id="bg-room" hidden><button class="btn small" id="bg-create">Créer un salon</button>
     <label>Code du salon <input id="bg-code" maxlength="6" autocomplete="off"></label><button class="btn outline small" id="bg-join">Rejoindre</button>
     <p id="bg-connection" role="status"></p></div>
     <strong id="bg-turn" aria-live="polite"></strong><p id="bg-notice"></p><p id="bg-hint"></p>
     <button class="btn outline small" id="bg-bar"></button><button class="btn outline small" id="bg-off"></button>
-    <div id="bg-choices"></div><p id="bg-score"></p><button class="btn small" id="bg-new">Nouvelle partie</button>
+    <div id="bg-choices"></div><p id="bg-trail" aria-live="polite"></p><button class="btn small" id="bg-new">Nouvelle partie</button>
     <button class="btn outline small" id="bg-resign" hidden>Abandonner</button><div id="bg-rematch"></div>
     </aside></div></div>`;
   const root = app.querySelector(".bg-page");
@@ -30,6 +35,28 @@ window.renderBackgammon = app => {
   let game = newGame(), mode = "ai", selected = null, moves = [], side = null, players = {};
   let socket = null, timer, retry, room = "", generation = 0, offer = null, busy = false;
 
+  let shownMove = null;
+  function showMove(move) {
+    const point = i => root.querySelector('[data-point="'+i+'"]');
+    const start = move.from === BAR ? el("bar") : point(move.from);
+    const end = move.to === OFF ? el("tray-"+move.side) : point(move.to);
+    start.classList.add("bg-depart");
+    end.classList.add("bg-arrive");
+    if (shownMove === move.revision) return;
+    shownMove = move.revision;
+    if (!root.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const a = (start.querySelector("i:last-child") || start).getBoundingClientRect();
+    const b = (end.querySelector("i:last-child") || end).getBoundingClientRect();
+    const ghost = document.createElement("i");
+    ghost.className = "bg-man bg-flying "+(move.side === 0 ? "dark" : "light");
+    ghost.setAttribute("aria-hidden","true");
+    ghost.style.left = a.left + a.width/2 + "px";
+    ghost.style.top = a.top + a.height/2 + "px";
+    root.append(ghost);
+    const dx = b.left+b.width/2-a.left-a.width/2, dy = b.top+b.height/2-a.top-a.height/2;
+    const flight = ghost.animate([{transform:"translate(-50%,-50%)"}, {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`}], {duration:800,easing:"ease-in-out"});
+    flight.onfinish = () => ghost.remove();
+  }
   function disconnect() {
     generation++;
     clearTimeout(timer);
@@ -79,22 +106,39 @@ window.renderBackgammon = app => {
     el("hint").textContent = !ready || game.result ? "" : !mine ? "L’adversaire joue…" : !game.dice.length ? "Lancez les deux dés." :
       selected === BAR ? "Rentrez un pion de la barre sur une flèche indiquée." :
       selected === null ? "Choisissez un pion à déplacer." : "Cliquez sur une flèche indiquée ou sur Sortir.";
-    el("dice").textContent = ready ? game.dice.map(d => faces[d]).join(" ") : "";
-    el("dice").setAttribute("aria-label", "Dés restants "+game.dice.join(", "));
+    const remaining = game.dice.slice();
+    el("dice").innerHTML = ready ? (game.rolled || game.dice).map(value => {
+      const index = remaining.indexOf(value);
+      if (index >= 0) remaining.splice(index, 1);
+      return `<span class="${index < 0 ? "used" : ""}">${faces[value]}</span>`;
+    }).join("") : "";
+    el("dice").setAttribute("aria-label", "Lancer "+(game.rolled || game.dice).join(", ")+". Dés restants "+game.dice.join(", "));
     el("roll").disabled = !mine || !!game.dice.length;
     el("bar").textContent = `Barre · ${game.bar[0]} noirs / ${game.bar[1]} blancs`;
     el("bar").disabled = !mine || !moves.some(m => m.from === BAR);
     el("off").textContent = "Sortir un pion";
     el("off").disabled = !possible.some(m => m.to === OFF);
     el("choices").replaceChildren();
-    el("score").textContent = `Sortis · Noirs ${game.off[0]}/15 · Blancs ${game.off[1]}/15`;
+    for (const player of [0,1]) {
+      const box = el("tray-"+player), count = game.off[player];
+      box.querySelector("strong").textContent = count+"/15";
+      box.querySelector(".bg-stack").innerHTML = `<i aria-hidden="true" class="bg-man ${player === 0 ? "dark" : "light"}"></i>`.repeat(count);
+    }
+    root.querySelectorAll(".bg-depart,.bg-arrive").forEach(node => node.classList.remove("bg-depart","bg-arrive"));
+    if (ready && game.lastMove) showMove(game.lastMove);
+    else shownMove = null;
+    const other = mode === "ai" ? 1 : mode === "online" ? 1-side : game.lastMove?.side;
+    const trail = game.paths?.[other] || [];
+    const label = i => i === BAR ? "barre" : i === OFF ? "sortie" : i+1;
+    el("trail").textContent = ready && trail.length ? `Derniers coups des ${colors[other]} · `+
+      trail.map(m => `${label(m.from)} → ${label(m.to)}${m.hit ? " (frappe)" : ""}`).join(" / ") : "";
     el("new").hidden = online;
     el("room").hidden = !online;
     el("create").disabled = el("join").disabled = busy || !!room;
     el("resign").hidden = !online || !ready || !!game.result;
     el("rematch").innerHTML = !online || !game.result || !connected ? "" : !offer ? '<button class="btn small" data-reply="offer">Proposer une revanche</button>' :
       offer.side === side ? "Revanche proposée…" : '<button class="btn small" data-reply="yes">Accepter la revanche</button> <button class="btn outline small" data-reply="no">Refuser</button>';
-    if (mode === "ai" && !game.result && game.turn === 1) timer = setTimeout(computer, 650);
+    if (mode === "ai" && !game.result && game.turn === 1) timer = setTimeout(computer, 1550);
   }
   function choose(to) {
     const choices = moves.filter(m => m.from === selected && m.to === to);

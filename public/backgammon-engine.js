@@ -13,7 +13,7 @@ export function newGame(roll = die) {
   let black, white;
   do { black = roll(); white = roll(); } while (black === white);
   return { points, bar: [0, 0], off: [0, 0], turn: black > white ? 0 : 1,
-    dice: [black, white], notice: `Ouverture · Noirs ${black}, Blancs ${white}.`, result: null, revision: 0 };
+    rolled: [black, white], paths: [[], []], dice: [black, white], notice: `Ouverture · Noirs ${black}, Blancs ${white}.`, result: null, revision: 0 };
 }
 
 function candidates(game) {
@@ -75,12 +75,20 @@ export function play(game, side, action, roll = die) {
   let next;
   if (action.kind === "roll" && !game.dice.length) {
     const a = roll(), b = roll();
-    next = {...game, dice: a === b ? [a,a,a,a] : [a,b], notice: `${who} · lancer ${a} et ${b}.`};
+    const dice = a === b ? [a,a,a,a] : [a,b];
+    next = {...game, rolled: dice, dice, notice: `${who} · lancer ${a} et ${b}.`};
   } else {
     const move = legalMoves(game).find(m => action.kind === "move" && m.from === action.from && m.to === action.to && m.value === action.value);
     if (!move) throw new Error("Ce déplacement est impossible.");
     next = advance(game, move);
     const hit = next.bar[1-side] > game.bar[1-side];
+    // Conserver le dernier parcours de chaque couleur, même après le changement de tour.
+    const paths = (game.paths || [[], []]).slice();
+    const previous = game.lastMove?.side === side && game.lastMove.revision === game.revision;
+    next.lastMove = {...move, side, hit, revision:game.revision+1};
+    paths[side] = [...(previous ? paths[side] : []), next.lastMove];
+    next.paths = paths;
+    next.rolled = game.rolled || game.dice;
     next.notice = `${who} · ${move.from === BAR ? "barre" : move.from+1} → ${move.to === OFF ? "sortie" : move.to+1} (dé ${move.value})${hit ? " · pion adverse frappé" : ""}.`;
   }
   if (next.off[side] === 15) {
