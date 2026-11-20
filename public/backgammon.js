@@ -1,4 +1,4 @@
-import {BAR, OFF, newGame, legalMoves, play} from "./backgammon-engine.js?v=2";
+import {BAR, OFF, newGame, legalMoves, play, cubeState, canDouble, actingSide} from "./backgammon-engine.js?v=3";
 
 const colors = ["Noirs", "Blancs"];
 const faces = ["","⚀","⚁","⚂","⚃","⚄","⚅"];
@@ -25,6 +25,9 @@ window.renderBackgammon = app => {
     <div id="bg-room" hidden><button class="btn small" id="bg-create">Créer un salon</button>
     <label>Code du salon <input id="bg-code" maxlength="6" autocomplete="off"></label><button class="btn outline small" id="bg-join">Rejoindre</button>
     <p id="bg-connection" role="status"></p></div>
+    <section id="bg-cube" class="bg-cube"><div><b id="bg-cube-value"></b><span>Videau<br><small id="bg-owner"></small></span></div>
+    <button class="btn outline small" id="bg-double"></button><div id="bg-answer"><button class="btn small" id="bg-take"></button>
+    <button class="btn outline small" id="bg-pass"></button></div></section>
     <strong id="bg-turn" aria-live="polite"></strong><p id="bg-notice"></p><p id="bg-hint"></p>
     <button class="btn outline small" id="bg-bar"></button><button class="btn outline small" id="bg-off"></button>
     <div id="bg-choices"></div><p id="bg-trail" aria-live="polite"></p><button class="btn small" id="bg-new">Nouvelle partie</button>
@@ -72,10 +75,20 @@ window.renderBackgammon = app => {
   }
   function act(action) {
     if (mode === "online") send({type:"backgammon", revision:game.revision, ...action});
-    else { game = play(game, game.turn, action); selected = null; render(); }
+    else { game = play(game, actingSide(game), action); selected = null; render(); }
   }
   function computer() {
-    if (!root.isConnected || mode !== "ai" || game.turn !== 1 || game.result) return;
+    if (!root.isConnected || mode !== "ai" || actingSide(game) !== 1 || game.result) return;
+    // Estimer la course en comptant les cases restantes, barre comprise.
+    if (cubeState(game).pending || canDouble(game, 1)) {
+      const distance = game.bar.map(n => n*25);
+      game.points.forEach((n,i) => {
+        if (n > 0) distance[0] += n*(i+1);
+        if (n < 0) distance[1] -= n*(24-i);
+      });
+      if (cubeState(game).pending) return act({kind:distance[1] <= distance[0]*1.4 ? "take" : "pass"});
+      if (distance[1] < distance[0]*0.78) return act({kind:"double"});
+    }
     if (!moves.length) return act({kind:"roll"});
     // L’ordinateur privilégie une sortie, une frappe ou la protection d’un pion.
     const weight = m => (m.to === OFF ? 5 : game.points[m.to] === 1 ? 4 : game.points[m.to] === -1 ? 3 : 0)
@@ -87,7 +100,19 @@ window.renderBackgammon = app => {
     clearTimeout(timer);
     const online = mode === "online", connected = socket?.readyState === WebSocket.OPEN;
     const ready = !online || (connected && side !== null && players.black && players.white);
-    const mine = ready && !game.result && (mode === "local" || game.turn === (online ? side : 0));
+    const cube = cubeState(game);
+    const responding = ready && cube.pending && !game.result;
+    const myDecision = mode === "local" || actingSide(game) === (online ? side : 0);
+    el("cube").hidden = !ready;
+    el("cube-value").textContent = cube.value;
+    el("owner").textContent = cube.owner === null ? "Au centre" : "Aux "+colors[cube.owner];
+    el("double").hidden = game.result || cube.pending;
+    el("double").disabled = !myDecision || !canDouble(game, game.turn);
+    el("double").textContent = "Doubler à "+cube.value*2;
+    el("answer").hidden = !responding || !myDecision;
+    el("take").textContent = "Accepter à "+cube.value*2;
+    el("pass").textContent = "Passer (perdre "+cube.value+" pt)";
+    const mine = ready && !game.result && !responding && (mode === "local" || game.turn === (online ? side : 0));
     moves = legalMoves(game);
     if (game.bar[game.turn] && moves.length) selected = BAR;
     const possible = mine ? moves.filter(m => m.from === selected) : [];
@@ -101,9 +126,9 @@ window.renderBackgammon = app => {
         <b>${i+1}</b><span>${stack}</span></button>`;
     }).join("");
     el("turn").textContent = online && !ready ? (room ? "En attente de l’adversaire ou de la connexion." : "Créez ou rejoignez un salon.") :
-      game.result?.text || "Au tour des "+colors[game.turn];
+      game.result?.text || (responding ? "Réponse des "+colors[actingSide(game)]+" au double" : "Au tour des "+colors[game.turn]);
     el("notice").textContent = ready ? game.notice : "";
-    el("hint").textContent = !ready || game.result ? "" : !mine ? "L’adversaire joue…" : !game.dice.length ? "Lancez les deux dés." :
+    el("hint").textContent = !ready || game.result || responding ? "" : !mine ? "L’adversaire joue…" : !game.dice.length ? "Lancez les deux dés." :
       selected === BAR ? "Rentrez un pion de la barre sur une flèche indiquée." :
       selected === null ? "Choisissez un pion à déplacer." : "Cliquez sur une flèche indiquée ou sur Sortir.";
     const remaining = game.dice.slice();
@@ -138,7 +163,7 @@ window.renderBackgammon = app => {
     el("resign").hidden = !online || !ready || !!game.result;
     el("rematch").innerHTML = !online || !game.result || !connected ? "" : !offer ? '<button class="btn small" data-reply="offer">Proposer une revanche</button>' :
       offer.side === side ? "Revanche proposée…" : '<button class="btn small" data-reply="yes">Accepter la revanche</button> <button class="btn outline small" data-reply="no">Refuser</button>';
-    if (mode === "ai" && !game.result && game.turn === 1) timer = setTimeout(computer, 1550);
+    if (mode === "ai" && !game.result && actingSide(game) === 1) timer = setTimeout(computer, 1550);
   }
   function choose(to) {
     const choices = moves.filter(m => m.from === selected && m.to === to);
@@ -189,6 +214,9 @@ window.renderBackgammon = app => {
   el("points").onclick = e => { const b = e.target.closest("button"); if (b && !b.disabled) choose(Number(b.dataset.point)); };
   el("off").onclick = () => choose(OFF);
   el("bar").onclick = () => {selected = BAR; render();};
+  el("take").onclick = () => act({kind:"take"});
+  el("pass").onclick = () => act({kind:"pass"});
+  el("double").onclick = () => act({kind:"double"});
   el("roll").onclick = () => act({kind:"roll"});
   el("new").onclick = () => {game = newGame(); selected = null; render();};
   el("mode").onchange = () => {

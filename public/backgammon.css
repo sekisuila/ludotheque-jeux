@@ -50,3 +50,6 @@
   .bg-stack .bg-man {width:15px;margin:0}
   #bg-dice {font-size:2.15rem}
 }
+.bg-cube {display:grid;gap:.55rem;border-block:1px solid #c2a985;padding:.65rem 0}
+.bg-cube>div:first-child {display:flex;align-items:center;gap:.65rem}
+#bg-cube-value {border:2px solid #715632;border-radius:8px;padding:.3em;min-width:2.1em;background:#fff4db;color:#352b20;text-align:center;font-size:1.25rem}

@@ -1,4 +1,4 @@
-import { newGame as newBackgammon, play as playBackgammon } from "../public/backgammon-engine.js";
+import { newGame as newBackgammon, play as playBackgammon, cubeState } from "../public/backgammon-engine.js";
 import { DurableObject } from "cloudflare:workers";
 import { AB_BLACK, AB_WHITE, initialGameState, playServerMove } from "./abalone-engine.js";
 import { initialChessGameState, playServerChessMove } from "./chess-engine.js";
@@ -1500,7 +1500,10 @@ export class AbaloneRoom extends DurableObject {
         if (!players.black || !players.white) throw new Error("En attente du deuxième joueur.");
         if (game.result || game.revision !== data.revision) throw new Error("Le plateau a changé.");
         if (data.type === "resign") {
-          next = {...game, revision:game.revision+1, result:{over:true, winner:1-session.side, text:session.side === 0 ? "Les Blancs gagnent par abandon." : "Les Noirs gagnent par abandon."}};
+          const cube = cubeState(game), points = cube.value;
+          const winner = 1-session.side;
+          next = {...game, revision:game.revision+1, cube:{...cube, pending:false},
+            result:{over:true, winner, points, text:`Les ${winner === 0 ? "Noirs" : "Blancs"} gagnent par abandon (${points} pt).`}};
         } else {
           if (data.type !== "backgammon") throw new Error("Action inconnue.");
           next = playBackgammon(game, session.side, data);

@@ -13,7 +13,7 @@ export function newGame(roll = die) {
   let black, white;
   do { black = roll(); white = roll(); } while (black === white);
   return { points, bar: [0, 0], off: [0, 0], turn: black > white ? 0 : 1,
-    rolled: [black, white], paths: [[], []], dice: [black, white], notice: `Ouverture · Noirs ${black}, Blancs ${white}.`, result: null, revision: 0 };
+    cube: {value:1, owner:null, pending:false}, rolled: [black, white], paths: [[], []], dice: [black, white], notice: `Ouverture · Noirs ${black}, Blancs ${white}.`, result: null, revision: 0 };
 }
 
 function candidates(game) {
@@ -69,9 +69,40 @@ export function legalMoves(game) {
   return moves.filter((move, i) => lengths[i] === longest && (longest !== 1 || move.value === high));
 }
 
+// Les salons commencés avant cette version ont un videau au centre.
+export function cubeState(game) {
+  return game.cube || {value:1, owner:null, pending:false};
+}
+
+export function canDouble(game, side) {
+  const cube = cubeState(game);
+  return !game.result && side === game.turn && !game.dice.length && !cube.pending
+    && (cube.owner === null || cube.owner === side) && Number.isSafeInteger(cube.value * 6);
+}
+
+export function actingSide(game) {
+  return cubeState(game).pending ? 1-game.turn : game.turn;
+}
+
 export function play(game, side, action, roll = die) {
-  if (game.result || side !== game.turn) throw new Error("Ce n’est pas votre tour.");
+  if (game.result || side !== actingSide(game)) throw new Error("Ce n’est pas votre tour.");
   const who = side === 0 ? "Noirs" : "Blancs";
+  const cube = cubeState(game);
+  const revision = game.revision+1;
+  if (cube.pending) {
+    if (action.kind === "take") {
+      return {...game, revision, cube:{value:cube.value*2, owner:side, pending:false},
+        notice:`Les ${who} acceptent. Le videau passe à ${cube.value*2}.`};
+    }
+    if (action.kind !== "pass") throw new Error("Acceptez le videau ou passez.");
+    const points = cube.value, winner = game.turn;
+    return {...game, revision, cube:{...cube, pending:false}, notice:`Les ${who} passent.`,
+      result:{over:true, winner, points, text:`Les ${winner === 0 ? "Noirs" : "Blancs"} gagnent ${points} point${points > 1 ? "s" : ""} sur refus du videau.`}};
+  }
+  if (action.kind === "double") {
+    if (!canDouble(game, side)) throw new Error("Le double est indisponible.");
+    return {...game, revision, cube:{...cube, pending:true}, notice:`Les ${who} proposent de doubler à ${cube.value*2}.`};
+  }
   let next;
   if (action.kind === "roll" && !game.dice.length) {
     const a = roll(), b = roll();
@@ -94,8 +125,9 @@ export function play(game, side, action, roll = die) {
   if (next.off[side] === 15) {
     const home = side === 0 ? next.points.slice(0,6) : next.points.slice(18);
     const trapped = next.bar[1-side] || home.some(n => n * sign(side) < 0);
-    const points = next.off[1-side] ? 1 : trapped ? 3 : 2;
-    next.result = {over:true, winner:side, points, text:`${who} gagnent · ${["","victoire simple","gammon","backgammon"][points]} (${points} pt${points > 1 ? "s" : ""}).`};
+    const multiplier = next.off[1-side] ? 1 : trapped ? 3 : 2;
+    const points = cube.value * multiplier;
+    next.result = {over:true, winner:side, points, text:`${who} gagnent · ${["","victoire simple","gammon","backgammon"][multiplier]} (${points} pt${points > 1 ? "s" : ""}).`};
   } else if (!candidates(next).length) {
     if (next.dice.length) next.notice += " Aucun autre déplacement possible.";
     next.turn = 1-side;

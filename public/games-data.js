@@ -221,7 +221,8 @@ const GAMES = [
       "Les pions sur la barre doivent rentrer en priorité dans le jan adverse. Un 1 fait entrer un Noir en 24 ou un Blanc en 1.",
       "Il faut jouer le maximum de dés possible. Si un seul des deux dés peut être joué et que chacun est utilisable séparément, le plus grand est obligatoire.",
       "Lorsque tous vos pions restants sont dans vos six dernières flèches, un dé exact permet de sortir un pion. Un dé plus grand permet de sortir le pion le plus éloigné.",
-      "Une manche se joue sans videau. La victoire vaut 1 point, 2 si le perdant n’a sorti aucun pion (gammon), ou 3 si, de plus, il lui reste un pion sur la barre ou dans le jan du gagnant (backgammon)."
+      "Avant votre lancer, vous pouvez proposer de doubler si le videau est au centre ou vous appartient. Si l’adversaire passe, vous gagnez la valeur actuelle. S’il accepte, la valeur double et lui seul pourra proposer le prochain double.",
+      "Multipliez le résultat par la valeur du videau. Une victoire simple vaut 1 point, 2 si le perdant n’a sorti aucun pion (gammon), ou 3 si, de plus, il lui reste un pion sur la barre ou dans le jan du gagnant (backgammon)."
     ],
     tips: "Formez des flèches de deux pions pour protéger vos passages et compliquer la rentrée adverse."
   },
