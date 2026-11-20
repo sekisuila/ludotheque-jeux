@@ -17,6 +17,7 @@
     abalone:"Abalone",
     yams:"Yams",
     "421":"421",
+    backgammon:"Backgammon",
     dominos:"Dominos"
   };
   const LOBBY_GAME_ROUTES={
@@ -28,6 +29,7 @@
     abalone:"#/jouer/abalone",
     yams:"#/jouer/yams",
     "421":"#/jouer/421",
+    backgammon:"#/jouer/backgammon",
     dominos:"#/jouer/dominos"
   };
 
@@ -357,6 +359,7 @@
     if(h.includes("/jouer/abalone"))return"abalone";
     if(h.includes("/jouer/yams"))return"yams";
     if(h.includes("/jouer/421"))return"421";
+    if(h.includes("/jouer/backgammon"))return"backgammon";
     if(h.includes("/jouer/dominos"))return"dominos";
     return null;
   }

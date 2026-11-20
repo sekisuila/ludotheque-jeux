@@ -546,7 +546,7 @@ async function saveById(request,env,user,id){
 const ROOM_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function roomCode(){ let s=''; const a=new Uint8Array(6); crypto.getRandomValues(a); for(const b of a) s+=ROOM_ALPHABET[b%ROOM_ALPHABET.length]; return s; }
 function validRoomGame(game){
-  return game === "chess" || game === "abalone" || game === "go" || game === "awale" || game === "yams" || game === "421" || game === "dominos" || game === "checkers-international" || game === "checkers-english";
+  return game === "chess" || game === "abalone" || game === "go" || game === "awale" || game === "yams" || game === "421" || game === "backgammon" || game === "dominos" || game === "checkers-international" || game === "checkers-english";
 }
 function isCheckersRoomGame(game){ return game === "checkers-international" || game === "checkers-english"; }
 function checkersVariantFromRoomGame(game){ return game === "checkers-english" ? "english" : "international"; }
@@ -555,7 +555,7 @@ function publicSideForRoomGame(game,slot){
   if(game==="chess") return slot==="black"?"b":"w";
   if(isCheckersRoomGame(game)) return slot==="black"?0:1;
   if(game==="go") return slot==="black"?1:2;
-  if(game==="awale" || game==="yams" || game==="421" || game==="dominos") return slot==="black"?0:1;
+  if(game==="awale" || game==="yams" || game==="421" || game==="dominos" || game==="backgammon") return slot==="black"?0:1;
   return slot==="black"?1:2;
 }
 
@@ -598,8 +598,8 @@ async function createRoom(request,env,user){
       creatorColor=(random[0]&1)===0?"white":"black";
     }
     creatorSlot=creatorColor;
-  }else if(checkers || awale || yams || game421 || dominos){
-    const requested=String(body?.creatorSide??"random").toLowerCase();
+  }else if(checkers || awale || yams || game421 || dominos || game==="backgammon"){
+    const requested=String(game==="backgammon" ? 0 : body?.creatorSide??"random").toLowerCase();
     let sideIndex;
     if(requested==="0"||requested==="side0") sideIndex=0;
     else if(requested==="1"||requested==="side1") sideIndex=1;
@@ -612,7 +612,7 @@ async function createRoom(request,env,user){
   const initialSeconds=timed?clampInt(body?.initialSeconds,30,10800,600):0;
   const incrementSeconds=timed?clampInt(body?.incrementSeconds,0,60,0):0;
   const rated=(timed || yams || game421 || dominos) ? body?.rated!==false : false;
-  const ratingCategory=timed?chessRatingCategory(initialSeconds,incrementSeconds):((yams||game421||dominos)?"standard":null);
+  const ratingCategory=timed?chessRatingCategory(initialSeconds,incrementSeconds):((yams||game421||dominos||game==="backgammon")?"standard":null);
   const goSize=go?[9,13,19].includes(Number(body?.goSize))?Number(body.goSize):19:null;
   const goKomi=go&&Number.isFinite(Number(body?.goKomi))?Number(body.goKomi):go?7.5:null;
   const goScoring=go&&body?.goScoring==="territory"?"territory":go?"area":null;
@@ -636,7 +636,7 @@ async function createRoom(request,env,user){
   if(!code) return json({error:"Impossible de créer un salon."},500);
 
   const stub=env.ABALONE_ROOMS.getByName(code);
-  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):(awale||yams||game421||dominos)?(creatorSlot==="white"?1:0):null;
+  const creatorSideForRoom=game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):(awale||yams||game421||dominos||game==="backgammon")?(creatorSlot==="white"?1:0):null;
   await stub.fetch("https://room/init",{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({
@@ -649,9 +649,9 @@ async function createRoom(request,env,user){
 
   return json({
     code,game,
-    side:game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):(awale||yams||game421||dominos)?(creatorSlot==="white"?1:0):1,
+    side:game==="chess"?(creatorSlot==="white"?"w":"b"):game==="abalone"?(creatorSlot==="white"?2:1):checkers?(creatorSlot==="white"?1:0):go?(creatorSlot==="white"?2:1):(awale||yams||game421||dominos||game==="backgammon")?(creatorSlot==="white"?1:0):1,
     creatorColor,
-    creatorSide:(checkers||awale||yams||game421||dominos)?Number(creatorColor):null,
+    creatorSide:(checkers||awale||yams||game421||dominos||game==="backgammon")?Number(creatorColor):null,
     variant:checkers?checkersVariantFromRoomGame(game):null,
     goSettings:go?{size:goSize,komi:goKomi,scoring:goScoring}:null,
     timeControl:timed?{initialSeconds,incrementSeconds}:null,

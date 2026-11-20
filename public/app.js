@@ -56,7 +56,7 @@ const HOME_GAME_CATEGORIES = [
   {
     title: "Dés",
     description: "Probabilités, prises de risque et choix de relance.",
-    ids: ["yams", "421", "des"]
+    ids: ["yams", "421", "backgammon", "des"]
   },
   {
     title: "Dominos",
@@ -125,7 +125,7 @@ function renderHome() {
         </div>
         <div class="feature-list">
           <article class="feature"><div class="ico">📖</div><h3>Règles illustrées</h3><p>Chaque fiche combine explications, étapes numérotées et schémas visuels sans dépendre d'images externes.</p></article>
-          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go, Abalone, le Yams, le 421 et les Dominos, avec jeu local, IA et modes en ligne selon les jeux.</p></article>
+          <article class="feature"><div class="ico">🧠</div><h3>Jeux contre IA</h3><p>Le site inclut maintenant l’Awélé, les Échecs, deux variantes de Dames, le Go, Abalone, le Yams, le 421, le Backgammon et les Dominos, avec jeu local, IA et modes en ligne selon les jeux.</p></article>
           <article class="feature"><div class="ico">🌐</div><h3>Multijoueur extensible</h3><p>La structure est prête à recevoir plus tard un serveur WebSocket pour jouer à distance entre utilisateurs.</p></article>
         </div>
       </section>
@@ -182,6 +182,7 @@ function renderGame(id) {
   if (id === "abalone") return renderAbaloneGamePage(game);
   if (id === "yams") return renderYamsGamePage(game);
   if (id === "421") return render421GamePage(game);
+  if (id === "backgammon") return window.renderBackgammonRules(app, game);
   if (id === "dominos") return renderDominoGamePage(game);
 
   app.innerHTML = `
@@ -2139,6 +2140,7 @@ function renderPlay(id) {
   if (id === "awale") return renderAwalePlay();
   if (id === "yams") return renderYamsPlay();
   if (id === "421") return render421Play();
+  if (id === "backgammon") return window.renderBackgammon(app);
   if (id === "dominos") return renderDominoPlay();
 
   app.innerHTML = `
@@ -2156,6 +2158,7 @@ function renderPlay(id) {
             <option value="abalone">Abalone</option>
             <option value="yams">Yams</option>
             <option value="421">421</option>
+            <option value="backgammon">Backgammon</option>
             <option value="dominos">Dominos</option>
           </select></label>
         </div>
@@ -2169,6 +2172,7 @@ function renderPlay(id) {
         <article class="play-card"><div class="visual">${illustration("awale", false)}</div><div><span class="tag">Jouable</span><h2>Awélé</h2><p>Deux joueurs en local ou joueur contre IA, avec semailles, captures et règle de nourrissage.</p><a class="btn" href="#/jouer/awale">Jouer à l’Awélé</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>Yams</h2><p>Cinq dés, jusqu’à trois lancers, feuille de score complète, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>421</h2><p>Trois dés, 21 jetons, charge et décharge, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/421">Jouer au 421</a></div></article>
+        <article class="play-card"><div class="visual">${illustration("backgammon", false)}</div><div><h2>Backgammon</h2><p>Une course de quinze pions, en local, contre l’ordinateur ou en salon.</p><a class="btn" href="#/jouer/backgammon">Jouer au Backgammon</a></div></article>
         <article class="play-card"><div class="visual">${illustration("domino", false)}</div><div><span class="tag">Nouveau</span><h2>Dominos</h2><p>Double-six à pioche, manches jusqu’à 100 points, trois niveaux d’IA et salons multijoueurs.</p><a class="btn" href="#/jouer/dominos">Jouer aux Dominos</a></div></article>
       </div>
     </div>
@@ -2834,6 +2838,7 @@ function normalize(text) {
 }
 
 function illustration(type, large = false) {
+  if (type === "backgammon") return '<div class="bg-mini" aria-hidden="true">' + '<i></i>'.repeat(12) + '</div>';
   const W = large ? 760 : 520;
   const H = large ? 420 : 300;
   const common = `viewBox="0 0 ${W} ${H}" role="img" aria-label="Illustration du jeu"`;

@@ -210,6 +210,22 @@ const GAMES = [
     art: "dice"
   },
   {
+    id: "backgammon", name: "Backgammon", category: "Hasard & stratégie",
+    players: "2 joueurs", duration: "10 à 30 min", difficulty: "Accessible", art: "backgammon", demo: true,
+    intro: "Faites courir vos quinze pions sur vingt-quatre flèches en utilisant deux dés.",
+    goal: "Ramener tous ses pions dans son jan intérieur, puis les sortir avant son adversaire.",
+    rules: [
+      "À l’ouverture, chacun lance un dé. Une égalité fait relancer. Le plus grand commence avec les deux dés obtenus.",
+      "Les Noirs vont de 24 vers 1, les Blancs de 1 vers 24. Chaque dé correspond à un déplacement. Un double donne quatre déplacements.",
+      "Une flèche occupée par au moins deux pions adverses est fermée. Un pion adverse isolé est frappé et envoyé sur la barre.",
+      "Les pions sur la barre doivent rentrer en priorité dans le jan adverse. Un 1 fait entrer un Noir en 24 ou un Blanc en 1.",
+      "Il faut jouer le maximum de dés possible. Si un seul des deux dés peut être joué et que chacun est utilisable séparément, le plus grand est obligatoire.",
+      "Lorsque tous vos pions restants sont dans vos six dernières flèches, un dé exact permet de sortir un pion. Un dé plus grand permet de sortir le pion le plus éloigné.",
+      "Une manche se joue sans videau. La victoire vaut 1 point, 2 si le perdant n’a sorti aucun pion (gammon), ou 3 si, de plus, il lui reste un pion sur la barre ou dans le jan du gagnant (backgammon)."
+    ],
+    tips: "Formez des flèches de deux pions pour protéger vos passages et compliquer la rentrée adverse."
+  },
+  {
     id: "des",
     name: "Jeux de dés",
     category: "Hasard & probabilités",
