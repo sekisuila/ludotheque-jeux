@@ -34,10 +34,8 @@ function attach(cards, targets, cache) {
   return best;
 }
 
-export function analyse(hand, targets=[]) {
-  const sorted = [...hand].sort((a,b)=>a-b);
+function melds(sorted) {
   const groups = [];
-  const cache = new Map();
   // Énumérer toutes les suites, y compris leurs sous-suites.
   for (let i=0;i<sorted.length;i++) {
     for (let j=i+1;j<sorted.length && suit(sorted[i])===suit(sorted[j]) && sorted[j]===sorted[i]+j-i;j++)
@@ -49,6 +47,20 @@ export function analyse(hand, targets=[]) {
     if (same.length>=3) groups.push(same);
     if (same.length===4) for (const c of same) groups.push(same.filter(k=>k!==c));
   }
+  return groups;
+}
+
+// Écarter les sous-suites déjà représentées par une alternative plus longue.
+export function alternatives(hand, layout) {
+  const options = melds([...hand].sort((a,b)=>a-b)).filter(group =>
+    group.some(c=>layout.loose.includes(c)) && group.some(c=>!layout.loose.includes(c)));
+  return options.filter(group=>!options.some(other=>other.length>group.length && group.every(c=>other.includes(c))));
+}
+
+export function analyse(hand, targets=[]) {
+  const sorted = [...hand].sort((a,b)=>a-b);
+  const groups = melds(sorted);
+  const cache = new Map();
   let best={groups:[],loose:sorted,added:[],points:total(sorted)};
   function visit(rest,used,start) {
     const score=attach(rest,targets,cache);

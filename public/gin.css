@@ -22,3 +22,19 @@
 #gin-prompt {color:#fff;font-weight:600}
 #gin-summary p {font-size:.9rem;margin-top:.5rem}
 @media(max-width:780px){.gin-layout{grid-template-columns:1fr}}
+.gin-hand {display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-start}
+.gin-group {min-width:0;max-width:100%}
+.gin-group strong {display:block;font-size:.82rem;margin-bottom:.45rem;color:#fff2c9}
+.gin-group>div {display:flex;flex-wrap:wrap;gap:3px}
+.gin-group button {width:clamp(40px,4.3vw,65px)}
+.gin-hand .gin-alternate .gin-card {outline:2px dashed #ffcf58;outline-offset:-3px;animation:gin-glow 2.2s ease-in-out infinite}
+@keyframes gin-glow {50%{box-shadow:0 0 0 3px #ffd96a,0 0 12px #ffcc51}}
+#gin-alternatives:empty {display:none}
+#gin-alternatives {font-size:.9rem;color:#ffe5a1}
+.gin-fan {display:flex;justify-content:center;padding:.3rem 0;isolation:isolate}
+#gin-opponent {text-align:center}
+#gin-opponent .gin-fan .gin-card {width:clamp(30px,4vw,52px);border:1px solid #fff;border-radius:5px}
+.gin-fan .gin-card+.gin-card {margin-left:clamp(-29px,-2vw,-17px)}
+#gin-knock:disabled {background:#e0e2e4;border-color:#c7c9cb;color:#565b5f;box-shadow:none;cursor:not-allowed;opacity:1}
+.gin-flight {position:fixed;pointer-events:none;z-index:100;transform-origin:top left;line-height:0}
+@media(prefers-reduced-motion:reduce){.gin-hand .gin-alternate .gin-card {animation:none}}
