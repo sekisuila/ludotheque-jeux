@@ -5,14 +5,27 @@ function card(c) {
   const name=c===52?"Dos rouge":label(c);
   return `<span class="gin-card" role="img" aria-label="${name}" style="background-position:${c%13*100/12}% ${Math.floor(c/13)*25}%"></span>`;
 }
+function meldSections(layout) {
+  return layout.groups.map(cards=>({
+    title:cards[0]%13!==cards[1]%13?"Suite":cards.length===4?"Carré":"Brelan",cards
+  }));
+}
+
+// Reprendre le classement du décompte, y compris les cartes posées en complément.
+function revealedHand(layout) {
+  const sections=meldSections(layout);
+  if(layout.added.length) sections.push({title:"Compléments",cards:layout.added});
+  sections.push({title:`Bois mort · ${layout.points} pt${layout.points>1?"s":""}`,cards:layout.loose});
+  return '<div class="gin-hand gin-revealed">'+sections.map(({title,cards})=>
+    `<section class="gin-group"><strong>${title}</strong><div>${cards.map(card).join("")}</div></section>`
+  ).join("")+'</div>';
+}
 // Afficher les combinaisons optimales avant le bois mort, sans déplacer la sélection.
 function drawHand(hand, selected, locked, canDiscard) {
   const layout=analyse(hand);
   const choices=alternatives(hand,layout);
   const highlighted=new Set(choices.flat().filter(c=>layout.loose.includes(c)));
-  const sections=layout.groups.map(cards=>({
-    title:cards[0]%13!==cards[1]%13?"Suite":cards.length===4?"Carré":"Brelan",cards
-  }));
+  const sections=meldSections(layout);
   if(layout.loose.length)sections.push({title:"Bois mort",cards:layout.loose});
   const html=sections.map(({title,cards})=>`<section class="gin-group"><strong>${title}</strong><div>${
     cards.map(c=>`<button aria-label="${label(c)}" aria-pressed="${c===selected}" class="${c===selected?"picked":""} ${highlighted.has(c)?"gin-alternate":""}" data-c="${c}" ${!canDiscard || c===locked?"disabled":""}>${card(c)}</button>`).join("")
@@ -126,7 +139,10 @@ window.ginTable=app=>{
     const names=mode==="ai"?["Vous","Ordinateur"]:mode==="online"?[players.black.username,players.white.username]:["Joueur 1","Joueur 2"];
     el("score").textContent=`Manche ${v.round} · ${names[0]} ${v.scores[0]} — ${v.scores[1]} ${names[1]}`;
     if(concealed){animateMove(motion);return;}
-    el("opponent").innerHTML='<div class="gin-fan" aria-hidden="true">'+card(52).repeat(v.otherCount)+'</div><span class="gin-opponent-name"></span>';
+    const finalLayout=v.phase==="end" && v.summary?.layouts?.[1-me];
+    const opponentCards=finalLayout ? revealedHand(finalLayout)
+      : '<div class="gin-fan" aria-hidden="true">'+card(52).repeat(v.otherCount)+'</div>';
+    el("opponent").innerHTML=opponentCards+'<span class="gin-opponent-name"></span>';
     el("opponent").querySelector(".gin-opponent-name").textContent=names[1-me]+" · "+v.otherCount+" cartes";
     el("stock").innerHTML=card(52)+`<b>Pioche · ${v.stockCount}</b>`;
     el("pile").innerHTML=(v.top===null?"":card(v.top))+"<b>Défausse</b>";

@@ -38,3 +38,6 @@
 #gin-knock:disabled {background:#e0e2e4;border-color:#c7c9cb;color:#565b5f;box-shadow:none;cursor:not-allowed;opacity:1}
 .gin-flight {position:fixed;pointer-events:none;z-index:100;transform-origin:top left;line-height:0}
 @media(prefers-reduced-motion:reduce){.gin-hand .gin-alternate .gin-card {animation:none}}
+
+#gin-opponent .gin-revealed {justify-content:center;margin-bottom:.5rem}
+#gin-opponent .gin-revealed .gin-card {width:clamp(40px,4.3vw,65px)}
