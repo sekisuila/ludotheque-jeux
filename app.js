@@ -91,7 +91,7 @@ function renderCatalogue() {
         </div>
       </div>
       <div class="filters">
-        <input id="gameSearch" class="search-input" type="search" placeholder="Rechercher : échecs, cartes, Catan…" aria-label="Rechercher un jeu" />
+        <input id="gameSearch" class="search-input" type="search" placeholder="Rechercher : échecs, cartes, dés…" aria-label="Rechercher un jeu" />
         <select id="categoryFilter" aria-label="Filtrer par catégorie">
           <option value="">Toutes les catégories</option>
           ${[...new Set(GAMES.map(g => g.category))].map(cat => `<option>${cat}</option>`).join("")}
@@ -1110,20 +1110,6 @@ function illustration(type, large = false) {
     const rows=[5,6,7,8,9,8,7,6,5];
     rows.forEach((n,r)=>{ const y=38+r*(H-76)/8; const step=34; const start=W/2-(n-1)*step/2; for(let c=0;c<n;c++){ const isDark=r<3 || (r===3&&c<3); const isLight=r>5 || (r===5&&c>n-4); dots+=`<circle cx="${start+c*step}" cy="${y}" r="13" fill="${isDark?'#1f2427':isLight?'#f2eee4':'#6e8a7a'}" stroke="#314a3f" stroke-width="2"/>`; }});
     return `<svg ${common}><rect width="100%" height="100%" fill="#d9d4c8"/>${dots}</svg>`;
-  }
-
-  if (type === "catan") {
-    const hex=(cx,cy,s,fill)=>{const pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i;pts.push(`${cx+s*Math.cos(a)},${cy+s*Math.sin(a)}`)}return `<polygon points="${pts.join(' ')}" fill="${fill}" stroke="#f4ecd6" stroke-width="5"/>`;};
-    const colors=["#7f9b52","#c69f4a","#8a6b4e","#7aad78","#c9bb79","#7895b5","#a57858"];
-    let h=""; let idx=0; const s=56; const dx=s*1.52, dy=s*1.32;
-    [[-1,0,1],[-1.5,-.5,.5,1.5],[-1.5,-.5,.5,1.5],[-1,0,1]].forEach((row,r)=>{ row.forEach(pos=>{h+=hex(W/2+pos*dx,H*.23+r*dy,s,colors[idx++%colors.length]);});});
-    return `<svg ${common}><rect width="100%" height="100%" fill="#b9d1de"/>${h}</svg>`;
-  }
-
-  if (type === "carcassonne") {
-    let tiles=""; const S=78; const ox=W/2-S*2.5, oy=H/2-S*1.5;
-    for(let r=0;r<3;r++)for(let c=0;c<5;c++){const x=ox+c*S,y=oy+r*S;tiles+=`<rect x="${x}" y="${y}" width="${S-3}" height="${S-3}" rx="5" fill="${(r+c)%3===0?'#a8bf70':(r+c)%3===1?'#d9c78f':'#96b97a'}" stroke="#f8f2e2" stroke-width="3"/><path d="M${x+S/2} ${y} C${x+S/2-10} ${y+25}, ${x+S/2+15} ${y+50}, ${x+S/2} ${y+S}" stroke="#d3c6ae" stroke-width="12" fill="none"/>`;}
-    return `<svg ${common}><rect width="100%" height="100%" fill="#d7caa9"/>${tiles}</svg>`;
   }
 
   if (type === "cards") {

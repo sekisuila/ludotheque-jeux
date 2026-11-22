@@ -105,48 +105,6 @@ const GAMES = [
     art: "abalone"
   },
   {
-    id: "catan",
-    name: "Les Colons de Catan",
-    category: "Jeu de plateau moderne",
-    players: "3 à 4 joueurs",
-    duration: "60 à 120 min",
-    difficulty: "Accessible / intermédiaire",
-    intro: "Développez des colonies et des routes sur une île modulaire en échangeant des ressources avec les autres joueurs.",
-    goal: "Atteindre le nombre de points de victoire requis par la partie, généralement 10 dans le jeu de base.",
-    rules: [
-      "Construisez le plateau avec les tuiles de terrain, les numéros et les ports selon le scénario choisi.",
-      "Chaque joueur place des colonies et routes initiales en respectant la règle de distance.",
-      "Au début du tour, deux dés déterminent quels terrains produisent des ressources.",
-      "Le joueur actif peut commercer avec les autres joueurs et avec la banque selon les taux disponibles.",
-      "Les ressources servent à construire routes, colonies, villes et cartes de développement.",
-      "Le voleur s'active sur un 7 et bloque la production d'une tuile jusqu'à son déplacement."
-    ],
-    tips: "Diversifiez les nombres et les ressources dès le départ, et surveillez les possibilités de route la plus longue.",
-    demo: false,
-    art: "catan"
-  },
-  {
-    id: "carcassonne",
-    name: "Carcassonne",
-    category: "Jeu de tuiles",
-    players: "2 à 5 joueurs",
-    duration: "30 à 60 min",
-    difficulty: "Accessible",
-    intro: "Construisez progressivement un paysage médiéval avec des tuiles et placez vos partisans pour marquer des points.",
-    goal: "Obtenir le plus grand nombre de points grâce aux villes, routes, monastères et champs.",
-    rules: [
-      "À son tour, le joueur pioche une tuile paysage et doit la placer en raccordant correctement les côtés.",
-      "Après la pose, il peut placer un partisan sur un élément libre de la tuile nouvellement posée.",
-      "Une route, une ville ou un monastère terminé est immédiatement décompté selon les règles correspondantes.",
-      "Les partisans récupérés après un décompte peuvent être réutilisés lors de tours ultérieurs.",
-      "Les champs restent généralement occupés jusqu'à la fin de la partie.",
-      "Lorsque toutes les tuiles ont été posées, les éléments inachevés et les champs sont décomptés."
-    ],
-    tips: "Ne bloquez pas trop de partisans dans de très grands projets : un stock disponible offre davantage d'options tactiques.",
-    demo: false,
-    art: "carcassonne"
-  },
-  {
     id: "gin-rummy", name: "Gin Rummy", category: "Jeu de cartes", art: "gin", demo: true,
     players: "2 joueurs", duration: "20 à 40 min", difficulty: "Accessible",
     intro: "Formez des brelans et des suites, puis choisissez le bon moment pour frapper.",
