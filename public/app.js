@@ -46,7 +46,7 @@ const HOME_GAME_CATEGORIES = [
   {
     title: "Cartes",
     description: "Plis, combinaisons, défausse et tactique avec des cartes.",
-    ids: ["gin-rummy", "cartes"]
+    ids: ["gin-rummy", "canasta", "cartes"]
   },
   {
     title: "Dés",
@@ -2136,6 +2136,7 @@ function renderPlay(id) {
   if (id === "awale") return renderAwalePlay();
   if (id === "yams") return renderYamsPlay();
   if (id === "421") return render421Play();
+  if (id === "canasta") return window.canastaTable(app);
   if (id === "gin-rummy") return window.ginTable(app);
   if (id === "backgammon") return window.renderBackgammon(app);
   if (id === "dominos") return renderDominoPlay();
@@ -2170,6 +2171,7 @@ function renderPlay(id) {
         <article class="play-card"><div class="visual">${illustration("awale", false)}</div><div><span class="tag">Jouable</span><h2>Awélé</h2><p>Deux joueurs en local ou joueur contre IA, avec semailles, captures et règle de nourrissage.</p><a class="btn" href="#/jouer/awale">Jouer à l’Awélé</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>Yams</h2><p>Cinq dés, jusqu’à trois lancers, feuille de score complète, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/yams">Jouer au Yams</a></div></article>
         <article class="play-card"><div class="visual">${illustration("dice", false)}</div><div><span class="tag">Nouveau</span><h2>421</h2><p>Trois dés, 21 jetons, charge et décharge, IA et salons multijoueurs avec tirages validés par le serveur.</p><a class="btn" href="#/jouer/421">Jouer au 421</a></div></article>
+        <article class="play-card"><div class="visual">${illustration("canasta")}</div><div><h2>Canasta</h2><p>Jouez en Sud avec Nord contre Est et Ouest, en équipes jusqu’à 5 000 points.</p><a class="btn" href="#/jouer/canasta">Jouer à la canasta</a></div></article>
         <article class="play-card"><div class="visual">${illustration("gin")}</div><div><h2>Gin Rummy</h2><p>Un duel de cartes en plusieurs manches, jusqu’à 100 points.</p><a class="btn" href="#/jouer/gin-rummy">Jouer au Gin Rummy</a></div></article>
         <article class="play-card"><div class="visual">${illustration("backgammon", false)}</div><div><h2>Backgammon</h2><p>Une course de quinze pions, en local, contre l’ordinateur ou en salon.</p><a class="btn" href="#/jouer/backgammon">Jouer au Backgammon</a></div></article>
         <article class="play-card"><div class="visual">${illustration("domino", false)}</div><div><span class="tag">Nouveau</span><h2>Dominos</h2><p>Double-six à pioche, manches jusqu’à 100 points, trois niveaux d’IA et salons multijoueurs.</p><a class="btn" href="#/jouer/dominos">Jouer aux Dominos</a></div></article>
@@ -2837,6 +2839,7 @@ function normalize(text) {
 }
 
 function illustration(type, large = false) {
+  if (type === "canasta") return window.canastaArt();
   if (type === "gin") return window.ginArt();
   if (type === "backgammon") return '<div class="bg-mini" aria-hidden="true">' + '<i></i>'.repeat(12) + '</div>';
   const W = large ? 760 : 520;

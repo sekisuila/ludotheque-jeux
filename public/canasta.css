@@ -1,0 +1,18 @@
+.ca-page{max-width:1120px;margin:auto}.ca-score,.ca-actions,.ca-piles,.ca-hand,.ca-groups,.ca-reds{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
+.ca-score{justify-content:space-between;margin:.65rem 0;color:#243b37}.ca-score b{font-size:1.2rem}
+.ca-felt{background:radial-gradient(ellipse at 50% 20%,#28695b,#123f36);color:#fff5df;border:4px solid #76583c;border-radius:16px;padding:clamp(.5rem,1.6vw,1.2rem)}
+.ca-felt button{font:inherit;color:inherit;cursor:pointer}.ca-felt button:disabled{opacity:1;cursor:default}
+.ca-north{display:grid;justify-content:center}.ca-middle{display:grid;grid-template-columns:1fr 2fr 1fr;align-items:center;gap:.5rem}.ca-middle>.ca-seat:last-child{justify-self:end}
+.ca-seat{padding:.3rem .5rem;display:grid;justify-items:center;border:2px solid transparent;border-radius:.5rem;text-align:center}
+.ca-seat span,.ca-piles small{font-size:.85rem}.ca-active{border-color:#e9ca76}.ca-seat i{display:flex;padding-left:12px;margin-top:.25rem}.ca-seat i .gin-card{width:22px;margin-left:-12px}
+.ca-piles{justify-content:center;align-items:start;flex-wrap:nowrap}.ca-piles button,.ca-hand button{background:none;border:0;padding:0}
+.ca-piles button{display:grid;justify-items:center;gap:.15rem;min-width:4rem}.ca-piles .gin-card,.ca-empty{width:clamp(42px,5.2vw,62px);aspect-ratio:2/3}.ca-empty{border:1px dashed #ccc;border-radius:5px}
+.ca-piles button:enabled .gin-card{outline:2px solid #ffd87a;outline-offset:2px}.ca-sides{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:.55rem 0}
+.ca-side{background:#082e2960;border:1px solid #ffffff42;border-radius:.5rem;padding:.65rem;min-width:0}
+.ca-felt h3{color:inherit;margin:0 0 .25rem;font-size:1rem}.ca-reds{font-size:.88rem;min-height:26px;gap:.3rem}.ca-reds .gin-card{width:20px}
+.ca-groups{gap:.4rem;margin:.4rem 0}.ca-meld{background:#edf4e81a;border:1px solid #ffffff4a;border-radius:.4rem;display:grid;gap:.2rem;padding:.25rem}
+.ca-meld b{font-size:.8rem}.ca-meld>span{display:flex;flex-wrap:wrap;padding-right:14px}.ca-meld>span>span{width:13px}.ca-meld .gin-card{width:28px}.ca-draft .gin-card{outline:2px solid #ffd881}
+.ca-drop{width:100%;border:1px dashed #ebd498;border-radius:.4rem;padding:.6rem;background:#153c32}.ca-drop:enabled:hover,.ca-meld:enabled:hover{background:#37674e}
+.ca-hand{padding:.5rem .2rem .2rem;gap:.28rem}.ca-hand button{width:clamp(36px,5.7vw,66px);border-radius:5px}.ca-hand button[aria-pressed=true]{transform:translateY(-6px);outline:3px solid #ffe085}
+.ca-status{margin:.7rem 0}.ca-status p{margin:.2rem 0}.ca-actions .btn:disabled{opacity:.45;cursor:default}.ca-actions{margin-bottom:.75rem}.ca-log ol{padding-left:1.5rem}.ca-page table{border-collapse:collapse;margin-bottom:1rem}.ca-page th,.ca-page td{padding:.25rem .8rem;text-align:right}.ca-page th:first-child{text-align:left}.ca-page .panel{margin-bottom:1rem}
+@media(max-width:550px){.ca-middle{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:.15rem}.ca-seat{padding:.2rem}.ca-seat i .gin-card{width:15px;margin-left:-10px}.ca-piles{gap:.35rem}.ca-sides{gap:.3rem}.ca-side{padding:.35rem}.ca-drop{padding:.35rem}.ca-score{gap:.35rem;font-size:.9rem}}

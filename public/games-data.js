@@ -105,6 +105,26 @@ const GAMES = [
     art: "abalone"
   },
   {
+    id: "canasta", name: "Canasta", category: "Jeu de cartes", art: "canasta", demo: true,
+    players: "4 joueurs en 2 équipes", duration: "30 à 60 min", difficulty: "Intermédiaire",
+    intro: "Avec votre partenaire Nord, réunissez sept cartes de même rang pour former une canasta.",
+    goal: "Avoir le meilleur total lorsqu’une équipe atteint 5 000 points. En cas d’égalité, jouez une manche supplémentaire.",
+    rules: [
+      "Deux jeux de 52 cartes et quatre jokers. Chaque joueur reçoit onze cartes. Le voisin de gauche du donneur commence. Le donneur change à chaque manche.",
+      "Tout 3 rouge reçu à la distribution ou tiré de la pioche est exposé et remplacé immédiatement, autant de fois que nécessaire. Au démarrage de la défausse, recouvrez chaque 3 rouge, 2 ou joker jusqu’à retourner une autre carte.",
+      "Piochez une carte ou ramassez toute la défausse. Vous pouvez ensuite poser pour votre équipe, puis défausser une carte.",
+      "Une combinaison réunit au moins trois cartes du même rang, dont deux naturelles. Les 2 et jokers sont libres, dans la limite de trois par combinaison. Chaque équipe a une seule combinaison par rang et peut toujours la compléter.",
+      "La première pose de l’équipe doit valoir 50 points, 90 dès 1 500 points cumulés, 120 dès 3 000, ou 15 si le score est négatif. Plusieurs combinaisons peuvent compter ensemble. Un joker vaut 50, un 2 ou un as 20, du 8 au roi 10, du 4 au 7 et les 3 noirs 5.",
+      "Pour ramasser, posez immédiatement la carte visible. Si la pile est gelée par un 2, un joker ou un 3 rouge initial, ou si votre équipe n’a pas encore ouvert, vous devez fournir deux naturelles de même rang depuis votre main. Le gel persiste même si la carte libre est recouverte. Seul le sommet peut contribuer au minimum d’ouverture.",
+      "Sur une pile libre, vous pouvez aussi compléter une pose de votre équipe ou fournir une naturelle et une carte libre. Un 3 noir, un 2 ou un joker au sommet interdit la prise. Avec une seule carte en main, on ne peut prendre une pile d’une seule carte. Un 3 rouge enfoui est exposé lors de la prise, sans remplacement.",
+      "À sept cartes ou plus, une combinaison devient une canasta. Votre équipe doit en avoir une pour sortir, en posant toute votre main ou en défaussant votre dernière carte. Trois ou quatre 3 noirs peuvent se poser ensemble uniquement pour sortir, sans carte libre. Vous pouvez demander l’avis de votre partenaire avant vos poses et devez alors suivre sa réponse.",
+      "Sortir rapporte 100 points, ou 200 pour une sortie cachée : posez pour la première fois, formez votre propre canasta dans ce tour et ne complétez aucune pose antérieure du partenaire. En sortant ainsi après avoir pioché, le seuil d’ouverture est levé.",
+      "Une canasta naturelle rapporte 500 points, une mixte 300. Ajoutez la valeur des cartes posées et retranchez les cartes encore en main des deux partenaires. Chaque 3 rouge vaut 100 points, les quatre ensemble 800 ; ces points sont retranchés si votre équipe n’a fait aucune combinaison.",
+      "Pioche vide, vous devez prendre une pile libre si son sommet complète une pose de votre équipe et que la prise est autorisée. Sinon, vous pouvez choisir de finir la manche en renonçant à prendre. Si la dernière carte piochée est un 3 rouge, exposez-la et comptez immédiatement les points."
+    ],
+    tips: "Gardez une paire naturelle en main si vous espérez ramasser une défausse gelée."
+  },
+  {
     id: "gin-rummy", name: "Gin Rummy", category: "Jeu de cartes", art: "gin", demo: true,
     players: "2 joueurs", duration: "20 à 40 min", difficulty: "Accessible",
     intro: "Formez des brelans et des suites, puis choisissez le bon moment pour frapper.",
